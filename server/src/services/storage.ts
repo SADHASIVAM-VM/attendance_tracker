@@ -3,7 +3,12 @@ import path from 'path';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 
-const UPLOAD_DIR = path.resolve(process.cwd(), '.uploads', 'attendance_photos');
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+// Resolve strictly to server root .uploads/attendance_photos
+const UPLOAD_DIR = path.resolve(__dirname, '../../.uploads/attendance_photos');
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
@@ -21,7 +26,7 @@ export interface UploadAuthorization {
 }
 
 /**
- * Generates an authorized upload reference for the user with an expiration window of 10 minutes.
+ * Generates an authorized upload reference for the user with an expiration window of 30 minutes.
  */
 export function generateUploadAuthorization(userId: string): UploadAuthorization {
   const photoObjectKey = `selfies/${userId}/${Date.now()}_${crypto.randomBytes(8).toString('hex')}.jpg`;
@@ -33,13 +38,13 @@ export function generateUploadAuthorization(userId: string): UploadAuthorization
       purpose: 'ATTENDANCE_PHOTO_UPLOAD',
     },
     STORAGE_SECRET,
-    { expiresIn: '10m' }
+    { expiresIn: '30m' }
   );
 
   return {
     uploadUrl: '/api/v1/attendance/upload-photo',
     photoObjectKey,
-    expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+    expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
     fields: {
       photoObjectKey,
       token,
@@ -48,7 +53,7 @@ export function generateUploadAuthorization(userId: string): UploadAuthorization
 }
 
 /**
- * Generates a short-lived signed download URL (15 minutes expiration) for private photos.
+ * Generates a signed download URL (7 days expiration) for private attendance photos.
  */
 export function generateSignedDownloadUrl(photoObjectKey: string, userId?: string): string {
   const token = jwt.sign(
@@ -58,7 +63,7 @@ export function generateSignedDownloadUrl(photoObjectKey: string, userId?: strin
       purpose: 'ATTENDANCE_PHOTO_VIEW',
     },
     STORAGE_SECRET,
-    { expiresIn: '15m' }
+    { expiresIn: '7d' }
   );
 
   return `/api/v1/storage/file?token=${encodeURIComponent(token)}`;

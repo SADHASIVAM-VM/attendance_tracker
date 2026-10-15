@@ -60,10 +60,25 @@ async function initializeTables(client) {
       full_name VARCHAR(255) NOT NULL,
       password_hash VARCHAR(255) NOT NULL,
       phone VARCHAR(50),
+      dob VARCHAR(20),
+      photo_url TEXT,
+      native_place VARCHAR(255),
+      emergency_phone VARCHAR(50),
+      blood_group VARCHAR(10),
+      gender VARCHAR(20),
+      address TEXT,
       is_active BOOLEAN DEFAULT TRUE NOT NULL,
       created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
       updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
     );
+
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS dob VARCHAR(20);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_url TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS native_place VARCHAR(255);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_phone VARCHAR(50);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS blood_group VARCHAR(10);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS gender VARCHAR(20);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT;
 
     CREATE TABLE IF NOT EXISTS user_roles (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

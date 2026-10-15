@@ -1,9 +1,9 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { getDb } from '../database/db.js';
-import { leaveTypes, leaveRequests, users, notifications } from '../database/schema.js';
+import { getDb } from '../database/db';
+import { leaveTypes, leaveRequests, users, notifications } from '../database/schema';
 import { eq, and, sql, desc } from 'drizzle-orm';
-import { logAuditEvent } from '../utils/audit.js';
+import { logAuditEvent } from '../utils/audit';
 
 const leaveRequestSchema = z.object({
   leaveTypeId: z.string().uuid(),

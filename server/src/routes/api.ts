@@ -1,15 +1,15 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { authenticate, requireRole } from '../middleware/auth.js';
-import * as authCtrl from '../controllers/authController.js';
-import * as userCtrl from '../controllers/userController.js';
-import * as worksiteCtrl from '../controllers/worksiteController.js';
-import * as assignmentCtrl from '../controllers/assignmentController.js';
-import * as attendanceCtrl from '../controllers/attendanceController.js';
-import * as regCtrl from '../controllers/regularizationController.js';
-import * as leaveCtrl from '../controllers/leaveController.js';
-import * as reportCtrl from '../controllers/reportController.js';
-import { getPhotoBuffer, verifyStorageToken } from '../services/storage.js';
+import { authenticate, requireRole } from '../middleware/auth';
+import * as authCtrl from '../controllers/authController';
+import * as userCtrl from '../controllers/userController';
+import * as worksiteCtrl from '../controllers/worksiteController';
+import * as assignmentCtrl from '../controllers/assignmentController';
+import * as attendanceCtrl from '../controllers/attendanceController';
+import * as regCtrl from '../controllers/regularizationController';
+import * as leaveCtrl from '../controllers/leaveController';
+import * as reportCtrl from '../controllers/reportController';
+import { getPhotoBuffer, verifyStorageToken } from '../services/storage';
 
 const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB max
@@ -38,6 +38,8 @@ router.get('/users', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), userCtrl
 router.post('/users', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), userCtrl.createUser);
 router.get('/users/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), userCtrl.getUserById);
 router.patch('/users/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), userCtrl.updateUser);
+router.put('/users/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), userCtrl.updateUser);
+router.delete('/users/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), userCtrl.deleteUser);
 router.post('/users/:id/deactivate', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), userCtrl.deactivateUser);
 
 // =======================
@@ -126,7 +128,21 @@ router.get('/storage/file', async (req, res): Promise<any> => {
   }
 
   res.setHeader('Content-Type', 'image/jpeg');
-  res.setHeader('Cache-Control', 'private, max-age=300');
+  res.setHeader('Cache-Control', 'private, max-age=86400');
+  return res.send(buffer);
+});
+
+router.get('/storage/photo', authenticate, async (req, res): Promise<any> => {
+  const key = req.query.key as string;
+  if (!key) {
+    return res.status(400).json({ error: 'KEY_REQUIRED', message: 'Photo key required' });
+  }
+  const buffer = await getPhotoBuffer(key);
+  if (!buffer) {
+    return res.status(404).json({ error: 'FILE_NOT_FOUND', message: 'Photo file not found in storage' });
+  }
+  res.setHeader('Content-Type', 'image/jpeg');
+  res.setHeader('Cache-Control', 'private, max-age=86400');
   return res.send(buffer);
 });
 

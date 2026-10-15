@@ -34,7 +34,7 @@ interface NavItem {
 }
 
 export const AppShell: React.FC<AppShellProps> = ({ currentTab, onTabChange, children }) => {
-  const { user, organization, quickLogin, logout } = useAuth();
+  const { user, organization, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const roles = user?.roles || [];
@@ -120,44 +120,6 @@ export const AppShell: React.FC<AppShellProps> = ({ currentTab, onTabChange, chi
           </div>
         </div>
 
-        {/* Quick Role Switcher Bar for instant Pair-Programming & Verification */}
-        <div className="hidden md:flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
-          <span className="text-[11px] font-medium text-slate-500 px-2 uppercase tracking-wider">
-            Switch Role:
-          </span>
-          <button
-            onClick={() => quickLogin('SUPER_ADMIN')}
-            className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-              isSuperAdmin ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Super Admin
-          </button>
-          <button
-            onClick={() => quickLogin('ADMIN')}
-            className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-              isAdmin && !isSuperAdmin ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Admin
-          </button>
-          <button
-            onClick={() => quickLogin('SUPERVISOR')}
-            className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-              isSupervisor ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Supervisor
-          </button>
-          <button
-            onClick={() => quickLogin('WORKER')}
-            className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-              isWorker ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Worker
-          </button>
-        </div>
 
         {/* User profile & logout */}
         <div className="flex items-center gap-3">
@@ -277,47 +239,6 @@ export const AppShell: React.FC<AppShellProps> = ({ currentTab, onTabChange, chi
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-100 space-y-2">
-                <p className="text-[11px] text-slate-500 font-semibold uppercase">Switch Account:</p>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <button
-                    onClick={() => {
-                      quickLogin('SUPER_ADMIN');
-                      setMobileMenuOpen(false);
-                    }}
-                    className="p-1.5 text-xs bg-slate-100 rounded-lg text-slate-700 font-medium"
-                  >
-                    Super Admin
-                  </button>
-                  <button
-                    onClick={() => {
-                      quickLogin('ADMIN');
-                      setMobileMenuOpen(false);
-                    }}
-                    className="p-1.5 text-xs bg-slate-100 rounded-lg text-slate-700 font-medium"
-                  >
-                    Admin
-                  </button>
-                  <button
-                    onClick={() => {
-                      quickLogin('SUPERVISOR');
-                      setMobileMenuOpen(false);
-                    }}
-                    className="p-1.5 text-xs bg-slate-100 rounded-lg text-slate-700 font-medium"
-                  >
-                    Supervisor
-                  </button>
-                  <button
-                    onClick={() => {
-                      quickLogin('WORKER');
-                      setMobileMenuOpen(false);
-                    }}
-                    className="p-1.5 text-xs bg-slate-100 rounded-lg text-slate-700 font-medium"
-                  >
-                    Worker
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
         )}

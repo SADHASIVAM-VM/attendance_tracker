@@ -1,5 +1,5 @@
-import { getDb } from '../database/db.js';
-import { auditLogs } from '../database/schema.js';
+import { getDb } from '../database/db';
+import { auditLogs } from '../database/schema';
 
 interface AuditLogParams {
   orgId?: any;

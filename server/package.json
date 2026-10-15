@@ -7,17 +7,17 @@
   "scripts": {
     "dev": "nodemon --watch src --ext ts --exec tsx src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "node --experimental-specifier-resolution=node dist/server.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
+    "db:seed": "tsx src/database/seed/seed.ts",
     "db:studio": "drizzle-kit studio"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@electric-sql/pglite": "^0.5.8",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^18.0.7",

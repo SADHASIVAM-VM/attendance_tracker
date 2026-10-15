@@ -1,6 +1,6 @@
-import { app } from '../server.js';
-import { getDb } from '../database/db.js';
-import { seedDatabase } from '../database/seed/seed.js';
+import { app } from '../server';
+import { getDb } from '../database/db';
+import { seedDatabase } from '../database/seed/seed';
 import type { Server } from 'http';
 
 async function runAssignmentTests() {

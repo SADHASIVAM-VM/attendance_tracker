@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { getDb } from '../database/db.js';
+import { getDb } from '../database/db';
 import {
   attendanceSessions,
   siteAssignments,
@@ -7,7 +7,7 @@ import {
   users,
   auditLogs,
   notifications,
-} from '../database/schema.js';
+} from '../database/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
 
 function sanitizeCsvField(val: any): string {

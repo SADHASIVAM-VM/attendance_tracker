@@ -1,5 +1,5 @@
-import { getDb } from '../database/db.js';
-import { calculateHaversineDistance, isWithinGeofence } from '../utils/geo.js';
+import { getDb } from '../database/db';
+import { calculateHaversineDistance, isWithinGeofence } from '../utils/geo';
 
 async function runTests() {
   console.log('🧪 Running Location-Based Attendance System Integration Tests...\n');

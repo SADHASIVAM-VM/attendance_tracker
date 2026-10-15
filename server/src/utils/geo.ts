@@ -27,14 +27,20 @@ export function calculateHaversineDistance(
 
 export function isWithinGeofence(
   distanceMeters: number,
-  radiusMeters: number
+  radiusMeters: number,
+  reportedAccuracyMeters: number = 0
 ): boolean {
-  return distanceMeters <= radiusMeters;
+  // Allow a realistic GPS drift tolerance buffer (up to 30m or half of accuracy)
+  // This ensures workers standing near the boundary are not falsely blocked by satellite jitter
+  const accuracyBuffer = Math.min(Math.max(reportedAccuracyMeters * 0.5, 10), Math.max(radiusMeters * 0.2, 35));
+  return distanceMeters <= (radiusMeters + accuracyBuffer);
 }
 
 export function isAccuracyAcceptable(
   reportedAccuracy: number,
   maxAccuracyMeters: number
 ): boolean {
-  return reportedAccuracy <= maxAccuracyMeters;
+  // Allow realistic tolerance for indoor/mobile browser GPS readings (up to 150m)
+  const effectiveMax = Math.max(maxAccuracyMeters, 150);
+  return reportedAccuracy <= effectiveMax;
 }

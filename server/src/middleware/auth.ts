@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { getDb } from '../database/db.js';
-import { users, userRoles } from '../database/schema.js';
+import { getDb } from '../database/db';
+import { users, userRoles } from '../database/schema';
 import { eq } from 'drizzle-orm';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'attendance_dev_jwt_secret_key_2026';
@@ -37,15 +37,33 @@ export function generateToken(user: AuthenticatedUser): string {
 }
 
 export async function authenticate(req: Request, res: Response, next: NextFunction): Promise<any> {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({
-      error: 'UNAUTHORIZED',
-      message: 'Authentication token required',
-    });
+  let token: string | undefined;
+
+  // 1. Check HTTP-only cookie
+  if ((req as any).cookies?.attendance_token) {
+    token = (req as any).cookies.attendance_token;
+  } else if (req.headers.cookie) {
+    const rawCookies = req.headers.cookie.split(';');
+    for (const c of rawCookies) {
+      const [k, ...v] = c.trim().split('=');
+      if (k === 'attendance_token') {
+        token = decodeURIComponent(v.join('='));
+        break;
+      }
+    }
   }
 
-  const token = authHeader.substring(7);
+  // 2. Fallback to Authorization: Bearer header
+  if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+    token = req.headers.authorization.substring(7);
+  }
+
+  if (!token) {
+    return res.status(401).json({
+      error: 'UNAUTHORIZED',
+      message: 'Authentication session required. Please sign in.',
+    });
+  }
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as { id: string };

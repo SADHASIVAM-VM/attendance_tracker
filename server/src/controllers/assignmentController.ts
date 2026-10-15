@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { getDb } from '../database/db.js';
+import { getDb } from '../database/db';
 import {
   siteAssignments,
   siteAssignmentWorkers,
@@ -8,9 +8,9 @@ import {
   users,
   userRoles,
   leaveRequests,
-} from '../database/schema.js';
+} from '../database/schema';
 import { eq, and, inArray, sql } from 'drizzle-orm';
-import { logAuditEvent } from '../utils/audit.js';
+import { logAuditEvent } from '../utils/audit';
 
 const createAssignmentSchema = z.object({
   worksiteId: z.string().uuid(),

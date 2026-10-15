@@ -1,11 +1,11 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-import { getDb } from '../database/db.js';
-import { users, userRoles, organizations } from '../database/schema.js';
+import { getDb } from '../database/db';
+import { users, userRoles, organizations } from '../database/schema';
 import { eq } from 'drizzle-orm';
-import { generateToken } from '../middleware/auth.js';
-import { logAuditEvent } from '../utils/audit.js';
+import { generateToken } from '../middleware/auth';
+import { logAuditEvent } from '../utils/audit';
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -72,6 +72,15 @@ export async function login(req: Request, res: Response): Promise<any> {
 
   const token = generateToken(authUser);
 
+  // Set HTTP-only session cookie
+  res.cookie('attendance_token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    path: '/',
+  });
+
   await logAuditEvent({
     orgId: userRecord.orgId,
     actorId: userRecord.id,
@@ -108,6 +117,13 @@ export async function getMe(req: Request, res: Response): Promise<any> {
 }
 
 export async function logout(req: Request, res: Response): Promise<any> {
+  // Clear HTTP-only session cookie
+  res.clearCookie('attendance_token', {
+    httpOnly: true,
+    sameSite: 'lax',
+    path: '/',
+  });
+
   if (req.user) {
     await logAuditEvent({
       orgId: req.user.orgId,

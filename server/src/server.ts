@@ -1,18 +1,49 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import apiRouter from './routes/api.js';
-import { getDb } from './database/db.js';
-import { seedDatabase } from './database/seed/seed.js';
+import apiRouter from './routes/api';
+import { getDb } from './database/db';
+import { seedDatabase } from './database/seed/seed';
+import { query } from './config/db.config';
 
 const app = express();
 
+// Fail-safe CORS headers with cookie credentials support
+app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+  }
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
+
 app.use(cors({
-  origin: '*', // Adjust for production allowlists
+  origin: true,
   credentials: true,
 }));
 
 app.use(express.json());
+
+// Cookie parser middleware
+app.use((req: express.Request, _res: express.Response, next: express.NextFunction) => {
+  const cookieHeader = req.headers.cookie;
+  (req as any).cookies = {};
+  if (cookieHeader) {
+    cookieHeader.split(';').forEach((c) => {
+      const [key, ...v] = c.trim().split('=');
+      if (key) {
+        (req as any).cookies[key] = decodeURIComponent(v.join('='));
+      }
+    });
+  }
+  next();
+});
 
 // Health check endpoint
 app.get('/health', (_req, res) => {
@@ -41,8 +72,16 @@ const PORT = Number(process.env.PORT) || 5000;
 
 async function startServer() {
   try {
-    // Initialize DB and ensure tables
+    // Initialize DB and ensure all tables/schema exist
     await getDb();
+
+    // Test DB query
+    await query("SELECT NOW() AS current_time").then((e) => {
+      console.log("Database connection successful:", e.rows[0].current_time);
+    }).catch((error) => {
+      console.warn("Direct pool query info:", error.message);
+    });
+
     // Seed initial dataset if not present
     await seedDatabase();
 
@@ -56,6 +95,7 @@ async function startServer() {
     process.exit(1);
   }
 }
+
 
 export { app, startServer };
 

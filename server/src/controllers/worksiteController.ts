@@ -1,10 +1,10 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { getDb } from '../database/db.js';
-import { worksites } from '../database/schema.js';
+import { getDb } from '../database/db';
+import { worksites } from '../database/schema';
 import { eq, and } from 'drizzle-orm';
-import { logAuditEvent } from '../utils/audit.js';
-import { resolveGoogleMapsUrl } from '../utils/mapsUrlParser.js';
+import { logAuditEvent } from '../utils/audit';
+import { resolveGoogleMapsUrl } from '../utils/mapsUrlParser';
 
 const worksiteSchema = z.object({
   name: z.string().min(1),

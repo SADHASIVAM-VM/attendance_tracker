@@ -5,8 +5,21 @@ import apiRouter from './routes/api.js';
 import { getDb } from './database/db.js';
 import { seedDatabase } from './database/seed/seed.js';
 const app = express();
+app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+    }
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(204);
+    }
+    next();
+});
 app.use(cors({
-    origin: '*', // Adjust for production allowlists
+    origin: true,
     credentials: true,
 }));
 app.use(express.json());

@@ -13,6 +13,14 @@ import {
   Send,
   LogOut,
   RefreshCw,
+  LocateFixed,
+  ShieldCheck,
+  XCircle,
+  Camera,
+  Lock,
+  Unlock,
+  Check,
+  Info,
 } from 'lucide-react';
 
 export const WorkerClockInView: React.FC = () => {
@@ -23,8 +31,15 @@ export const WorkerClockInView: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  // Permission Flow State (Location & Camera onboarding on entry)
+  const [locationPerm, setLocationPerm] = useState<'prompt' | 'granted' | 'denied'>('prompt');
+  const [cameraPerm, setCameraPerm] = useState<'prompt' | 'granted' | 'denied'>('prompt');
+  const [isRequestingPerms, setIsRequestingPerms] = useState<boolean>(false);
+  const [showPermBanner, setShowPermBanner] = useState<boolean>(true);
+
   // GPS State
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
+  const [isLocating, setIsLocating] = useState<boolean>(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [distanceMeters, setDistanceMeters] = useState<number | null>(null);
   const [simulatedOnSite, setSimulatedOnSite] = useState<boolean>(false);
@@ -40,7 +55,80 @@ export const WorkerClockInView: React.FC = () => {
   useEffect(() => {
     loadTodayAssignments();
     loadMyAttendance();
+    checkPermissions();
   }, []);
+
+  const checkPermissions = async () => {
+    try {
+      if (navigator.permissions && navigator.permissions.query) {
+        try {
+          const locStatus = await navigator.permissions.query({ name: 'geolocation' });
+          setLocationPerm(locStatus.state as any);
+          locStatus.onchange = () => setLocationPerm(locStatus.state as any);
+        } catch (e) {}
+
+        try {
+          const camStatus = await navigator.permissions.query({ name: 'camera' as any });
+          setCameraPerm(camStatus.state as any);
+          camStatus.onchange = () => setCameraPerm(camStatus.state as any);
+        } catch (e) {}
+      }
+    } catch (err) {
+      console.warn('Permissions query error:', err);
+    }
+  };
+
+  const handleRequestAllPermissions = async () => {
+    setIsRequestingPerms(true);
+    setError(null);
+
+    // 1. Request Geolocation Permission
+    await new Promise<void>((resolve) => {
+      if (!navigator.geolocation) {
+        setLocationPerm('denied');
+        setGpsError('Geolocation is not supported by this browser.');
+        resolve();
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setLocationPerm('granted');
+          setUserCoords({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            accuracy: Math.round(pos.coords.accuracy),
+          });
+          setGpsError(null);
+          resolve();
+        },
+        (err) => {
+          console.warn('Geolocation permission prompt denied/failed:', err);
+          setLocationPerm(err.code === 1 ? 'denied' : 'prompt');
+          setGpsError(`GPS Access: ${err.message}.`);
+          resolve();
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    });
+
+    // 2. Request Camera Permission
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        setCameraPerm('granted');
+        // Stop temporary check stream
+        stream.getTracks().forEach((t) => t.stop());
+      } else {
+        setCameraPerm('denied');
+      }
+    } catch (err: any) {
+      console.warn('Camera permission prompt denied/failed:', err);
+      setCameraPerm('denied');
+    } finally {
+      setIsRequestingPerms(false);
+    }
+  };
 
   const loadTodayAssignments = async () => {
     try {
@@ -71,48 +159,46 @@ export const WorkerClockInView: React.FC = () => {
     }
   };
 
-  // Obtain browser coordinates
-  useEffect(() => {
-    if (!navigator.geolocation) {
-      setGpsError('Geolocation is not supported by your browser.');
-      return;
-    }
-
-    const fetchGps = () => {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          if (!simulatedOnSite) {
-            setUserCoords({
-              lat: pos.coords.latitude,
-              lng: pos.coords.longitude,
-              accuracy: Math.round(pos.coords.accuracy),
-            });
-            setGpsError(null);
-          }
-        },
-        (err) => {
-          if (!simulatedOnSite) {
-            setGpsError(`GPS Permission: ${err.message}. Please enable location access.`);
-          }
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-    };
-
-    fetchGps();
-  }, [simulatedOnSite]);
-
-  // Handle simulated coordinates toggle for easy testing
-  useEffect(() => {
+  // Obtain live browser coordinates
+  const refreshGps = () => {
     if (simulatedOnSite && selectedAssignment) {
-      // Set worker coordinates precisely at the worksite with 5m accuracy
       setUserCoords({
         lat: selectedAssignment.worksiteLatitude,
         lng: selectedAssignment.worksiteLongitude,
         accuracy: 5,
       });
       setGpsError(null);
+      return;
     }
+
+    if (!navigator.geolocation) {
+      setGpsError('Geolocation is not supported by your browser.');
+      return;
+    }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setIsLocating(false);
+        setLocationPerm('granted');
+        setUserCoords({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: Math.round(pos.coords.accuracy),
+        });
+        setGpsError(null);
+      },
+      (err) => {
+        setIsLocating(false);
+        if (err.code === 1) setLocationPerm('denied');
+        setGpsError(`GPS Access: ${err.message}. Please enable location permissions.`);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
+
+  useEffect(() => {
+    refreshGps();
   }, [simulatedOnSite, selectedAssignment]);
 
   // Compute Haversine distance
@@ -154,7 +240,7 @@ export const WorkerClockInView: React.FC = () => {
       // 1. Request short-lived upload authorization
       const uploadAuth = await apiRequest('/attendance/photo-upload-auth', { method: 'POST' });
 
-      // 2. Upload photo securely
+      // 2. Upload photo securely into server image store
       const uploadResult = await uploadPhotoRequest(capturedBlob, uploadAuth);
 
       // 3. Submit clock-in with coordinates, accuracy and idempotency key
@@ -172,8 +258,12 @@ export const WorkerClockInView: React.FC = () => {
         }),
       });
 
-      setSuccessMessage('Clock-in submitted successfully! Sent to supervisor for review.');
-      setTodaySession(res.session);
+      setSuccessMessage(`Clock-in submitted successfully! Sent to supervisor (${selectedAssignment.supervisorName}) for verification.`);
+      setTodaySession({
+        ...res.session,
+        supervisorName: selectedAssignment.supervisorName,
+      });
+      await loadMyAttendance();
     } catch (err: any) {
       setError(err.message || 'Failed to submit clock-in');
     } finally {
@@ -195,15 +285,28 @@ export const WorkerClockInView: React.FC = () => {
     }
   };
 
+  const tolerance = userCoords
+    ? Math.min(Math.max(userCoords.accuracy * 0.5, 10), Math.max((selectedAssignment?.worksiteRadius || 200) * 0.2, 35))
+    : 0;
+
   const isWithinRadius =
     distanceMeters !== null &&
     selectedAssignment &&
-    distanceMeters <= selectedAssignment.worksiteRadius;
+    distanceMeters <= (selectedAssignment.worksiteRadius + tolerance);
 
   const isAccuracyGood =
     userCoords !== null &&
     selectedAssignment &&
-    userCoords.accuracy <= selectedAssignment.worksiteMaxAccuracy;
+    userCoords.accuracy <= Math.max(selectedAssignment.worksiteMaxAccuracy, 150);
+
+  // Check if accessed over insecure origin (e.g. non-localhost HTTP on local Wi-Fi IP)
+  const isInsecureNetworkOrigin =
+    typeof window !== 'undefined' &&
+    !window.isSecureContext &&
+    window.location.hostname !== 'localhost' &&
+    window.location.hostname !== '127.0.0.1';
+
+  const allPermissionsGranted = locationPerm === 'granted' && cameraPerm === 'granted';
 
   if (loading) {
     return (
@@ -226,7 +329,7 @@ export const WorkerClockInView: React.FC = () => {
         </p>
         <button
           onClick={loadTodayAssignments}
-          className="px-4 py-2 bg-slate-900 text-white text-sm font-semibold rounded-xl hover:bg-slate-800 transition-colors"
+          className="px-4 py-2 bg-slate-900 text-white text-sm font-semibold rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
         >
           Check Again
         </button>
@@ -240,9 +343,112 @@ export const WorkerClockInView: React.FC = () => {
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 m-0">Location Verified Clock-In</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Validate your physical worksite geofence, capture an attendance selfie, and route to your supervisor.
+          Validate live physical geofence, capture a camera selfie, and submit to your assigned supervisor.
         </p>
       </div>
+
+      {/* PERMISSIONS ONBOARDING CARD (Appears on entry) */}
+      {!todaySession && showPermBanner && (
+        <div
+          className={`rounded-2xl p-5 border transition-all ${
+            allPermissionsGranted
+              ? 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+              : 'bg-gradient-to-br from-slate-900 to-slate-800 border-slate-700 text-white shadow-md'
+          }`}
+        >
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                {allPermissionsGranted ? (
+                  <CheckCircle className="w-5 h-5 text-emerald-600" />
+                ) : (
+                  <ShieldCheck className="w-5 h-5 text-blue-400" />
+                )}
+                <h3 className={`font-bold text-base m-0 ${allPermissionsGranted ? 'text-emerald-900' : 'text-white'}`}>
+                  {allPermissionsGranted ? 'Permissions Enabled' : 'Permissions Required for Clock-In'}
+                </h3>
+              </div>
+              <p className={`text-xs m-0 ${allPermissionsGranted ? 'text-emerald-700' : 'text-slate-300'}`}>
+                {allPermissionsGranted
+                  ? 'Live GPS location and camera permissions are verified and active.'
+                  : 'To verify geofence perimeter and take your attendance selfie, grant access to location and camera.'}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {/* Location Status Pill */}
+              <div
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${
+                  locationPerm === 'granted'
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                    : locationPerm === 'denied'
+                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                    : 'bg-white/10 text-slate-200 border border-white/20'
+                }`}
+              >
+                <Navigation className="w-3.5 h-3.5" />
+                Location: {locationPerm === 'granted' ? 'Allowed ✓' : locationPerm === 'denied' ? 'Blocked ✕' : 'Prompt'}
+              </div>
+
+              {/* Camera Status Pill */}
+              <div
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${
+                  cameraPerm === 'granted'
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                    : cameraPerm === 'denied'
+                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                    : 'bg-white/10 text-slate-200 border border-white/20'
+                }`}
+              >
+                <Camera className="w-3.5 h-3.5" />
+                Camera: {cameraPerm === 'granted' ? 'Allowed ✓' : cameraPerm === 'denied' ? 'Blocked ✕' : 'Prompt'}
+              </div>
+
+              {/* Action Button */}
+              {!allPermissionsGranted && (
+                <button
+                  type="button"
+                  onClick={handleRequestAllPermissions}
+                  disabled={isRequestingPerms}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {isRequestingPerms ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      Prompting...
+                    </>
+                  ) : (
+                    <>
+                      <Unlock className="w-3.5 h-3.5" />
+                      Allow Permissions
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* If permissions were blocked */}
+          {(locationPerm === 'denied' || cameraPerm === 'denied') && (
+            <div className="mt-3 pt-3 border-t border-slate-700/60 text-xs text-rose-300 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
+              <div>
+                <strong>Permissions Blocked in Browser:</strong> Click the lock/settings icon in your browser's address bar to reset permissions, then click "Allow Permissions" above.
+              </div>
+            </div>
+          )}
+
+          {/* Notice if accessed over non-secure LAN IP on mobile */}
+          {isInsecureNetworkOrigin && (
+            <div className="mt-3 pt-3 border-t border-slate-700/60 text-xs text-amber-300 flex items-start gap-2">
+              <Info className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+              <div>
+                <strong>Testing from Mobile over Wi-Fi:</strong> Mobile browsers block Camera & Location on plain HTTP over local network IPs. You can use the <em>"Upload Photo"</em> or <em>"Demo Snapshot"</em> tabs below for instant testing!
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Notifications / Alerts */}
       {error && (
@@ -265,7 +471,7 @@ export const WorkerClockInView: React.FC = () => {
         </div>
       )}
 
-      {/* Already Clocked In State */}
+      {/* Attendance Status Card */}
       {todaySession && (
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
@@ -274,6 +480,39 @@ export const WorkerClockInView: React.FC = () => {
             </span>
             <StatusBadge status={todaySession.status} size="md" />
           </div>
+
+          {/* Specific Status Alert */}
+          {todaySession.status === 'PENDING' && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex items-center gap-2 font-medium">
+              <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                Clock-in submitted with photo & GPS evidence. Awaiting verification by assigned supervisor{' '}
+                <strong>{todaySession.supervisorName || selectedAssignment?.supervisorName}</strong>.
+              </span>
+            </div>
+          )}
+
+          {todaySession.status === 'APPROVED' && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800 flex items-center gap-2 font-medium">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>
+                Attendance Verified & Approved by supervisor{' '}
+                <strong>{todaySession.supervisorName || selectedAssignment?.supervisorName}</strong>!
+              </span>
+            </div>
+          )}
+
+          {todaySession.status === 'REJECTED' && (
+            <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-rose-800 space-y-1">
+              <div className="flex items-center gap-2 font-bold">
+                <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>Clock-in Rejected by Supervisor:</span>
+              </div>
+              <p className="text-xs text-rose-700 pl-6 m-0 font-medium">
+                {todaySession.rejectionReason || 'No specific reason provided.'}
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4 text-sm bg-slate-50 p-4 rounded-xl border border-slate-100">
             <div>
@@ -288,7 +527,7 @@ export const WorkerClockInView: React.FC = () => {
             </div>
           </div>
 
-          {!todaySession.clockOutTime && (
+          {!todaySession.clockOutTime && todaySession.status !== 'REJECTED' && (
             <button
               onClick={handleClockOut}
               disabled={isSubmitting}
@@ -307,8 +546,8 @@ export const WorkerClockInView: React.FC = () => {
         </div>
       )}
 
-      {/* Assignment Card */}
-      {!todaySession && selectedAssignment && (
+      {/* Assignment & Clock-In Form Card */}
+      {(!todaySession || todaySession.status === 'REJECTED') && selectedAssignment && (
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-6">
           <div className="flex items-start justify-between">
             <div>
@@ -346,24 +585,36 @@ export const WorkerClockInView: React.FC = () => {
             </div>
           </div>
 
-          {/* STEP 1: GPS GEOLOCATION VALIDATION */}
+          {/* STEP 1: LIVE GPS LOCATION VALIDATION */}
           <div className="p-5 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Navigation className="w-4 h-4 text-blue-600" />
-                <span className="text-sm font-bold text-slate-900">Step 1: Physical Geofence Validation</span>
+                <span className="text-sm font-bold text-slate-900">Step 1: Live Geofence Validation</span>
               </div>
 
-              {/* Developer / Testing Simulator Toggle */}
-              <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-600">
-                <input
-                  type="checkbox"
-                  checked={simulatedOnSite}
-                  onChange={(e) => setSimulatedOnSite(e.target.checked)}
-                  className="rounded text-blue-600 focus:ring-blue-500"
-                />
-                Simulate On-Site GPS (Demo)
-              </label>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={refreshGps}
+                  disabled={isLocating}
+                  className="px-2.5 py-1 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <LocateFixed className={`w-3.5 h-3.5 ${isLocating ? 'animate-spin text-blue-600' : ''}`} />
+                  Refresh Live GPS
+                </button>
+
+                {/* Developer / Testing Simulator Toggle */}
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-600 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={simulatedOnSite}
+                    onChange={(e) => setSimulatedOnSite(e.target.checked)}
+                    className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  />
+                  Simulate On-Site GPS (Demo)
+                </label>
+              </div>
             </div>
 
             {gpsError ? (
@@ -372,13 +623,26 @@ export const WorkerClockInView: React.FC = () => {
               </div>
             ) : userCoords && distanceMeters !== null ? (
               <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-600">
-                    Calculated distance to worksite reference coordinates:
-                  </span>
+                <div className="grid grid-cols-2 gap-2 text-xs bg-white p-3 rounded-lg border border-slate-200">
+                  <div>
+                    <span className="text-slate-500 block">Live Coordinates:</span>
+                    <span className="font-mono font-medium text-slate-800">
+                      {userCoords.lat.toFixed(6)}, {userCoords.lng.toFixed(6)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">Worksite Center:</span>
+                    <span className="font-mono font-medium text-slate-800">
+                      {selectedAssignment.worksiteLatitude.toFixed(6)}, {selectedAssignment.worksiteLongitude.toFixed(6)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-xs px-1">
+                  <span className="text-slate-600">Calculated distance to worksite perimeter:</span>
                   <span className="font-bold text-slate-900">{distanceMeters} meters</span>
                 </div>
-                <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center justify-between text-xs px-1">
                   <span className="text-slate-600">Reported GPS device accuracy:</span>
                   <span className="font-bold text-slate-900">+/- {userCoords.accuracy} meters</span>
                 </div>
@@ -392,33 +656,33 @@ export const WorkerClockInView: React.FC = () => {
                 >
                   <div className="flex items-center gap-2">
                     {isWithinRadius && isAccuracyGood ? (
-                      <CheckCircle className="w-4 h-4 text-emerald-600" />
+                      <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
                     ) : (
-                      <AlertTriangle className="w-4 h-4 text-rose-600" />
+                      <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
                     )}
                     <span>
                       {isWithinRadius && isAccuracyGood
-                        ? `Validated! You are within the ${selectedAssignment.worksiteRadius}m geofence perimeter.`
+                        ? `Validated! You are within the ${selectedAssignment.worksiteRadius}m geofence perimeter (${distanceMeters}m from center).`
                         : !isWithinRadius
                         ? `Outside permitted perimeter! (${distanceMeters}m > ${selectedAssignment.worksiteRadius}m). Clock-in is restricted to the physical site.`
-                        : `GPS accuracy (+/- ${userCoords.accuracy}m) is insufficient.`}
+                        : `GPS accuracy (+/- ${userCoords.accuracy}m) exceeds maximum tolerance of ${selectedAssignment.worksiteMaxAccuracy}m.`}
                     </span>
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="text-xs text-slate-500 flex items-center gap-2">
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                Obtaining live device coordinates...
+              <div className="text-xs text-slate-500 flex items-center gap-2 p-2">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600" />
+                Acquiring live GPS device coordinates...
               </div>
             )}
           </div>
 
-          {/* STEP 2: FRESH SELFIE CAPTURE */}
+          {/* STEP 2: CAMERA SELFIE CAPTURE */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-blue-600" />
-              <span className="text-sm font-bold text-slate-900">Step 2: Fresh Attendance Selfie</span>
+              <span className="text-sm font-bold text-slate-900">Step 2: Camera Attendance Selfie</span>
             </div>
 
             <CameraCapture
@@ -428,12 +692,17 @@ export const WorkerClockInView: React.FC = () => {
             />
           </div>
 
-          {/* STEP 3: SUBMISSION BUTTON */}
-          <div className="pt-4 border-t border-slate-100 flex justify-end">
+          {/* STEP 3: SUBMIT TO SUPERVISOR */}
+          <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="text-xs text-slate-500 flex items-center gap-1.5">
+              <UserCheck className="w-4 h-4 text-slate-400" />
+              <span>Assigned Reviewer: <strong className="text-slate-700">{selectedAssignment.supervisorName}</strong></span>
+            </div>
+
             <button
               onClick={handleClockInSubmit}
               disabled={!isWithinRadius || !isAccuracyGood || !capturedBlob || isSubmitting}
-              className={`px-6 py-3 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-sm ${
+              className={`w-full sm:w-auto px-6 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-sm ${
                 isWithinRadius && isAccuracyGood && capturedBlob && !isSubmitting
                   ? 'bg-slate-900 text-white hover:bg-slate-800 cursor-pointer'
                   : 'bg-slate-200 text-slate-400 cursor-not-allowed'
@@ -442,7 +711,7 @@ export const WorkerClockInView: React.FC = () => {
               {isSubmitting ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  Verifying & Submitting...
+                  Storing Image & Submitting...
                 </>
               ) : (
                 <>

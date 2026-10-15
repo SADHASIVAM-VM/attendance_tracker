@@ -35,6 +35,8 @@ router.get('/users', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), userCtrl
 router.post('/users', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), userCtrl.createUser);
 router.get('/users/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), userCtrl.getUserById);
 router.patch('/users/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), userCtrl.updateUser);
+router.put('/users/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), userCtrl.updateUser);
+router.delete('/users/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), userCtrl.deleteUser);
 router.post('/users/:id/deactivate', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), userCtrl.deactivateUser);
 // =======================
 // Worksites (Super Admin, Admin)

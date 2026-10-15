@@ -23,50 +23,37 @@ export interface Organization {
 interface AuthContextType {
   user: User | null;
   organization: Organization | null;
-  token: string | null;
+  token?: string | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  quickLogin: (role: 'SUPER_ADMIN' | 'ADMIN' | 'SUPERVISOR' | 'WORKER') => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const PRESET_ACCOUNTS = {
-  SUPER_ADMIN: { email: 'superadmin@enterprise.com', password: 'Password123!' },
-  ADMIN: { email: 'admin@enterprise.com', password: 'Password123!' },
-  SUPERVISOR: { email: 'supervisor@enterprise.com', password: 'Password123!' },
-  WORKER: { email: 'worker@enterprise.com', password: 'Password123!' },
-};
-
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('attendance_token'));
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
+  // Load session via HTTP-only cookie on startup
   useEffect(() => {
-    async function loadUser() {
-      if (!token) {
-        setIsLoading(false);
-        return;
-      }
+    async function loadSession() {
       try {
         const res = await apiRequest('/auth/me');
         setUser(res.user);
         setOrganization(res.organization);
       } catch (err) {
-        console.error('Failed to load session:', err);
-        localStorage.removeItem('attendance_token');
-        setToken(null);
+        // No active or valid cookie session
         setUser(null);
+        setOrganization(null);
       } finally {
         setIsLoading(false);
       }
     }
-    loadUser();
-  }, [token]);
+    loadSession();
+  }, []);
 
   const login = async (email: string, password: string) => {
     setIsLoading(true);
@@ -75,8 +62,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         method: 'POST',
         body: JSON.stringify({ email, password }),
       });
-      localStorage.setItem('attendance_token', res.token);
-      setToken(res.token);
+      if (res.token) {
+        localStorage.setItem('attendance_token', res.token);
+      }
       setUser(res.user);
       setOrganization(res.organization);
     } finally {
@@ -84,29 +72,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const quickLogin = async (role: 'SUPER_ADMIN' | 'ADMIN' | 'SUPERVISOR' | 'WORKER') => {
-    const creds = PRESET_ACCOUNTS[role];
-    await login(creds.email, creds.password);
-  };
-
   const logout = async () => {
     try {
+      // Backend clears the HTTP-only cookie
       await apiRequest('/auth/logout', { method: 'POST' });
     } catch (e) {
       // ignore
     } finally {
       localStorage.removeItem('attendance_token');
-      setToken(null);
       setUser(null);
       setOrganization(null);
     }
   };
 
   const refreshUser = async () => {
-    if (!token) return;
-    const res = await apiRequest('/auth/me');
-    setUser(res.user);
-    setOrganization(res.organization);
+    try {
+      const res = await apiRequest('/auth/me');
+      setUser(res.user);
+      setOrganization(res.organization);
+    } catch (e) {
+      setUser(null);
+      setOrganization(null);
+    }
   };
 
   return (
@@ -114,10 +101,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         organization,
-        token,
+        token: null,
         isLoading,
         login,
-        quickLogin,
         logout,
         refreshUser,
       }}

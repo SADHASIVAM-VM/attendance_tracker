@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
 export class ApiError extends Error {
   status: number;
@@ -34,6 +34,7 @@ export async function apiRequest<T = any>(
   const response = await fetch(url, {
     ...options,
     headers,
+    credentials: 'include', // Automatically send & receive HTTP-only session cookies
   });
 
   // Handle CSV/blob downloads
@@ -76,6 +77,7 @@ export async function uploadPhotoRequest(
     method: 'POST',
     headers,
     body: formData,
+    credentials: 'include',
   });
 
   const data = await response.json();

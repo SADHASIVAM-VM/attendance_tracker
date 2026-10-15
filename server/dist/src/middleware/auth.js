@@ -12,14 +12,29 @@ export function generateToken(user) {
     }, JWT_SECRET, { expiresIn: '7d' });
 }
 export async function authenticate(req, res, next) {
+    let token;
+    if (req.cookies && req.cookies.attendance_token) {
+        token = req.cookies.attendance_token;
+    } else if (req.headers.cookie) {
+        const raw = req.headers.cookie.split(';');
+        for (const c of raw) {
+            const [k, ...v] = c.trim().split('=');
+            if (k === 'attendance_token') {
+                token = decodeURIComponent(v.join('='));
+                break;
+            }
+        }
+    }
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!token && authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+    }
+    if (!token) {
         return res.status(401).json({
             error: 'UNAUTHORIZED',
             message: 'Authentication token required',
         });
     }
-    const token = authHeader.substring(7);
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
         const db = await getDb();

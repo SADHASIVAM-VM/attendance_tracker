@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { getDb } from '../database/db.js';
+import { getDb } from '../database/db';
 import {
   attendanceSessions,
   attendanceEvents,
@@ -11,11 +11,11 @@ import {
   users,
   notifications,
   organizations,
-} from '../database/schema.js';
+} from '../database/schema';
 import { eq, and, sql, desc } from 'drizzle-orm';
-import { calculateHaversineDistance, isWithinGeofence, isAccuracyAcceptable } from '../utils/geo.js';
-import { generateUploadAuthorization, generateSignedDownloadUrl, savePhoto, verifyStorageToken } from '../services/storage.js';
-import { logAuditEvent } from '../utils/audit.js';
+import { calculateHaversineDistance, isWithinGeofence, isAccuracyAcceptable } from '../utils/geo';
+import { generateUploadAuthorization, generateSignedDownloadUrl, savePhoto, verifyStorageToken } from '../services/storage';
+import { logAuditEvent } from '../utils/audit';
 
 const clockInSchema = z.object({
   assignmentId: z.string().uuid(),
@@ -208,7 +208,7 @@ export async function clockIn(req: Request, res: Response): Promise<any> {
     });
   }
 
-  const withinGeofence = isWithinGeofence(calculatedDistanceMeters, assignment.worksiteRadius);
+  const withinGeofence = isWithinGeofence(calculatedDistanceMeters, assignment.worksiteRadius, reportedAccuracyMeters);
   if (!withinGeofence) {
     return res.status(422).json({
       error: 'OUTSIDE_GEOFENCE',

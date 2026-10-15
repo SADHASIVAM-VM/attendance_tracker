@@ -1,13 +1,8 @@
-import { drizzle } from 'drizzle-orm/pglite';
-import { PGlite } from '@electric-sql/pglite';
-import { drizzle as drizzlePg } from 'drizzle-orm/node-postgres';
+import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
-import * as schema from './schema.js';
-import path from 'path';
-import fs from 'fs';
+import * as schema from './schema';
 
 let dbInstance: any = null;
-let pgliteInstance: PGlite | null = null;
 let pgPoolInstance: pg.Pool | null = null;
 
 export async function getDb() {
@@ -15,39 +10,31 @@ export async function getDb() {
     return dbInstance;
   }
 
-  const databaseUrl = process.env.DATABASE_URL;
+  const databaseUrl =
+    process.env.DATABASE_URL ||
+    `postgresql://${process.env.DB_USER || 'postgres'}:${process.env.DB_PASSWORD || 'sadha123'}@${process.env.DB_HOST || 'localhost'}:${process.env.DB_PORT || 5432}/${process.env.DB_NAME || 'attendance_tracker'}`;
 
-  if (databaseUrl && !databaseUrl.startsWith('memory://') && databaseUrl.startsWith('postgres')) {
-    try {
-      const pool = new pg.Pool({
-        connectionString: databaseUrl,
-        ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
-      });
-      // Test connection
-      await pool.query('SELECT 1');
-      console.log('✅ Connected to external PostgreSQL database via DATABASE_URL');
-      pgPoolInstance = pool;
-      dbInstance = drizzlePg(pool, { schema });
-      return dbInstance;
-    } catch (err) {
-      console.warn('⚠️ Could not connect to external PostgreSQL, falling back to embedded PostgreSQL (PGlite):', err);
-    }
+  const pool = new pg.Pool({
+    connectionString: databaseUrl,
+    ssl: process.env.DB_SSL === 'true' || databaseUrl.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
+  });
+
+  try {
+    // Test connection
+    await pool.query('SELECT 1');
+    console.log('✅ Connected to PostgreSQL database');
+    await initializeTables(pool);
+    pgPoolInstance = pool;
+    dbInstance = drizzle(pool, { schema });
+    return dbInstance;
+  } catch (err: any) {
+    console.error('❌ Failed to connect to PostgreSQL database:', err.message);
+    throw err;
   }
-
-  pgliteInstance = new PGlite();
-  await pgliteInstance.waitReady;
-  dbInstance = drizzle(pgliteInstance, { schema });
-  console.log(`✅ Connected to embedded PostgreSQL database`);
-
-  // Auto-create tables if they don't exist yet
-  await initializeTables(pgliteInstance);
-
-  return dbInstance;
 }
 
-async function initializeTables(client: PGlite) {
-  // Execute DDL for embedded postgres if needed
-  await client.exec(`
+async function initializeTables(pool: pg.Pool) {
+  const ddl = `
     CREATE TABLE IF NOT EXISTS organizations (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       name VARCHAR(255) NOT NULL,
@@ -69,10 +56,25 @@ async function initializeTables(client: PGlite) {
       full_name VARCHAR(255) NOT NULL,
       password_hash VARCHAR(255) NOT NULL,
       phone VARCHAR(50),
+      dob VARCHAR(20),
+      photo_url TEXT,
+      native_place VARCHAR(255),
+      emergency_phone VARCHAR(50),
+      blood_group VARCHAR(10),
+      gender VARCHAR(20),
+      address TEXT,
       is_active BOOLEAN DEFAULT TRUE NOT NULL,
       created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
       updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
     );
+
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS dob VARCHAR(20);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_url TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS native_place VARCHAR(255);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_phone VARCHAR(50);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS blood_group VARCHAR(10);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS gender VARCHAR(20);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT;
 
     CREATE TABLE IF NOT EXISTS user_roles (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -200,8 +202,8 @@ async function initializeTables(client: PGlite) {
       org_id UUID NOT NULL REFERENCES organizations(id),
       user_id UUID NOT NULL REFERENCES users(id),
       leave_type_id UUID NOT NULL REFERENCES leave_types(id),
-      start_date DATE NOT NULL,
-      end_date DATE NOT NULL,
+      startDate DATE NOT NULL,
+      endDate DATE NOT NULL,
       is_half_day BOOLEAN DEFAULT FALSE NOT NULL,
       half_day_period VARCHAR(20),
       reason TEXT NOT NULL,
@@ -238,5 +240,7 @@ async function initializeTables(client: PGlite) {
       after_values TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
     );
-  `);
+  `;
+
+  await pool.query(ddl);
 }

@@ -1,15 +1,15 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { getDb } from '../database/db.js';
+import { getDb } from '../database/db';
 import {
   attendanceAdjustmentRequests,
   attendanceSessions,
   users,
   worksites,
   notifications,
-} from '../database/schema.js';
+} from '../database/schema';
 import { eq, and } from 'drizzle-orm';
-import { logAuditEvent } from '../utils/audit.js';
+import { logAuditEvent } from '../utils/audit';
 
 const requestSchema = z.object({
   reason: z.string().min(5, 'Reason must be at least 5 characters'),

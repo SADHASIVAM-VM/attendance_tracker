@@ -12,6 +12,7 @@ import {
   AlertCircle,
   Loader2,
   ExternalLink,
+  Pencil,
 } from 'lucide-react';
 
 export const WorksitesView: React.FC = () => {
@@ -175,6 +176,67 @@ export const WorksitesView: React.FC = () => {
     }
   };
 
+  // Edit Modal State
+  const [editModalOpen, setEditModalOpen] = useState<boolean>(false);
+  const [selectedWorksite, setSelectedWorksite] = useState<any | null>(null);
+  const [editName, setEditName] = useState<string>('');
+  const [editAddress, setEditAddress] = useState<string>('');
+  const [editLatitude, setEditLatitude] = useState<string>('');
+  const [editLongitude, setEditLongitude] = useState<string>('');
+  const [editRadiusMeters, setEditRadiusMeters] = useState<number>(200);
+  const [editMaxAccuracyMeters, setEditMaxAccuracyMeters] = useState<number>(50);
+
+  const openEditModal = (site: any) => {
+    setSelectedWorksite(site);
+    setEditName(site.name);
+    setEditAddress(site.address);
+    setEditLatitude(site.latitude.toString());
+    setEditLongitude(site.longitude.toString());
+    setEditRadiusMeters(site.radiusMeters);
+    setEditMaxAccuracyMeters(site.maxAccuracyMeters);
+    setEditModalOpen(true);
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedWorksite) return;
+
+    const latNum = parseFloat(editLatitude);
+    const lngNum = parseFloat(editLongitude);
+
+    if (isNaN(latNum) || latNum < -90 || latNum > 90) {
+      setMessage({ text: 'Latitude must be between -90 and 90.', type: 'error' });
+      return;
+    }
+    if (isNaN(lngNum) || lngNum < -180 || lngNum > 180) {
+      setMessage({ text: 'Longitude must be between -180 and 180.', type: 'error' });
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await apiRequest(`/worksites/${selectedWorksite.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name: editName,
+          address: editAddress,
+          latitude: latNum,
+          longitude: lngNum,
+          radiusMeters: editRadiusMeters,
+          maxAccuracyMeters: editMaxAccuracyMeters,
+        }),
+      });
+
+      setMessage({ text: 'Worksite updated successfully.', type: 'success' });
+      setEditModalOpen(false);
+      loadWorksites();
+    } catch (err: any) {
+      setMessage({ text: err.message || 'Failed to update worksite', type: 'error' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -203,7 +265,7 @@ export const WorksitesView: React.FC = () => {
           }`}
         >
           <span>{message.text}</span>
-          <button onClick={() => setMessage(null)} className="text-xs font-bold">
+          <button onClick={() => setMessage(null)} className="text-xs font-bold cursor-pointer">
             Dismiss
           </button>
         </div>
@@ -216,41 +278,166 @@ export const WorksitesView: React.FC = () => {
           {worksites.map((s) => (
             <div
               key={s.id}
-              className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3"
+              className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3 flex flex-col justify-between"
             >
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="font-bold text-slate-900 text-base m-0">{s.name}</h3>
-                  <span className="text-xs font-mono text-slate-500">{s.code}</span>
+              <div className="space-y-3">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-base m-0">{s.name}</h3>
+                    <span className="text-xs font-mono text-slate-500">{s.code}</span>
+                  </div>
+                  <StatusBadge status={s.isActive ? 'ACTIVE' : 'INACTIVE'} />
                 </div>
-                <StatusBadge status={s.isActive ? 'ACTIVE' : 'INACTIVE'} />
+
+                <p className="text-xs text-slate-600 flex items-start gap-1.5 min-h-[32px]">
+                  <MapPin className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                  <span>{s.address}</span>
+                </p>
+
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs space-y-1.5">
+                  <div className="flex justify-between font-mono">
+                    <span className="text-slate-500">Lat, Lng:</span>
+                    <span className="font-semibold text-slate-800">
+                      {s.latitude.toFixed(6)}, {s.longitude.toFixed(6)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Geofence Radius:</span>
+                    <span className="font-semibold text-emerald-700">{s.radiusMeters} meters (around center)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Max GPS Accuracy:</span>
+                    <span className="font-semibold text-slate-700">+/- {s.maxAccuracyMeters}m</span>
+                  </div>
+                </div>
               </div>
 
-              <p className="text-xs text-slate-600 flex items-start gap-1.5 min-h-[32px]">
-                <MapPin className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-                <span>{s.address}</span>
-              </p>
-
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs space-y-1.5">
-                <div className="flex justify-between font-mono">
-                  <span className="text-slate-500">Lat, Lng:</span>
-                  <span className="font-semibold text-slate-800">
-                    {s.latitude.toFixed(5)}, {s.longitude.toFixed(5)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Geofence Radius:</span>
-                  <span className="font-semibold text-emerald-700">{s.radiusMeters} meters</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Max GPS Accuracy:</span>
-                  <span className="font-semibold text-slate-700">+/- {s.maxAccuracyMeters}m</span>
-                </div>
+              <div className="pt-2 border-t border-slate-100 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => openEditModal(s)}
+                  className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  Edit Geofence & Coordinates
+                </button>
               </div>
             </div>
           ))}
         </div>
       )}
+
+      {/* EDIT WORKSITE MODAL */}
+      <Modal
+        isOpen={editModalOpen}
+        onClose={() => setEditModalOpen(false)}
+        title="Edit Worksite Geofence & Coordinates"
+        description="Update the physical coordinates and radius perimeter for this worksite."
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setEditModalOpen(false)}
+              className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleUpdate}
+              disabled={submitting}
+              className="px-5 py-2 text-xs font-bold bg-slate-900 text-white rounded-xl hover:bg-slate-800 disabled:opacity-50 cursor-pointer shadow-xs"
+            >
+              {submitting ? 'Saving...' : 'Save Geofence Settings'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-semibold text-slate-700 block mb-1">Worksite Name</label>
+            <input
+              type="text"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              className="w-full text-xs p-2.5 rounded-xl border border-slate-200"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-700 block mb-1">Physical Address</label>
+            <input
+              type="text"
+              value={editAddress}
+              onChange={(e) => setEditAddress(e.target.value)}
+              className="w-full text-xs p-2.5 rounded-xl border border-slate-200"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">
+                Latitude (-90 to 90) *
+              </label>
+              <input
+                type="number"
+                step="any"
+                value={editLatitude}
+                onChange={(e) => setEditLatitude(e.target.value)}
+                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 font-mono"
+                required
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">
+                Longitude (-180 to 180) *
+              </label>
+              <input
+                type="number"
+                step="any"
+                value={editLongitude}
+                onChange={(e) => setEditLongitude(e.target.value)}
+                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 font-mono"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">
+                Geofence Radius (meters around location) *
+              </label>
+              <input
+                type="number"
+                value={editRadiusMeters}
+                onChange={(e) => setEditRadiusMeters(parseInt(e.target.value) || 200)}
+                className="w-full text-xs p-2.5 rounded-xl border border-slate-200"
+                min={5}
+                max={5000}
+                required
+              />
+              <span className="text-[10px] text-slate-500 mt-0.5 block">
+                Radius in meters around the central point
+              </span>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">
+                Max Allowed GPS Accuracy (m) *
+              </label>
+              <input
+                type="number"
+                value={editMaxAccuracyMeters}
+                onChange={(e) => setEditMaxAccuracyMeters(parseInt(e.target.value) || 50)}
+                className="w-full text-xs p-2.5 rounded-xl border border-slate-200"
+                min={5}
+                max={1000}
+                required
+              />
+            </div>
+          </div>
+        </div>
+      </Modal>
 
       {/* CREATE WORKSITE MODAL */}
       <Modal

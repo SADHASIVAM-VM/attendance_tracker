@@ -4,10 +4,10 @@ import {
   isAllowedGoogleMapsHost,
   isPrivateOrLoopbackHost,
   resolveGoogleMapsUrl,
-} from '../utils/mapsUrlParser.js';
-import { app } from '../server.js';
-import { getDb } from '../database/db.js';
-import { seedDatabase } from '../database/seed/seed.js';
+} from '../utils/mapsUrlParser';
+import { app } from '../server';
+import { getDb } from '../database/db';
+import { seedDatabase } from '../database/seed/seed';
 import http from 'http';
 
 async function runMapsTests() {
