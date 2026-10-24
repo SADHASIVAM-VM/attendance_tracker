@@ -13,6 +13,11 @@ import * as flagCtrl from '../controllers/attendanceFlagController.js';
 import * as expenseCtrl from '../controllers/expenseController.js';
 import * as orgCtrl from '../controllers/organizationController.js';
 import * as supervisorCtrl from '../controllers/supervisorAttendanceController.js';
+import * as supervisorQueueCtrl from '../controllers/supervisorQueueController.js';
+import * as adminExCtrl from '../controllers/adminExceptionController.js';
+import * as overtimeCtrl from '../controllers/overtimeController.js';
+import * as exportCtrl from '../controllers/exportController.js';
+import * as payrollCtrl from '../controllers/payrollController.js';
 import { getPhotoBuffer, verifyStorageToken } from '../services/storage.js';
 
 const upload = multer({
@@ -89,8 +94,17 @@ router.get('/attendance/supervisor-roster', authenticate, requireRole('SUPER_ADM
 router.post('/attendance/:id/approve', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), attendanceCtrl.approveAttendance);
 router.post('/attendance/:id/reject', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), attendanceCtrl.rejectAttendance);
 router.post('/attendance/:id/transfer', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), attendanceCtrl.transferSupervisor);
+router.post('/attendance/:id/supervisor-clock-out', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), attendanceCtrl.supervisorClockOutWorker);
 router.get('/attendance/missing-clock-ins', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), flagCtrl.getMissingClockIns);
 router.post('/attendance/missing-clock-ins/:id/flag', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), flagCtrl.applyAttendanceFlag);
+
+// =======================
+// Supervisor Approval Queues (Phase 2 Centralized Dashboard)
+// =======================
+router.get('/supervisor/queues', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), supervisorQueueCtrl.getSupervisorQueues);
+router.post('/supervisor/queues/exceptions/:id/resolve', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), supervisorQueueCtrl.resolveException);
+router.post('/supervisor/queues/:itemType/:id/escalate', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), supervisorQueueCtrl.manualEscalateRequest);
+router.post('/supervisor/queues/:itemType/:id/clarification', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), supervisorQueueCtrl.requestClarification);
 
 // =======================
 // Supervisor Attendance & Location Tracking
@@ -109,6 +123,7 @@ router.post('/attendance/:id/regularization', authenticate, regCtrl.requestRegul
 router.get('/regularization/pending', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), regCtrl.getPendingRegularizations);
 router.post('/regularization/:id/approve', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), regCtrl.approveRegularization);
 router.post('/regularization/:id/reject', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), regCtrl.rejectRegularization);
+router.post('/regularization/:id/cancel', authenticate, regCtrl.cancelRegularization);
 
 // =======================
 // Leave Management
@@ -122,7 +137,7 @@ router.post('/leave/requests/:id/reject', authenticate, requireRole('SUPER_ADMIN
 router.post('/leave/requests/:id/cancel', authenticate, leaveCtrl.cancelLeaveRequest);
 
 // =======================
-// Site Expenses (Spend Ledger)
+// Site Expenses (Spend Ledger & Approval)
 // =======================
 router.get('/expenses', authenticate, expenseCtrl.getExpenses);
 router.post('/expenses', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), expenseCtrl.createExpense);
@@ -130,12 +145,41 @@ router.get('/expenses/:id', authenticate, expenseCtrl.getExpenseById);
 router.put('/expenses/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), expenseCtrl.updateExpense);
 router.patch('/expenses/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), expenseCtrl.updateExpense);
 router.delete('/expenses/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), expenseCtrl.deleteExpense);
+router.post('/expenses/:id/approve', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), expenseCtrl.approveExpense);
+router.post('/expenses/:id/reject', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), expenseCtrl.rejectExpense);
 
 // =======================
-// Reports & Exports
+// Overtime (Phase 3 Engine & Review)
+// =======================
+router.get('/attendance/me/overtime-summary', authenticate, overtimeCtrl.getWorkerOvertimeSummary);
+router.get('/overtime/pending', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), overtimeCtrl.getPendingOvertimeReviews);
+router.post('/overtime/:id/approve', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), overtimeCtrl.approveOvertime);
+router.post('/overtime/:id/reject', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), overtimeCtrl.rejectOvertime);
+
+// =======================
+// Reports & Excel Exports (Phase 3)
 // =======================
 router.get('/reports/attendance', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), reportCtrl.getAttendanceReport);
 router.get('/reports/attendance/export', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), reportCtrl.exportAttendanceCsv);
+router.get('/reports/attendance-overtime', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), reportCtrl.getAttendanceOvertimeReport);
+router.get('/reports/expenses-summary', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), reportCtrl.getExpensesSummaryReport);
+
+router.get('/exports/attendance', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), exportCtrl.exportDetailedAttendanceXlsx);
+router.get('/exports/worker-summaries', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), exportCtrl.exportWorkerSummariesXlsx);
+router.get('/exports/overtime', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), exportCtrl.exportOvertimeXlsx);
+router.get('/exports/site-attendance', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), exportCtrl.exportSiteAttendanceXlsx);
+router.get('/exports/expenses', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), exportCtrl.exportExpensesXlsx);
+router.get('/exports/payroll/:periodId', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), exportCtrl.exportPayrollReconciliationXlsx);
+
+// =======================
+// Payroll Reconciliation Workflow (Phase 3)
+// =======================
+router.get('/payroll/periods', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), payrollCtrl.getPayrollPeriods);
+router.post('/payroll/periods', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), payrollCtrl.createPayrollPeriod);
+router.get('/payroll/periods/:id/reconciliation', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), payrollCtrl.getPayrollReconciliation);
+router.post('/payroll/periods/:id/adjust', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), payrollCtrl.createPayrollAdjustment);
+router.post('/payroll/periods/:id/lock', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), payrollCtrl.lockPayrollPeriod);
+router.post('/payroll/periods/:id/finalize', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), payrollCtrl.finalizePayrollPeriod);
 
 // =======================
 // Notifications & Audit
@@ -143,6 +187,16 @@ router.get('/reports/attendance/export', authenticate, requireRole('SUPER_ADMIN'
 router.get('/notifications', authenticate, reportCtrl.getNotifications);
 router.post('/notifications/:id/read', authenticate, reportCtrl.markNotificationRead);
 router.get('/audit-logs', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), reportCtrl.getAuditLogs);
+
+// =======================
+// Admin Exceptions & Oversight Dashboard (Phase 2)
+// =======================
+router.get('/admin/exceptions/summary', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminExCtrl.getAdminExceptionSummary);
+router.get('/admin/exceptions', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminExCtrl.getAdminExceptionsList);
+router.get('/admin/exceptions/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminExCtrl.getAdminExceptionDetail);
+router.post('/admin/exceptions/:id/reassign', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminExCtrl.reassignException);
+router.post('/admin/attendance/:id/override', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminExCtrl.administrativeAttendanceOverride);
+router.post('/admin/escalation/run', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminExCtrl.triggerEscalationRun);
 
 // =======================
 // Private Storage Download Stream

@@ -114,7 +114,13 @@ export const SpendEntryRow: React.FC<SpendEntryRowProps> = ({
             {currencySymbol}
             {entry.amount.toLocaleString()}
           </span>
-          <span className="text-[10px] text-[#94A3B8]">Approved</span>
+          {entry.status === 'APPROVED' ? (
+            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded">Approved</span>
+          ) : entry.status === 'REJECTED' ? (
+            <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.2 rounded" title={entry.rejectionReason}>Rejected</span>
+          ) : (
+            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded">Pending</span>
+          )}
         </div>
 
         {/* Action Menu (Edit / Delete) if not locked */}

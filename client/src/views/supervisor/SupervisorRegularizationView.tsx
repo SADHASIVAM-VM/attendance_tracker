@@ -26,6 +26,8 @@ export const SupervisorRegularizationView: React.FC = () => {
 
   const handleApprove = async (id: string) => {
     try {
+      // Immediately remove from pending list so buttons disappear instantly
+      setRequests((prev) => prev.filter((r) => r.id !== id));
       await apiRequest(`/regularization/${id}/approve`, {
         method: 'POST',
         body: JSON.stringify({ reviewNote: 'Approved by supervisor' }),
@@ -34,22 +36,29 @@ export const SupervisorRegularizationView: React.FC = () => {
       loadRequests();
     } catch (err: any) {
       setMessage({ text: err.message || 'Approval failed', type: 'error' });
+      loadRequests();
     }
   };
 
   const handleReject = async (id: string) => {
     const note = prompt('Please enter the reason for rejecting this regularization:');
-    if (!note) return;
+    if (!note || note.trim().length < 3) {
+      if (note !== null) alert('A reason of at least 3 characters is required to reject.');
+      return;
+    }
 
     try {
+      // Immediately remove from pending list so buttons disappear instantly
+      setRequests((prev) => prev.filter((r) => r.id !== id));
       await apiRequest(`/regularization/${id}/reject`, {
         method: 'POST',
-        body: JSON.stringify({ reviewNote: note }),
+        body: JSON.stringify({ reviewNote: note.trim() }),
       });
       setMessage({ text: 'Regularization rejected.', type: 'success' });
       loadRequests();
     } catch (err: any) {
       setMessage({ text: err.message || 'Rejection failed', type: 'error' });
+      loadRequests();
     }
   };
 
@@ -135,22 +144,29 @@ export const SupervisorRegularizationView: React.FC = () => {
                 <p className="mt-1">{item.reason}</p>
               </div>
 
-              <div className="flex gap-2 pt-2">
-                <button
-                  onClick={() => handleApprove(item.id)}
-                  className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-                >
-                  <Check className="w-4 h-4" />
-                  Approve Correction
-                </button>
-                <button
-                  onClick={() => handleReject(item.id)}
-                  className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-                >
-                  <X className="w-4 h-4" />
-                  Reject
-                </button>
-              </div>
+              {item.status === 'PENDING' ? (
+                <div className="flex gap-2 pt-2">
+                  <button
+                    onClick={() => handleApprove(item.id)}
+                    className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <Check className="w-4 h-4" />
+                    Approve Correction
+                  </button>
+                  <button
+                    onClick={() => handleReject(item.id)}
+                    className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <X className="w-4 h-4" />
+                    Reject
+                  </button>
+                </div>
+              ) : (
+                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
+                  <span className="font-semibold text-slate-600">Decision Recorded:</span>
+                  <StatusBadge status={item.status} />
+                </div>
+              )}
             </div>
           ))}
         </div>

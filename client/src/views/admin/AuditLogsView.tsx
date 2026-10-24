@@ -107,11 +107,11 @@ export const AuditLogsView: React.FC = () => {
                 <th className="py-3 px-4">Actor</th>
                 <th className="py-3 px-4">Action</th>
                 <th className="py-3 px-4">Entity Type</th>
-                <th className="py-3 px-4">Entity ID</th>
-                <th className="py-3 px-4">Details</th>
+                <th className="py-3 px-4">Reason / Notes</th>
+                <th className="py-3 px-4">Changes (Before / After)</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-700   text-xs">
+            <tbody className="divide-y divide-slate-100 text-slate-700 text-xs">
               {loading ? (
                 <tr>
                   <td colSpan={6} className="py-8 text-center text-slate-400 font-sans">
@@ -127,22 +127,39 @@ export const AuditLogsView: React.FC = () => {
               ) : (
                 logs.map((l) => (
                   <tr key={l.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="py-3 px-4 text-slate-500">
+                    <td className="py-3 px-4 text-slate-500 font-mono text-[11px]">
                       {new Date(l.createdAt).toISOString().replace('T', ' ').slice(0, 19)}
                     </td>
                     <td className="py-3 px-4 font-sans font-medium text-slate-900">
-                      {l.actorName || 'System'}
-                      <span className="block text-[10px] text-slate-400  ">{l.actorEmail}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span>{l.actorName || l.actorNameSnapshot || 'System'}</span>
+                        <span
+                          className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                            l.actorRole === 'SYSTEM'
+                              ? 'bg-slate-200 text-slate-700'
+                              : l.actorRole === 'ADMIN'
+                              ? 'bg-rose-100 text-rose-800'
+                              : l.actorRole === 'SUPERVISOR'
+                              ? 'bg-indigo-100 text-indigo-800'
+                              : 'bg-emerald-100 text-emerald-800'
+                          }`}
+                        >
+                          {l.actorRole || 'SYSTEM'}
+                        </span>
+                      </div>
+                      <span className="block text-[10px] text-slate-400">{l.actorEmail || l.ipAddress || ''}</span>
                     </td>
                     <td className="py-3 px-4">
                       <span className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded-md font-semibold text-[11px]">
                         {l.action}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-slate-600">{l.entityType}</td>
-                    <td className="py-3 px-4 text-slate-400 truncate max-w-[120px]">{l.entityId || '—'}</td>
-                    <td className="py-3 px-4 text-slate-500 font-sans text-[11px] max-w-xs truncate">
-                      {l.afterValues ? l.afterValues : (l.beforeValues ? l.beforeValues : '—')}
+                    <td className="py-3 px-4 text-slate-600 font-semibold text-[11px]">{l.entityType}</td>
+                    <td className="py-3 px-4 text-slate-600 max-w-[180px] truncate">
+                      {l.reason ? <span className="italic text-slate-700">"{l.reason}"</span> : '—'}
+                    </td>
+                    <td className="py-3 px-4 text-slate-500 font-mono text-[10px] max-w-xs truncate">
+                      {l.afterValues ? l.afterValues : l.beforeValues ? l.beforeValues : '—'}
                     </td>
                   </tr>
                 ))

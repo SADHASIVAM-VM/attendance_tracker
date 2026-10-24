@@ -12,78 +12,232 @@ import {
   AlertTriangle,
   ArrowRightLeft,
   Eye,
+  CalendarDays,
+  AlertCircle,
+  HelpCircle,
+  Filter,
+  RefreshCw,
+  Search,
+  CheckCircle2,
+  XCircle,
+  Building2,
+  Calendar,
+  Send,
+  Flag,
+  ArrowUpRight,
+  FileEdit,
 } from 'lucide-react';
 
+export type QueueTab = 'attendance' | 'regularization' | 'overtime' | 'leave' | 'exceptions' | 'escalated';
+
 export const SupervisorApprovalsView: React.FC = () => {
-  const [pendingList, setPendingList] = useState<any[]>([]);
-  const [supervisors, setSupervisors] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<QueueTab>('attendance');
+
+  // Queue Data
+  const [pendingAttendance, setPendingAttendance] = useState<any[]>([]);
+  const [pendingRegularization, setPendingRegularization] = useState<any[]>([]);
+  const [pendingOvertime, setPendingOvertime] = useState<any[]>([]);
+  const [pendingLeave, setPendingLeave] = useState<any[]>([]);
+  const [exceptions, setExceptions] = useState<any[]>([]);
+  const [escalated, setEscalated] = useState<any[]>([]);
+  const [counts, setCounts] = useState<{
+    pendingAttendance: number;
+    regularization: number;
+    overtime: number;
+    pendingLeave: number;
+    exceptions: number;
+    escalated: number;
+  }>({
+    pendingAttendance: 0,
+    regularization: 0,
+    overtime: 0,
+    pendingLeave: 0,
+    exceptions: 0,
+    escalated: 0,
+  });
+
   const [loading, setLoading] = useState<boolean>(true);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  // Selected item for selfie inspection
+  // Filters
+  const [searchWorker, setSearchWorker] = useState<string>('');
+  const [filterDate, setFilterDate] = useState<string>('');
+  const [filterExceptionType, setFilterExceptionType] = useState<string>('');
+
+  // Selected item for inspection / actions
   const [inspectItem, setInspectItem] = useState<any | null>(null);
 
-  // Rejection modal
+  // Rejection Modal
   const [rejectModalOpen, setRejectModalOpen] = useState<boolean>(false);
-  const [selectedForReject, setSelectedForReject] = useState<any | null>(null);
+  const [selectedForReject, setSelectedForReject] = useState<{ item: any; type: 'attendance' | 'leave' | 'overtime' | 'regularization' } | null>(null);
   const [rejectReason, setRejectReason] = useState<string>('');
 
-  // Transfer modal
-  const [transferModalOpen, setTransferModalOpen] = useState<boolean>(false);
-  const [selectedForTransfer, setSelectedForTransfer] = useState<any | null>(null);
-  const [transferSupervisorId, setTransferSupervisorId] = useState<string>('');
-  const [transferReason, setTransferReason] = useState<string>('');
+  // Clarification Modal
+  const [clarifyModalOpen, setClarifyModalOpen] = useState<boolean>(false);
+  const [selectedForClarify, setSelectedForClarify] = useState<{ id: string; type: string } | null>(null);
+  const [clarifyMessage, setClarifyMessage] = useState<string>('');
+
+  // Exception Resolution Modal
+  const [resolveModalOpen, setResolveModalOpen] = useState<boolean>(false);
+  const [selectedForResolve, setSelectedForResolve] = useState<any | null>(null);
+  const [resolutionType, setResolutionType] = useState<string>('EXCUSED_ABSENCE');
+  const [resolutionNote, setResolutionNote] = useState<string>('');
+
+  // Manual Escalation Modal
+  const [escalateModalOpen, setEscalateModalOpen] = useState<boolean>(false);
+  const [selectedForEscalate, setSelectedForEscalate] = useState<{ id: string; type: string } | null>(null);
+  const [escalateReason, setEscalateReason] = useState<string>('');
 
   const [submitting, setSubmitting] = useState<boolean>(false);
 
   useEffect(() => {
-    loadPending();
-    loadSupervisors();
-  }, []);
+    loadQueueData();
+  }, [filterDate, filterExceptionType]);
 
-  const loadPending = async () => {
+  const loadQueueData = async () => {
     try {
       setLoading(true);
-      const data = await apiRequest('/attendance/pending-approvals');
-      setPendingList(data);
+      const params = new URLSearchParams();
+      if (filterDate) params.append('startDate', filterDate);
+      if (filterDate) params.append('endDate', filterDate);
+      if (filterExceptionType) params.append('exceptionType', filterExceptionType);
+
+      const [res, otRes, regRes] = await Promise.all([
+        apiRequest(`/supervisor/queues?${params.toString()}`),
+        apiRequest(`/overtime/pending?${params.toString()}`).catch(() => []),
+        apiRequest(`/regularization/pending`).catch(() => []),
+      ]);
+
+      if (res) {
+        setPendingAttendance(res.pendingAttendance || []);
+        setPendingLeave(res.pendingLeave || []);
+        setExceptions(res.exceptions || []);
+        setEscalated(res.escalated || []);
+      }
+      const otList = Array.isArray(otRes) ? otRes : [];
+      setPendingOvertime(otList);
+      const regList = Array.isArray(regRes) ? regRes : [];
+      setPendingRegularization(regList);
+
+      setCounts({
+        pendingAttendance: res?.counts?.pendingAttendance ?? 0,
+        pendingLeave: res?.counts?.pendingLeave ?? 0,
+        exceptions: res?.counts?.exceptions ?? 0,
+        escalated: res?.counts?.escalated ?? 0,
+        overtime: otList.filter((o: any) => o.otStatus === 'PENDING').length,
+        regularization: regList.filter((r: any) => r.status === 'PENDING').length,
+      });
     } catch (err: any) {
-      setMessage({ text: err.message || 'Failed to load approvals queue', type: 'error' });
+      setMessage({ text: err.message || 'Failed to load queues', type: 'error' });
     } finally {
       setLoading(false);
     }
   };
 
-  const loadSupervisors = async () => {
-    try {
-      const res = await apiRequest('/users');
-      const list = Array.isArray(res) ? res : (res?.data || []);
-      const sups = list.filter((u: any) => u.roles && u.roles.includes('SUPERVISOR'));
-      setSupervisors(sups);
-      if (sups.length > 0) setTransferSupervisorId(sups[0].id);
-    } catch (err) {
-      // ignore
-    }
-  };
+  // ─── ACTION HANDLERS ────────────────────────────────────────────────────────
 
-  const handleApprove = async (sessionId: string) => {
+  const handleApproveOvertime = async (item: any, customMinutes?: number) => {
     try {
       setSubmitting(true);
-      await apiRequest(`/attendance/${sessionId}/approve`, {
+      const sid = item.sessionId || item.id;
+      // Immediately remove from pending OT list so decision buttons disappear instantly
+      setPendingOvertime((prev) => prev.filter((o) => o.id !== sid && o.sessionId !== sid));
+      setCounts((prev) => ({
+        ...prev,
+        overtime: Math.max(0, prev.overtime - 1),
+      }));
+
+      await apiRequest(`/overtime/${sid}/approve`, {
         method: 'POST',
-        body: JSON.stringify({ note: 'Selfie and location verified by supervisor' }),
+        body: JSON.stringify({
+          approvedOtMinutes: customMinutes !== undefined ? customMinutes : item.calculatedOtMinutes,
+        }),
       });
-      setMessage({ text: 'Clock-in approved successfully.', type: 'success' });
+      setMessage({ text: `Overtime approved (${item.formattedCalculatedOt || item.calculatedOtMinutes + 'm'})`, type: 'success' });
       setInspectItem(null);
-      loadPending();
+      loadQueueData();
     } catch (err: any) {
-      setMessage({ text: err.message || 'Approval failed', type: 'error' });
+      setMessage({ text: err.message || 'Overtime approval failed', type: 'error' });
+      loadQueueData();
     } finally {
       setSubmitting(false);
     }
   };
 
-  const openRejectModal = (item: any) => {
-    setSelectedForReject(item);
+  const handleApproveAttendance = async (sessionId: string) => {
+    try {
+      setSubmitting(true);
+      // Immediately remove from pending attendance list so buttons disappear instantly
+      setPendingAttendance((prev) => prev.filter((p) => p.id !== sessionId && p.sessionId !== sessionId));
+      setCounts((prev) => ({
+        ...prev,
+        pendingAttendance: Math.max(0, prev.pendingAttendance - 1),
+      }));
+
+      await apiRequest(`/attendance/${sessionId}/approve`, {
+        method: 'POST',
+        body: JSON.stringify({ note: 'Verified by supervisor' }),
+      });
+      setMessage({ text: 'Attendance approved successfully.', type: 'success' });
+      setInspectItem(null);
+      loadQueueData();
+    } catch (err: any) {
+      setMessage({ text: err.message || 'Approval failed', type: 'error' });
+      loadQueueData();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleApproveLeave = async (leaveId: string) => {
+    try {
+      setSubmitting(true);
+      // Immediately remove from pending leave list so buttons disappear instantly
+      setPendingLeave((prev) => prev.filter((l) => l.id !== leaveId));
+      setCounts((prev) => ({
+        ...prev,
+        pendingLeave: Math.max(0, prev.pendingLeave - 1),
+      }));
+
+      await apiRequest(`/leave/requests/${leaveId}/approve`, {
+        method: 'POST',
+        body: JSON.stringify({ decisionNote: 'Approved by supervisor' }),
+      });
+      setMessage({ text: 'Leave request approved successfully.', type: 'success' });
+      loadQueueData();
+    } catch (err: any) {
+      setMessage({ text: err.message || 'Leave approval failed', type: 'error' });
+      loadQueueData();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleApproveRegularization = async (id: string) => {
+    try {
+      setSubmitting(true);
+      setPendingRegularization((prev) => prev.filter((r) => r.id !== id));
+      setCounts((prev) => ({
+        ...prev,
+        regularization: Math.max(0, prev.regularization - 1),
+      }));
+
+      await apiRequest(`/regularization/${id}/approve`, {
+        method: 'POST',
+        body: JSON.stringify({ reviewNote: 'Approved by supervisor' }),
+      });
+      setMessage({ text: 'Attendance regularisation approved and timestamps updated.', type: 'success' });
+      loadQueueData();
+    } catch (err: any) {
+      setMessage({ text: err.message || 'Regularization approval failed', type: 'error' });
+      loadQueueData();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const openRejectModal = (item: any, type: 'attendance' | 'leave' | 'overtime' | 'regularization') => {
+    setSelectedForReject({ item, type });
     setRejectReason('');
     setRejectModalOpen(true);
   };
@@ -93,14 +247,65 @@ export const SupervisorApprovalsView: React.FC = () => {
 
     try {
       setSubmitting(true);
-      await apiRequest(`/attendance/${selectedForReject.sessionId}/reject`, {
-        method: 'POST',
-        body: JSON.stringify({ reason: rejectReason }),
-      });
-      setMessage({ text: 'Clock-in rejected with recorded reason.', type: 'success' });
+      if (selectedForReject.type === 'attendance') {
+        const sid = selectedForReject.item.sessionId || selectedForReject.item.id;
+        // Immediately remove from pending list so buttons disappear
+        setPendingAttendance((prev) => prev.filter((p) => p.id !== sid && p.sessionId !== sid));
+        setCounts((prev) => ({
+          ...prev,
+          pendingAttendance: Math.max(0, prev.pendingAttendance - 1),
+        }));
+
+        await apiRequest(`/attendance/${sid}/reject`, {
+          method: 'POST',
+          body: JSON.stringify({ reason: rejectReason.trim() }),
+        });
+        setMessage({ text: 'Clock-in rejected with recorded reason.', type: 'success' });
+      } else if (selectedForReject.type === 'overtime') {
+        const sid = selectedForReject.item.sessionId || selectedForReject.item.id;
+        setPendingOvertime((prev) => prev.filter((o) => o.id !== sid && o.sessionId !== sid));
+        setCounts((prev) => ({
+          ...prev,
+          overtime: Math.max(0, prev.overtime - 1),
+        }));
+
+        await apiRequest(`/overtime/${sid}/reject`, {
+          method: 'POST',
+          body: JSON.stringify({ reason: rejectReason.trim() }),
+        });
+        setMessage({ text: 'Overtime rejected with mandatory reason recorded.', type: 'success' });
+      } else if (selectedForReject.type === 'regularization') {
+        const rid = selectedForReject.item.id;
+        setPendingRegularization((prev) => prev.filter((r) => r.id !== rid));
+        setCounts((prev) => ({
+          ...prev,
+          regularization: Math.max(0, prev.regularization - 1),
+        }));
+
+        await apiRequest(`/regularization/${rid}/reject`, {
+          method: 'POST',
+          body: JSON.stringify({ reviewNote: rejectReason.trim() }),
+        });
+        setMessage({ text: 'Attendance regularisation rejected with recorded reason.', type: 'success' });
+      } else {
+        const lid = selectedForReject.item.id;
+        // Immediately remove from pending leave list so buttons disappear
+        setPendingLeave((prev) => prev.filter((l) => l.id !== lid));
+        setCounts((prev) => ({
+          ...prev,
+          pendingLeave: Math.max(0, prev.pendingLeave - 1),
+        }));
+
+        await apiRequest(`/leave/requests/${lid}/reject`, {
+          method: 'POST',
+          body: JSON.stringify({ decisionNote: rejectReason.trim() }),
+        });
+        setMessage({ text: 'Leave request rejected with recorded reason.', type: 'success' });
+      }
+
       setRejectModalOpen(false);
       setInspectItem(null);
-      loadPending();
+      loadQueueData();
     } catch (err: any) {
       setMessage({ text: err.message || 'Rejection failed', type: 'error' });
     } finally {
@@ -108,315 +313,1165 @@ export const SupervisorApprovalsView: React.FC = () => {
     }
   };
 
-  const openTransferModal = (item: any) => {
-    setSelectedForTransfer(item);
-    setTransferReason('');
-    setTransferModalOpen(true);
-  };
-
-  const handleTransferSubmit = async () => {
-    if (!selectedForTransfer || !transferSupervisorId || !transferReason.trim()) return;
+  const handleClarificationSubmit = async () => {
+    if (!selectedForClarify || !clarifyMessage.trim()) return;
 
     try {
       setSubmitting(true);
-      await apiRequest(`/attendance/${selectedForTransfer.sessionId}/transfer`, {
+      await apiRequest(`/supervisor/queues/${selectedForClarify.type}/${selectedForClarify.id}/clarification`, {
         method: 'POST',
-        body: JSON.stringify({
-          newSupervisorId: transferSupervisorId,
-          reason: transferReason,
-        }),
+        body: JSON.stringify({ message: clarifyMessage.trim() }),
       });
-      setMessage({ text: 'Clock-in transferred to replacement supervisor with full audit entry.', type: 'success' });
-      setTransferModalOpen(false);
-      loadPending();
+      setMessage({ text: 'Clarification request sent to worker.', type: 'success' });
+      setClarifyModalOpen(false);
     } catch (err: any) {
-      setMessage({ text: err.message || 'Transfer failed', type: 'error' });
+      setMessage({ text: err.message || 'Failed to send clarification', type: 'error' });
     } finally {
       setSubmitting(false);
     }
   };
 
+  const handleResolveExceptionSubmit = async () => {
+    if (!selectedForResolve || !resolutionNote.trim()) return;
+
+    try {
+      setSubmitting(true);
+      await apiRequest(`/supervisor/queues/exceptions/${selectedForResolve.id}/resolve`, {
+        method: 'POST',
+        body: JSON.stringify({
+          resolutionType,
+          resolutionNote: resolutionNote.trim(),
+        }),
+      });
+      setMessage({ text: 'Exception resolved successfully.', type: 'success' });
+      setResolveModalOpen(false);
+      loadQueueData();
+    } catch (err: any) {
+      setMessage({ text: err.message || 'Failed to resolve exception', type: 'error' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleManualEscalateSubmit = async () => {
+    if (!selectedForEscalate || !escalateReason.trim()) return;
+
+    try {
+      setSubmitting(true);
+      await apiRequest(`/supervisor/queues/${selectedForEscalate.type}/${selectedForEscalate.id}/escalate`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: escalateReason.trim() }),
+      });
+      setMessage({ text: 'Request escalated successfully.', type: 'success' });
+      setEscalateModalOpen(false);
+      loadQueueData();
+    } catch (err: any) {
+      setMessage({ text: err.message || 'Failed to escalate request', type: 'error' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Search filter
+  const filterList = (list: any[]) => {
+    if (!searchWorker.trim()) return list;
+    const q = searchWorker.toLowerCase();
+    return list.filter(
+      (item) =>
+        (item.workerName && item.workerName.toLowerCase().includes(q)) ||
+        (item.employeeCode && item.employeeCode.toLowerCase().includes(q))
+    );
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 m-0">Pending Clock-In Approvals</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 m-0">Supervisor Approval Queues</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Review worker selfies and location verification evidence for your assigned shifts.
+            Review worker clock-ins, leave requests, attendance exceptions, and escalated cases.
           </p>
         </div>
+
         <button
-          onClick={loadPending}
-          className="px-3.5 py-1.5 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer"
+          onClick={loadQueueData}
+          disabled={loading}
+          className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer shadow-2xs transition-all w-fit"
         >
-          Refresh Queue
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-emerald-600' : 'text-slate-500'}`} />
+          <span>Refresh Queues</span>
         </button>
       </div>
 
+      {/* Toast Banner */}
       {message && (
         <div
-          className={`p-4 rounded-xl text-sm border flex items-center justify-between ${message.type === 'success'
-              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-              : 'bg-rose-50 text-rose-800 border-rose-200'
-            }`}
+          className={`p-3.5 rounded-xl text-sm flex items-center justify-between ${
+            message.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+              : 'bg-rose-50 text-rose-800 border border-rose-200'
+          }`}
         >
           <span>{message.text}</span>
-          <button onClick={() => setMessage(null)} className="text-xs font-bold">
-            Dismiss
+          <button onClick={() => setMessage(null)} className="cursor-pointer text-slate-400 hover:text-slate-600">
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}
 
+      {/* 4 QUEUE TABS */}
+      <div className="flex items-center gap-2 border-b border-slate-200 overflow-x-auto pb-px">
+        <button
+          onClick={() => setActiveTab('attendance')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'attendance'
+              ? 'border-emerald-600 text-emerald-700'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <UserCheck className="w-4 h-4" />
+          <span>Pending Attendance</span>
+          <span
+            className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+              activeTab === 'attendance' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
+            }`}
+          >
+            {counts.pendingAttendance}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('overtime')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'overtime'
+              ? 'border-indigo-600 text-indigo-700'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Clock className="w-4 h-4" />
+          <span>Overtime Review</span>
+          <span
+            className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+              counts.overtime > 0 ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-600'
+            }`}
+          >
+            {counts.overtime}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('regularization')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'regularization'
+              ? 'border-blue-600 text-blue-700'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <FileEdit className="w-4 h-4" />
+          <span>Attendance Regularisation</span>
+          <span
+            className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+              counts.regularization > 0 ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-600'
+            }`}
+          >
+            {counts.regularization}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('leave')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'leave'
+              ? 'border-emerald-600 text-emerald-700'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <CalendarDays className="w-4 h-4" />
+          <span>Pending Leave</span>
+          <span
+            className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+              activeTab === 'leave' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
+            }`}
+          >
+            {counts.pendingLeave}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('exceptions')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'exceptions'
+              ? 'border-emerald-600 text-emerald-700'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <AlertCircle className="w-4 h-4" />
+          <span>Attendance Exceptions</span>
+          <span
+            className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+              counts.exceptions > 0 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'
+            }`}
+          >
+            {counts.exceptions}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('escalated')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'escalated'
+              ? 'border-emerald-600 text-emerald-700'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Flag className="w-4 h-4" />
+          <span>Escalated Requests</span>
+          <span
+            className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+              counts.escalated > 0 ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-600'
+            }`}
+          >
+            {counts.escalated}
+          </span>
+        </button>
+      </div>
+
+      {/* FILTER TOOLBAR */}
+      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3 flex-1 min-w-[240px]">
+          <div className="relative flex-1 max-w-xs">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              placeholder="Search worker by name or ID..."
+              value={searchWorker}
+              onChange={(e) => setSearchWorker(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-200 rounded-xl focus:outline-emerald-600 bg-slate-50/50"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5 text-xs text-slate-600">
+            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+            <input
+              type="date"
+              value={filterDate}
+              onChange={(e) => setFilterDate(e.target.value)}
+              className="px-2 py-1 text-xs border border-slate-200 rounded-lg focus:outline-emerald-600 bg-white"
+            />
+          </div>
+
+          {activeTab === 'exceptions' && (
+            <select
+              value={filterExceptionType}
+              onChange={(e) => setFilterExceptionType(e.target.value)}
+              className="px-2.5 py-1.5 text-xs border border-slate-200 rounded-xl bg-white text-slate-700 focus:outline-emerald-600"
+            >
+              <option value="">All Exception Types</option>
+              <option value="MISSING_CLOCK_IN">Missing Clock-In</option>
+              <option value="MISSING_CLOCK_OUT">Missing Clock-Out</option>
+              <option value="LEAVE_ATTENDANCE_CONFLICT">Leave Conflict</option>
+              <option value="OVERDUE_APPROVAL">Overdue Approval</option>
+            </select>
+          )}
+        </div>
+
+        {(filterDate || searchWorker || filterExceptionType) && (
+          <button
+            onClick={() => {
+              setFilterDate('');
+              setSearchWorker('');
+              setFilterExceptionType('');
+            }}
+            className="text-xs font-semibold text-slate-500 hover:text-slate-800 cursor-pointer"
+          >
+            Clear Filters
+          </button>
+        )}
+      </div>
+
+      {/* ─── TAB CONTENT ─── */}
       {loading ? (
-        <div className="p-8 text-center text-slate-400 text-sm">Loading approval queue...</div>
-      ) : pendingList.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-500">
-          <ShieldCheck className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
-          <p className="font-semibold text-slate-900">All Caught Up!</p>
-          <p className="text-xs text-slate-500 mt-1">No pending clock-in requests awaiting your review.</p>
+        <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 text-slate-500">
+          <RefreshCw className="w-6 h-6 animate-spin text-emerald-600 mx-auto mb-2" />
+          <p className="text-sm font-semibold">Loading Queue Records...</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {pendingList.map((item) => (
-            <div
-              key={item.sessionId}
-              className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs hover:border-slate-300 transition-all space-y-4"
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="font-bold text-slate-900 text-base m-0">{item.workerName}</h3>
-                  <span className="text-xs   text-slate-500">{item.employeeCode}</span>
+        <>
+          {/* TAB 1: PENDING ATTENDANCE */}
+          {activeTab === 'attendance' && (
+            <div className="space-y-4">
+              {filterList(pendingAttendance).length === 0 ? (
+                <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 text-slate-500">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-slate-800">No Pending Attendance Approvals</p>
+                  <p className="text-xs text-slate-400 mt-1">All worker clock-ins for your sites are up to date.</p>
                 </div>
-                <StatusBadge status="PENDING" />
-              </div>
-
-              <div className="space-y-1.5 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <div className="flex items-center gap-1.5 font-medium text-slate-800">
-                  <MapPin className="w-3.5 h-3.5 text-slate-500" />
-                  <span>{item.worksiteName}</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-slate-500">
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>
-                    {item.shiftName} ({item.shiftStartTime} - {item.shiftEndTime})
-                  </span>
-                </div>
-                {item.clockInEvent && (
-                  <div className="pt-1.5 border-t border-slate-200 flex justify-between font-semibold">
-                    <span className="text-emerald-700">Distance: {Math.round(item.clockInEvent.calculatedDistanceMeters)}m</span>
-                    <span className="text-slate-500">Accuracy: +/-{Math.round(item.clockInEvent.reportedAccuracyMeters)}m</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Action buttons */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setInspectItem(item)}
-                  className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Eye className="w-3.5 h-3.5" />
-                  Inspect
-                </button>
-                <button
-                  onClick={() => handleApprove(item.sessionId)}
-                  disabled={submitting}
-                  className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center transition-colors cursor-pointer shadow-xs"
-                  title="Approve Clock-In"
-                >
-                  <Check className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => openRejectModal(item)}
-                  disabled={submitting}
-                  className="p-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center transition-colors cursor-pointer shadow-xs"
-                  title="Reject Clock-In"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => openTransferModal(item)}
-                  disabled={submitting}
-                  className="p-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center justify-center transition-colors cursor-pointer shadow-xs"
-                  title="Transfer to Alternate Supervisor"
-                >
-                  <ArrowRightLeft className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* INSPECT MODAL */}
-      <Modal
-        isOpen={inspectItem !== null}
-        onClose={() => setInspectItem(null)}
-        title="Inspect Attendance Evidence"
-        description="Verify attendance selfie, GPS coordinate precision, and calculate proximity."
-        maxWidth="lg"
-        footer={
-          inspectItem && (
-            <div className="flex justify-end gap-2 w-full">
-              <button
-                onClick={() => openRejectModal(inspectItem)}
-                className="px-4 py-2 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-xl text-xs font-semibold"
-              >
-                Reject Request
-              </button>
-              <button
-                onClick={() => handleApprove(inspectItem.sessionId)}
-                className="px-5 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs"
-              >
-                <Check className="w-4 h-4" />
-                Approve Verified Attendance
-              </button>
-            </div>
-          )
-        }
-      >
-        {inspectItem && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Selfie Photo */}
-            <div className="aspect-4/3 rounded-xl overflow-hidden bg-slate-900 border border-slate-700 flex items-center justify-center">
-              {inspectItem.clockInEvent?.photoUrl ? (
-                <img
-                  src={inspectItem.clockInEvent.photoUrl}
-                  alt="Worker Selfie"
-                  className="w-full h-full object-cover"
-                />
               ) : (
-                <span className="text-xs text-slate-500">No Photo Available</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filterList(pendingAttendance).map((item) => (
+                    <div
+                      key={item.id}
+                      className="bg-white rounded-2xl border border-slate-200 shadow-2xs hover:shadow-sm transition-all p-4.5 flex flex-col justify-between space-y-4"
+                    >
+                      {/* Top Header */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={
+                              item.workerPhoto ||
+                              `https://ui-avatars.com/api/?name=${encodeURIComponent(item.workerName)}&background=0D8ABC&color=fff`
+                            }
+                            alt={item.workerName}
+                            className="w-10 h-10 rounded-xl object-cover border border-slate-100"
+                          />
+                          <div>
+                            <h3 className="text-sm font-bold text-slate-900 m-0">{item.workerName}</h3>
+                            <span className="text-[11px] font-semibold text-slate-500 block">
+                              ID: {item.employeeCode}
+                            </span>
+                          </div>
+                        </div>
+
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                          {item.requestAge}
+                        </span>
+                      </div>
+
+                      {/* Worksite & Shift */}
+                      <div className="bg-slate-50 rounded-xl p-3 text-xs space-y-1.5 border border-slate-100">
+                        <div className="flex items-center justify-between text-slate-600">
+                          <span className="font-semibold flex items-center gap-1.5">
+                            <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                            {item.worksiteName}
+                          </span>
+                          <span className="text-slate-400 font-mono text-[11px]">{item.workDate}</span>
+                        </div>
+
+                        <div className="flex items-center justify-between text-slate-600 pt-1 border-t border-slate-200/50">
+                          <span className="flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 text-slate-400" />
+                            {item.shiftName} ({item.shiftStartTime} - {item.shiftEndTime})
+                          </span>
+                          <span className="font-semibold text-emerald-700">
+                            {item.netWorkingDurationFormatted}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Geofence & Evidence Status */}
+                      <div className="flex items-center justify-between text-xs pt-1">
+                        <div className="flex items-center gap-2">
+                          {item.isWithinGeofence ? (
+                            <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
+                              <ShieldCheck className="w-3.5 h-3.5" /> Inside Geofence
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md">
+                              <AlertTriangle className="w-3.5 h-3.5" /> {Math.round(item.calculatedDistanceMeters)}m outside
+                            </span>
+                          )}
+
+                          {item.hasMissingClockOut && (
+                            <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">
+                              No Out-Punch
+                            </span>
+                          )}
+                        </div>
+
+                        {item.photoUrl && (
+                          <button
+                            onClick={() => setInspectItem(item)}
+                            className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5" /> Inspect
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+                        <button
+                          onClick={() => handleApproveAttendance(item.id)}
+                          disabled={submitting}
+                          className="w-full py-2 px-3 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                        >
+                          <Check className="w-3.5 h-3.5 stroke-[2.5]" /> Approve
+                        </button>
+
+                        <button
+                          onClick={() => openRejectModal(item, 'attendance')}
+                          disabled={submitting}
+                          className="w-full py-2 px-3 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5 stroke-[2.5]" /> Reject
+                        </button>
+                      </div>
+
+                      {/* Secondary Actions: Clarification & Escalation */}
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                        <button
+                          onClick={() => {
+                            setSelectedForClarify({ id: item.id, type: 'attendance' });
+                            setClarifyMessage('');
+                            setClarifyModalOpen(true);
+                          }}
+                          className="hover:text-indigo-600 flex items-center gap-1 cursor-pointer"
+                        >
+                          <HelpCircle className="w-3 h-3" /> Ask Clarification
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setSelectedForEscalate({ id: item.id, type: 'attendance' });
+                            setEscalateReason('');
+                            setEscalateModalOpen(true);
+                          }}
+                          className="hover:text-amber-700 flex items-center gap-1 cursor-pointer"
+                        >
+                          <ArrowUpRight className="w-3 h-3" /> Escalate
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
+          )}
 
-            {/* Evidence Data */}
-            <div className="space-y-3 text-xs">
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-1">
-                <span className="text-slate-500 block uppercase font-semibold text-[10px]">Worker</span>
-                <span className="text-sm font-bold text-slate-900">{inspectItem.workerName}</span>
-                <span className="text-slate-500 block">{inspectItem.workerEmail} ({inspectItem.employeeCode})</span>
+          {/* TAB: OVERTIME REVIEW (PHASE 3) */}
+          {activeTab === 'overtime' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800 m-0">Overtime Review Queue</h3>
+                  <p className="text-xs text-slate-500 m-0 mt-0.5">
+                    Review and authorize overtime hours for assigned workers exceeding the 9-hour daily standard threshold.
+                  </p>
+                </div>
+                <span className="text-xs font-semibold px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-lg border border-indigo-200">
+                  {pendingOvertime.filter((o) => o.otStatus === 'PENDING').length} Pending Decisions
+                </span>
               </div>
 
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-1">
-                <span className="text-slate-500 block uppercase font-semibold text-[10px]">Worksite</span>
-                <span className="font-bold text-slate-900">{inspectItem.worksiteName}</span>
-                <span className="text-slate-500 block">{inspectItem.worksiteAddress}</span>
-              </div>
+              {pendingOvertime.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-2">
+                  <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
+                  <h4 className="text-sm font-bold text-slate-800 m-0">No Overtime Pending Review</h4>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                    All worker overtime calculations are either reviewed, within standard working hours, or locked in payroll.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {pendingOvertime.map((item: any) => {
+                    const isPendingDecision = item.otStatus === 'PENDING';
+                    const isApproved = item.otStatus === 'APPROVED';
+                    const isRejected = item.otStatus === 'REJECTED';
 
-              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 space-y-1 text-emerald-900">
-                <span className="text-emerald-700 block uppercase font-semibold text-[10px]">Geolocation Evidence</span>
-                <div className="flex justify-between">
-                  <span>Calculated Proximity:</span>
-                  <span className="font-bold">{Math.round(inspectItem.clockInEvent?.calculatedDistanceMeters || 0)}m</span>
+                    return (
+                      <div
+                        key={item.id}
+                        className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3.5 shadow-2xs hover:shadow-xs transition-shadow flex flex-col justify-between"
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <h4 className="font-bold text-sm text-slate-900 m-0">{item.workerName}</h4>
+                              <span className="text-xs text-slate-500 font-mono">Code: {item.employeeCode}</span>
+                            </div>
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider ${
+                                isApproved
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                  : isRejected
+                                  ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                                  : 'bg-amber-100 text-amber-800 border border-amber-300'
+                              }`}
+                            >
+                              {item.otStatus}
+                            </span>
+                          </div>
+
+                          <div className="p-2.5 bg-slate-50 rounded-xl space-y-1.5 text-xs text-slate-600 border border-slate-100">
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold flex items-center gap-1.5 truncate">
+                                <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                {item.worksiteName}
+                              </span>
+                              <span className="font-mono text-[11px] text-slate-400">{item.workDate}</span>
+                            </div>
+
+                            <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-200/60">
+                              <span>Punches:</span>
+                              <span className="font-mono text-slate-800">
+                                {item.clockInTime ? new Date(item.clockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                                {' → '}
+                                {item.clockOutTime ? new Date(item.clockOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'MISSING'}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 pt-1.5 text-xs">
+                              <div>
+                                <span className="text-[10px] text-slate-400 block">Net Worked</span>
+                                <span className="font-bold text-slate-800">{item.formattedNetHours || `${item.netWorkingMinutes}m`}</span>
+                              </div>
+                              <div>
+                                <span className="text-[10px] text-slate-400 block">Standard (Threshold)</span>
+                                <span className="font-bold text-slate-800">9h (540m)</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Overtime Metric Box */}
+                          <div className="p-3 bg-indigo-50/70 border border-indigo-200/80 rounded-xl flex items-center justify-between">
+                            <div>
+                              <span className="text-[10px] uppercase font-bold text-indigo-700 tracking-wider block">Calculated OT</span>
+                              <span className="text-base font-extrabold text-indigo-950">
+                                {item.formattedCalculatedOt || `${item.calculatedOtMinutes}m`}
+                              </span>
+                            </div>
+                            {item.breakDurationMinutes > 0 && (
+                              <span className="text-[11px] text-indigo-600 font-medium">
+                                -{item.breakDurationMinutes}m break
+                              </span>
+                            )}
+                          </div>
+
+                          {item.hasMissingClockOut && (
+                            <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-center gap-1.5 font-medium">
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                              <span>Missing punch: Clock-out required before OT approval</span>
+                            </div>
+                          )}
+
+                          {item.otRejectionReason && (
+                            <div className="p-2 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-900">
+                              <span className="font-bold block text-[11px]">Rejection Reason:</span>
+                              <span>{item.otRejectionReason}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Action Buttons: Disappear after terminal decision */}
+                        {isPendingDecision && !item.hasMissingClockOut ? (
+                          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+                            <button
+                              onClick={() => handleApproveOvertime(item)}
+                              disabled={submitting}
+                              className="py-2 px-3 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                            >
+                              <Check className="w-3.5 h-3.5 stroke-[2.5]" /> Approve OT
+                            </button>
+
+                            <button
+                              onClick={() => openRejectModal(item, 'overtime')}
+                              disabled={submitting}
+                              className="py-2 px-3 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                              <X className="w-3.5 h-3.5 stroke-[2.5]" /> Reject
+                            </button>
+                          </div>
+                        ) : isPendingDecision && item.hasMissingClockOut ? (
+                          <div className="pt-2 border-t border-slate-100">
+                            <span className="text-[11px] text-slate-400 block text-center italic">
+                              Cannot approve OT with missing punch
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                            <span>Decision Finalized</span>
+                            <span className="font-bold text-slate-700">{item.otStatus}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-                <div className="flex justify-between">
-                  <span>GPS Precision:</span>
-                  <span className="font-bold">+/- {Math.round(inspectItem.clockInEvent?.reportedAccuracyMeters || 0)}m</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Submission Time:</span>
-                  <span className="font-bold">{new Date(inspectItem.clockInTime).toLocaleTimeString()}</span>
-                </div>
-              </div>
+              )}
             </div>
-          </div>
-        )}
-      </Modal>
+          )}
 
-      {/* REJECT MODAL */}
+          {/* TAB: ATTENDANCE REGULARISATION */}
+          {activeTab === 'regularization' && (
+            <div className="space-y-4">
+              {filterList(pendingRegularization).length === 0 ? (
+                <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 text-slate-500">
+                  <CheckCircle2 className="w-8 h-8 text-blue-600 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-slate-800">No Pending Attendance Regularisations</p>
+                  <p className="text-xs text-slate-400 mt-1">All timestamp correction and missed punch requests are resolved.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filterList(pendingRegularization).map((item) => (
+                    <div
+                      key={item.id}
+                      className="bg-white rounded-2xl border border-slate-200 shadow-2xs hover:shadow-sm transition-all p-4.5 flex flex-col justify-between space-y-4"
+                    >
+                      <div className="space-y-3">
+                        {/* Worker Header */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 font-bold flex items-center justify-center border border-blue-100">
+                              {item.workerName ? item.workerName.slice(0, 2).toUpperCase() : 'WR'}
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-bold text-slate-900 m-0">{item.workerName}</h3>
+                              <span className="text-[11px] font-semibold text-slate-500 block">
+                                ID: {item.employeeCode}
+                              </span>
+                            </div>
+                          </div>
+
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                            {item.status || 'PENDING'}
+                          </span>
+                        </div>
+
+                        {/* Session Metadata */}
+                        <div className="bg-slate-50 rounded-xl p-3 text-xs space-y-1.5 border border-slate-100">
+                          <div className="flex items-center justify-between text-slate-600">
+                            <span className="font-semibold flex items-center gap-1.5">
+                              <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                              {item.worksiteName || 'Assigned Site'}
+                            </span>
+                            <span className="text-slate-500 font-mono text-[11px] font-semibold">{item.workDate}</span>
+                          </div>
+
+                          <div className="border-t border-slate-200/60 pt-1.5 space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] text-slate-400">Proposed In:</span>
+                              <span className="font-mono font-bold text-blue-700 text-xs">
+                                {item.proposedClockInTime ? new Date(item.proposedClockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unchanged'}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] text-slate-400">Proposed Out:</span>
+                              <span className="font-mono font-bold text-blue-700 text-xs">
+                                {item.proposedClockOutTime ? new Date(item.proposedClockOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unchanged'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Worker Justification */}
+                        <div className="p-2.5 bg-amber-50/70 border border-amber-200/70 rounded-xl text-xs text-amber-950">
+                          <span className="font-bold block text-[10px] uppercase text-amber-800 tracking-wider">
+                            Worker Reason
+                          </span>
+                          <p className="mt-0.5 text-xs text-amber-900 italic m-0">"{item.reason}"</p>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      {item.status === 'PENDING' ? (
+                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+                          <button
+                            onClick={() => handleApproveRegularization(item.id)}
+                            disabled={submitting}
+                            className="py-2 px-3 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                          >
+                            <Check className="w-3.5 h-3.5 stroke-[2.5]" /> Approve
+                          </button>
+
+                          <button
+                            onClick={() => openRejectModal(item, 'regularization')}
+                            disabled={submitting}
+                            className="py-2 px-3 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5 stroke-[2.5]" /> Reject
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                          <span>Decision Finalized</span>
+                          <span className="font-bold text-slate-700">{item.status}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 2: PENDING LEAVE */}
+          {activeTab === 'leave' && (
+            <div className="space-y-4">
+              {filterList(pendingLeave).length === 0 ? (
+                <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 text-slate-500">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-slate-800">No Pending Leave Requests</p>
+                  <p className="text-xs text-slate-400 mt-1">All leave submissions are resolved.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filterList(pendingLeave).map((item) => (
+                    <div
+                      key={item.id}
+                      className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-4.5 flex flex-col justify-between space-y-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={
+                              item.workerPhoto ||
+                              `https://ui-avatars.com/api/?name=${encodeURIComponent(item.workerName)}&background=8B5CF6&color=fff`
+                            }
+                            alt={item.workerName}
+                            className="w-10 h-10 rounded-xl object-cover border border-slate-100"
+                          />
+                          <div>
+                            <h3 className="text-sm font-bold text-slate-900 m-0">{item.workerName}</h3>
+                            <span className="text-[11px] font-semibold text-slate-500">
+                              {item.leaveTypeName} ({item.leaveTypeCode})
+                            </span>
+                          </div>
+                        </div>
+
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                          {item.durationDays} day(s)
+                        </span>
+                      </div>
+
+                      {/* Dates & Reason */}
+                      <div className="bg-slate-50 rounded-xl p-3 text-xs space-y-2 border border-slate-100">
+                        <div className="flex items-center justify-between text-slate-700 font-semibold">
+                          <span>
+                            {item.startDate} to {item.endDate}
+                          </span>
+                          {item.isHalfDay && (
+                            <span className="text-indigo-600 font-bold">
+                              ½ Day ({item.halfDayPeriod === 'FIRST_HALF' ? 'Morning' : 'Afternoon'})
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-slate-600 text-[11px] m-0 italic bg-white p-2 rounded-lg border border-slate-100">
+                          "{item.reason}"
+                        </p>
+                      </div>
+
+                      {/* Conflict Warning */}
+                      {item.hasConflict && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-xs text-amber-800 flex items-start gap-2">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-bold block">Attendance Conflict Flagged</span>
+                            <span className="text-[11px]">{item.conflictDetails}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Action Buttons */}
+                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+                        <button
+                          onClick={() => handleApproveLeave(item.id)}
+                          disabled={submitting}
+                          className="w-full py-2 px-3 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                        >
+                          <Check className="w-3.5 h-3.5 stroke-[2.5]" /> Approve
+                        </button>
+
+                        <button
+                          onClick={() => openRejectModal(item, 'leave')}
+                          disabled={submitting}
+                          className="w-full py-2 px-3 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5 stroke-[2.5]" /> Reject
+                        </button>
+                      </div>
+
+                      {/* Escalation Option */}
+                      <div className="flex items-center justify-end text-[11px] text-slate-500 pt-1">
+                        <button
+                          onClick={() => {
+                            setSelectedForEscalate({ id: item.id, type: 'leave' });
+                            setEscalateReason('');
+                            setEscalateModalOpen(true);
+                          }}
+                          className="hover:text-amber-700 flex items-center gap-1 cursor-pointer"
+                        >
+                          <ArrowUpRight className="w-3 h-3" /> Escalate to Fallback / Admin
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 3: ATTENDANCE EXCEPTIONS */}
+          {activeTab === 'exceptions' && (
+            <div className="space-y-4">
+              {filterList(exceptions).length === 0 ? (
+                <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 text-slate-500">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-slate-800">No Open Attendance Exceptions</p>
+                  <p className="text-xs text-slate-400 mt-1">No missing punches or conflicts requiring resolution.</p>
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50/75 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
+                          <th className="py-3 px-4">Worker</th>
+                          <th className="py-3 px-4">Worksite</th>
+                          <th className="py-3 px-4">Date</th>
+                          <th className="py-3 px-4">Exception Type</th>
+                          <th className="py-3 px-4">Severity</th>
+                          <th className="py-3 px-4">Status</th>
+                          <th className="py-3 px-4 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                        {filterList(exceptions).map((ex) => (
+                          <tr key={ex.id} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="py-3.5 px-4 font-semibold text-slate-900">
+                              <div>{ex.workerName}</div>
+                              <span className="text-[10px] text-slate-400 font-normal">ID: {ex.employeeCode}</span>
+                            </td>
+                            <td className="py-3.5 px-4 text-slate-600">{ex.worksiteName || 'Site Location'}</td>
+                            <td className="py-3.5 px-4 font-mono text-[11px]">{ex.workDate}</td>
+                            <td className="py-3.5 px-4">
+                              <span
+                                className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                                  ex.exceptionType === 'MISSING_CLOCK_IN'
+                                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                    : ex.exceptionType === 'MISSING_CLOCK_OUT'
+                                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                    : 'bg-purple-50 text-purple-700 border border-purple-200'
+                                }`}
+                              >
+                                {ex.exceptionType.replace(/_/g, ' ')}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  ex.severity === 'HIGH'
+                                    ? 'bg-rose-100 text-rose-800'
+                                    : ex.severity === 'MEDIUM'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-slate-100 text-slate-700'
+                                }`}
+                              >
+                                {ex.severity}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <span className="font-semibold text-slate-600 text-[11px]">{ex.status}</span>
+                            </td>
+                            <td className="py-3.5 px-4 text-right">
+                              <button
+                                onClick={() => {
+                                  setSelectedForResolve(ex);
+                                  setResolutionNote('');
+                                  setResolveModalOpen(true);
+                                }}
+                                className="px-3 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-all cursor-pointer"
+                              >
+                                Resolve
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 4: ESCALATED REQUESTS */}
+          {activeTab === 'escalated' && (
+            <div className="space-y-4">
+              {filterList(escalated).length === 0 ? (
+                <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 text-slate-500">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-slate-800">No Escalated Requests</p>
+                  <p className="text-xs text-slate-400 mt-1">All requests are within standard resolution deadlines.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filterList(escalated).map((item) => (
+                    <div
+                      key={item.id}
+                      className="bg-white rounded-2xl border border-rose-200/80 p-4 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-rose-100 text-rose-800">
+                            {item.requestType}
+                          </span>
+                          <span className="text-sm font-bold text-slate-900">{item.workerName}</span>
+                          <span className="text-xs text-slate-500 font-mono">({item.employeeCode})</span>
+                        </div>
+                        <p className="text-xs text-slate-700 m-0">{item.summary}</p>
+                        <p className="text-[11px] text-rose-700 font-semibold m-0 flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3" /> {item.escalationReason}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-xs text-slate-400 font-medium mr-2">{item.age}</span>
+                        {item.requestType === 'ATTENDANCE' && (
+                          <button
+                            onClick={() => handleApproveAttendance(item.id)}
+                            className="px-3 py-1.5 text-xs font-bold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 cursor-pointer shadow-xs"
+                          >
+                            Approve Now
+                          </button>
+                        )}
+                        {item.requestType === 'LEAVE' && (
+                          <button
+                            onClick={() => handleApproveLeave(item.id)}
+                            className="px-3 py-1.5 text-xs font-bold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 cursor-pointer shadow-xs"
+                          >
+                            Approve Leave
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ─── MODALS ─── */}
+
+      {/* 1. Rejection Modal (Mandatory Reason) */}
       <Modal
         isOpen={rejectModalOpen}
         onClose={() => setRejectModalOpen(false)}
-        title="Reject Clock-In Submission"
-        description="Provide a mandatory non-empty reason for rejecting this attendance event."
-        footer={
-          <>
+        title={selectedForReject?.type === 'attendance' ? 'Reject Attendance Verification' : 'Reject Leave Request'}
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-slate-600">
+            A mandatory reason is required to reject this request. This will be preserved in the audit log and visible
+            to the worker.
+          </p>
+
+          <div>
+            <label className="text-xs font-bold text-slate-700 block mb-1.5">
+              Rejection Reason <span className="text-rose-500">*</span>
+            </label>
+            <textarea
+              rows={3}
+              placeholder="Provide reason (e.g., Worker was not visible at site location during shift inspection)..."
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-emerald-600 bg-slate-50/50"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
             <button
               onClick={() => setRejectModalOpen(false)}
-              className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-xl"
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
             >
               Cancel
             </button>
             <button
               onClick={handleRejectSubmit}
               disabled={submitting || !rejectReason.trim()}
-              className="px-5 py-2 text-xs font-bold bg-rose-600 text-white rounded-xl hover:bg-rose-700 disabled:opacity-50"
+              className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50 rounded-xl cursor-pointer shadow-xs"
             >
               Confirm Rejection
             </button>
-          </>
-        }
-      >
-        <div className="space-y-3">
-          <label className="text-xs font-semibold text-slate-700 block">
-            Mandatory Rejection Note <span className="text-rose-500">*</span>
-          </label>
-          <textarea
-            value={rejectReason}
-            onChange={(e) => setRejectReason(e.target.value)}
-            placeholder="Explain why clock-in was rejected (e.g. unrecognizable selfie, worker absent from station, incorrect shift)..."
-            rows={3}
-            className="w-full text-xs p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-rose-500"
-          />
+          </div>
         </div>
       </Modal>
 
-      {/* TRANSFER SUPERVISOR MODAL */}
-      <Modal
-        isOpen={transferModalOpen}
-        onClose={() => setTransferModalOpen(false)}
-        title="Transfer Approval Authority"
-        description="Re-route this attendance request to a replacement supervisor with an audit log."
-        footer={
-          <>
+      {/* 2. Clarification Modal */}
+      <Modal isOpen={clarifyModalOpen} onClose={() => setClarifyModalOpen(false)} title="Request Worker Clarification">
+        <div className="space-y-4">
+          <p className="text-xs text-slate-600">
+            Send an official inquiry notification to the worker regarding this request.
+          </p>
+
+          <div>
+            <label className="text-xs font-bold text-slate-700 block mb-1.5">
+              Inquiry / Message <span className="text-rose-500">*</span>
+            </label>
+            <textarea
+              rows={3}
+              placeholder="e.g. Please clarify why clock-in was recorded at 09:45 AM instead of 08:00 AM..."
+              value={clarifyMessage}
+              onChange={(e) => setClarifyMessage(e.target.value)}
+              className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-emerald-600 bg-slate-50/50"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
             <button
-              onClick={() => setTransferModalOpen(false)}
-              className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-xl"
+              onClick={() => setClarifyModalOpen(false)}
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
             >
               Cancel
             </button>
             <button
-              onClick={handleTransferSubmit}
-              disabled={submitting || !transferReason.trim()}
-              className="px-5 py-2 text-xs font-bold bg-slate-900 text-white rounded-xl hover:bg-slate-800 disabled:opacity-50"
+              onClick={handleClarificationSubmit}
+              disabled={submitting || !clarifyMessage.trim()}
+              className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl cursor-pointer shadow-xs flex items-center gap-1.5"
             >
-              Execute Transfer
+              <Send className="w-3.5 h-3.5" /> Send Inquiry
             </button>
-          </>
-        }
-      >
+          </div>
+        </div>
+      </Modal>
+
+      {/* 3. Exception Resolution Modal */}
+      <Modal isOpen={resolveModalOpen} onClose={() => setResolveModalOpen(false)} title="Resolve Attendance Exception">
         <div className="space-y-4">
           <div>
-            <label className="text-xs font-semibold text-slate-700 block mb-1">
-              Select Replacement Supervisor
-            </label>
+            <label className="text-xs font-bold text-slate-700 block mb-1.5">Resolution Outcome</label>
             <select
-              value={transferSupervisorId}
-              onChange={(e) => setTransferSupervisorId(e.target.value)}
-              className="w-full text-xs p-2.5 rounded-xl border border-slate-200 bg-white"
+              value={resolutionType}
+              onChange={(e) => setResolutionType(e.target.value)}
+              className="w-full text-xs p-2.5 border border-slate-200 rounded-xl focus:outline-emerald-600 bg-white"
             >
-              {supervisors.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.fullName} ({s.email})
-                </option>
-              ))}
+              <option value="EXCUSED_ABSENCE">Excused Absence (Permitted Leave / Medical)</option>
+              <option value="UNEXCUSED_ABSENCE">Confirmed Unexcused Absence</option>
+              <option value="APPROVED_LEAVE">Converted to Approved Leave</option>
+              <option value="CORRECTION_REQUIRED">Attendance Correction Required</option>
+              <option value="LATE_ARRIVAL">Late Arrival / Partial Attendance</option>
+              <option value="CONFIGURATION_ERROR">Assignment / Roster Configuration Error</option>
+              <option value="DUPLICATE_INVALID">Duplicate / Invalid Record</option>
             </select>
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-700 block mb-1">
-              Mandatory Transfer Reason <span className="text-rose-500">*</span>
+            <label className="text-xs font-bold text-slate-700 block mb-1.5">
+              Resolution Note & Justification <span className="text-rose-500">*</span>
             </label>
             <textarea
-              value={transferReason}
-              onChange={(e) => setTransferReason(e.target.value)}
-              placeholder="e.g. Reliever supervisor assigned due to shift rotation..."
               rows={3}
-              className="w-full text-xs p-3 rounded-xl border border-slate-200"
+              placeholder="State the findings and reason for this resolution outcome..."
+              value={resolutionNote}
+              onChange={(e) => setResolutionNote(e.target.value)}
+              className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-emerald-600 bg-slate-50/50"
             />
           </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              onClick={() => setResolveModalOpen(false)}
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleResolveExceptionSubmit}
+              disabled={submitting || !resolutionNote.trim()}
+              className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-xl cursor-pointer shadow-xs"
+            >
+              Resolve Exception
+            </button>
+          </div>
         </div>
+      </Modal>
+
+      {/* 4. Manual Escalation Modal */}
+      <Modal isOpen={escalateModalOpen} onClose={() => setEscalateModalOpen(false)} title="Escalate Request">
+        <div className="space-y-4">
+          <p className="text-xs text-slate-600">
+            Escalate this request to the fallback supervisor or the admin exception queue for immediate management intervention.
+          </p>
+
+          <div>
+            <label className="text-xs font-bold text-slate-700 block mb-1.5">
+              Escalation Reason <span className="text-rose-500">*</span>
+            </label>
+            <textarea
+              rows={3}
+              placeholder="Explain why this request is being escalated (e.g. Disputed hours, supervisor travelling)..."
+              value={escalateReason}
+              onChange={(e) => setEscalateReason(e.target.value)}
+              className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-emerald-600 bg-slate-50/50"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              onClick={() => setEscalateModalOpen(false)}
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleManualEscalateSubmit}
+              disabled={submitting || !escalateReason.trim()}
+              className="px-4 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 rounded-xl cursor-pointer shadow-xs"
+            >
+              Confirm Escalation
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 5. Inspection Modal (Selfie & Geofence Evidence) */}
+      <Modal
+        isOpen={Boolean(inspectItem)}
+        onClose={() => setInspectItem(null)}
+        title={`Inspection: ${inspectItem?.workerName}`}
+      >
+        {inspectItem && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-center bg-slate-900 rounded-2xl overflow-hidden p-2">
+              <img
+                src={inspectItem.photoUrl}
+                alt="Selfie Evidence"
+                className="max-h-72 w-auto object-contain rounded-xl"
+              />
+            </div>
+
+            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Worksite:</span>
+                <span className="font-semibold text-slate-800">{inspectItem.worksiteName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Date & Shift:</span>
+                <span className="font-semibold text-slate-800">
+                  {inspectItem.workDate} ({inspectItem.shiftName})
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Geofence Distance:</span>
+                <span className={`font-semibold ${inspectItem.isWithinGeofence ? 'text-emerald-700' : 'text-rose-700'}`}>
+                  {Math.round(inspectItem.calculatedDistanceMeters)} meters
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Clock-in Time:</span>
+                <span className="font-semibold text-slate-800">
+                  {inspectItem.clockInTime ? new Date(inspectItem.clockInTime).toLocaleTimeString() : 'N/A'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                onClick={() => setInspectItem(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => handleApproveAttendance(inspectItem.id)}
+                className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl cursor-pointer shadow-xs"
+              >
+                Approve Clock-In
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

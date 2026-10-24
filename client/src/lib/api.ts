@@ -45,9 +45,18 @@ export async function apiRequest<T = any>(
     );
   }
 
-  // Handle CSV/blob downloads
+  // Handle CSV/XLSX/blob downloads
   const contentType = response.headers.get('content-type');
-  if (contentType && contentType.includes('text/csv')) {
+  if (
+    contentType &&
+    (contentType.includes('text/csv') ||
+      contentType.includes('spreadsheetml') ||
+      contentType.includes('application/octet-stream') ||
+      contentType.includes('application/vnd.openxmlformats'))
+  ) {
+    if (!response.ok) {
+      throw new ApiError(`Download failed with status ${response.status}`, response.status);
+    }
     const blob = await response.blob();
     return blob as unknown as T;
   }
@@ -98,4 +107,16 @@ export async function uploadPhotoRequest(
   }
 
   return data;
+}
+
+export async function downloadFile(endpoint: string, filename: string): Promise<void> {
+  const blob = await apiRequest<Blob>(endpoint);
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  window.URL.revokeObjectURL(url);
+  document.body.removeChild(a);
 }

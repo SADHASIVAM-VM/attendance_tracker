@@ -74,6 +74,8 @@ export const siteAssignments = pgTable('site_assignments', {
   orgId: uuid('org_id').references(() => organizations.id).notNull(),
   worksiteId: uuid('worksite_id').references(() => worksites.id).notNull(),
   supervisorId: uuid('supervisor_id').references(() => users.id).notNull(),
+  fallbackSupervisorId: uuid('fallback_supervisor_id').references(() => users.id),
+  escalationDeadlineHours: integer('escalation_deadline_hours').default(24).notNull(),
   workDate: date('work_date').notNull(), // YYYY-MM-DD (start date)
   groupName: varchar('group_name', { length: 100 }),
   shiftName: varchar('shift_name', { length: 100 }).notNull(),
@@ -104,6 +106,7 @@ export const attendanceSessions = pgTable('attendance_sessions', {
   assignmentId: uuid('assignment_id').references(() => siteAssignments.id).notNull(),
   workerId: uuid('worker_id').references(() => users.id).notNull(),
   supervisorSnapshotId: uuid('supervisor_snapshot_id').references(() => users.id).notNull(),
+  currentApproverId: uuid('current_approver_id').references(() => users.id),
   worksiteSnapshotId: uuid('worksite_snapshot_id').references(() => worksites.id).notNull(),
   workDate: date('work_date').notNull(),
   status: varchar('status', { length: 50 }).default('PENDING').notNull(), // 'PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'
@@ -114,7 +117,12 @@ export const attendanceSessions = pgTable('attendance_sessions', {
   isAutoApproved: boolean('is_auto_approved').default(false).notNull(),
   autoApprovalReason: text('auto_approval_reason'),
   approvalSource: varchar('approval_source', { length: 50 }).default('MANUAL'), // 'SYSTEM_AUTO_APPROVAL', 'MANUAL'
+  clockOutSource: varchar('clock_out_source', { length: 50 }).default('WORKER_SELF'), // 'WORKER_SELF', 'SUPERVISOR_ASSISTED', 'ADMIN_OVERRIDE'
   approvedAt: timestamp('approved_at', { withTimezone: true }),
+  isEscalated: boolean('is_escalated').default(false).notNull(),
+  escalatedAt: timestamp('escalated_at', { withTimezone: true }),
+  escalationReason: text('escalation_reason'),
+  exceptionStatus: varchar('exception_status', { length: 50 }).default('NONE').notNull(),
   totalDurationSeconds: integer('total_duration_seconds').default(0).notNull(),
   netWorkingSeconds: integer('net_working_seconds').default(0).notNull(),
   activeLocationId: uuid('active_location_id').references(() => worksites.id),
@@ -125,6 +133,17 @@ export const attendanceSessions = pgTable('attendance_sessions', {
   clockOutLatitude: doublePrecision('clock_out_latitude'),
   clockOutLongitude: doublePrecision('clock_out_longitude'),
   clockOutAccuracy: doublePrecision('clock_out_accuracy'),
+  standardHoursMinutes: integer('standard_hours_minutes').default(540).notNull(), // 9h = 540m
+  breakDurationMinutes: integer('break_duration_minutes').default(0).notNull(),
+  calculatedOtMinutes: integer('calculated_ot_minutes').default(0).notNull(),
+  approvedOtMinutes: integer('approved_ot_minutes').default(0).notNull(),
+  otStatus: varchar('ot_status', { length: 50 }).default('NONE').notNull(), // 'NONE', 'PENDING', 'APPROVED', 'REJECTED'
+  otReviewerId: uuid('ot_reviewer_id').references(() => users.id),
+  otReviewedAt: timestamp('ot_reviewed_at', { withTimezone: true }),
+  otRejectionReason: text('ot_rejection_reason'),
+  policyVersionSnapshot: varchar('policy_version_snapshot', { length: 50 }).default('v1.0').notNull(),
+  isPayrollLocked: boolean('is_payroll_locked').default(false).notNull(),
+  payrollPeriodId: uuid('payroll_period_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
@@ -179,16 +198,23 @@ export const approvalActions = pgTable('approval_actions', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
-// Attendance Adjustment Requests (Regularization)
+// Attendance Adjustment Requests (Regularization / Corrections)
 export const attendanceAdjustmentRequests = pgTable('attendance_adjustment_requests', {
   id: uuid('id').defaultRandom().primaryKey(),
   sessionId: uuid('session_id').references(() => attendanceSessions.id).notNull(),
   requestingUserId: uuid('requesting_user_id').references(() => users.id).notNull(),
   reviewerId: uuid('reviewer_id').references(() => users.id),
+  currentApproverId: uuid('current_approver_id').references(() => users.id),
+  correctionType: varchar('correction_type', { length: 50 }).default('INCORRECT_HOURS').notNull(), // 'MISSING_CLOCK_IN', 'MISSING_CLOCK_OUT', 'INCORRECT_CLOCK_IN', 'INCORRECT_CLOCK_OUT', 'INCORRECT_SITE', 'INCORRECT_HOURS', 'OTHER'
+  workDate: date('work_date'),
   reason: text('reason').notNull(),
   proposedClockInTime: timestamp('proposed_clock_in_time', { withTimezone: true }),
   proposedClockOutTime: timestamp('proposed_clock_out_time', { withTimezone: true }),
+  supportingEvidenceUrl: text('supporting_evidence_url'),
   status: varchar('status', { length: 50 }).default('PENDING').notNull(), // 'PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'
+  isEscalated: boolean('is_escalated').default(false).notNull(),
+  escalatedAt: timestamp('escalated_at', { withTimezone: true }),
+  escalationReason: text('escalation_reason'),
   reviewNote: text('review_note'),
   reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -212,6 +238,7 @@ export const leaveRequests = pgTable('leave_requests', {
   orgId: uuid('org_id').references(() => organizations.id).notNull(),
   userId: uuid('user_id').references(() => users.id).notNull(),
   leaveTypeId: uuid('leave_type_id').references(() => leaveTypes.id).notNull(),
+  currentApproverId: uuid('current_approver_id').references(() => users.id),
   startDate: date('start_date').notNull(),
   endDate: date('end_date').notNull(),
   isHalfDay: boolean('is_half_day').default(false).notNull(),
@@ -221,6 +248,14 @@ export const leaveRequests = pgTable('leave_requests', {
   reviewerId: uuid('reviewer_id').references(() => users.id),
   decisionNote: text('decision_note'),
   decidedAt: timestamp('decided_at', { withTimezone: true }),
+  isEscalated: boolean('is_escalated').default(false).notNull(),
+  escalatedAt: timestamp('escalated_at', { withTimezone: true }),
+  escalationReason: text('escalation_reason'),
+  conflictStatus: varchar('conflict_status', { length: 50 }).default('NONE').notNull(), // 'NONE', 'PENDING_ATTENDANCE_CONFLICT', 'APPROVED_ATTENDANCE_CONFLICT'
+  conflictDetails: text('conflict_details'),
+  cancellationReason: text('cancellation_reason'),
+  cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+  cancelledBy: uuid('cancelled_by').references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
@@ -238,14 +273,44 @@ export const notifications = pgTable('notifications', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Attendance Exceptions (Missing Clock-In, Missing Clock-Out, Conflicts, Configuration Errors)
+export const attendanceExceptions = pgTable('attendance_exceptions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').references(() => organizations.id).notNull(),
+  workerId: uuid('worker_id').references(() => users.id).notNull(),
+  worksiteId: uuid('worksite_id').references(() => worksites.id),
+  assignmentId: uuid('assignment_id').references(() => siteAssignments.id),
+  sessionId: uuid('session_id').references(() => attendanceSessions.id),
+  leaveRequestId: uuid('leave_request_id').references(() => leaveRequests.id),
+  workDate: date('work_date').notNull(),
+  exceptionType: varchar('exception_type', { length: 50 }).notNull(), // 'MISSING_CLOCK_IN', 'MISSING_CLOCK_OUT', 'LEAVE_ATTENDANCE_CONFLICT', 'GEOFENCE_BREACH', 'CONFIGURATION_ERROR', 'OVERDUE_APPROVAL'
+  severity: varchar('severity', { length: 20 }).default('MEDIUM').notNull(), // 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'
+  status: varchar('status', { length: 50 }).default('OPEN').notNull(), // 'OPEN', 'INVESTIGATING', 'RESOLVED', 'ESCALATED'
+  primarySupervisorId: uuid('primary_supervisor_id').references(() => users.id),
+  currentApproverId: uuid('current_approver_id').references(() => users.id),
+  isEscalated: boolean('is_escalated').default(false).notNull(),
+  escalatedAt: timestamp('escalated_at', { withTimezone: true }),
+  escalationReason: text('escalation_reason'),
+  resolutionType: varchar('resolution_type', { length: 50 }), // 'UNEXCUSED_ABSENCE', 'APPROVED_LEAVE', 'CONFIGURATION_ERROR', 'CORRECTION_REQUIRED', 'LATE_ARRIVAL', 'EXCUSED_ABSENCE', 'DUPLICATE_INVALID', 'OTHER'
+  resolutionNote: text('resolution_note'),
+  resolvedBy: uuid('resolved_by').references(() => users.id),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Audit Logs
 export const auditLogs = pgTable('audit_logs', {
   id: uuid('id').defaultRandom().primaryKey(),
   orgId: uuid('org_id').references(() => organizations.id),
   actorId: uuid('actor_id').references(() => users.id),
+  actorNameSnapshot: varchar('actor_name_snapshot', { length: 255 }),
+  actorRole: varchar('actor_role', { length: 50 }),
   action: varchar('action', { length: 100 }).notNull(),
   entityType: varchar('entity_type', { length: 100 }).notNull(),
   entityId: varchar('entity_id', { length: 255 }),
+  reason: text('reason'),
+  metadata: text('metadata'), // JSON string
   ipAddress: varchar('ip_address', { length: 50 }),
   userAgent: text('user_agent'),
   beforeValues: text('before_values'), // JSON string
@@ -291,9 +356,49 @@ export const siteExpenses = pgTable('site_expenses', {
   receiptUrl: text('receipt_url'),
   date: date('date').notNull(), // YYYY-MM-DD
   time: varchar('time', { length: 20 }).notNull(), // e.g. '11:30 AM'
+  currency: varchar('currency', { length: 10 }).default('INR').notNull(),
+  status: varchar('status', { length: 50 }).default('PENDING').notNull(), // 'PENDING', 'APPROVED', 'REJECTED'
+  reviewerId: uuid('reviewer_id').references(() => users.id),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  rejectionReason: text('rejection_reason'),
   isLocked: boolean('is_locked').default(false).notNull(),
+  payrollPeriodId: uuid('payroll_period_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+// Payroll Periods
+export const payrollPeriods = pgTable('payroll_periods', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').references(() => organizations.id).notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  startDate: date('start_date').notNull(),
+  endDate: date('end_date').notNull(),
+  status: varchar('status', { length: 50 }).default('DRAFT').notNull(), // 'DRAFT', 'LOCKED', 'FINALIZED'
+  totalWorkers: integer('total_workers').default(0).notNull(),
+  totalStandardMinutes: integer('total_standard_minutes').default(0).notNull(),
+  totalWorkedMinutes: integer('total_worked_minutes').default(0).notNull(),
+  totalCalculatedOtMinutes: integer('total_calculated_ot_minutes').default(0).notNull(),
+  totalApprovedOtMinutes: integer('total_approved_ot_minutes').default(0).notNull(),
+  totalApprovedExpenses: doublePrecision('total_approved_expenses').default(0).notNull(),
+  exceptionCount: integer('exception_count').default(0).notNull(),
+  finalizedBy: uuid('finalized_by').references(() => users.id),
+  finalizedAt: timestamp('finalized_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Payroll Adjustments
+export const payrollAdjustments = pgTable('payroll_adjustments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  payrollPeriodId: uuid('payroll_period_id').references(() => payrollPeriods.id).notNull(),
+  workerId: uuid('worker_id').references(() => users.id).notNull(),
+  adjustmentType: varchar('adjustment_type', { length: 50 }).notNull(), // 'HOURS', 'OVERTIME', 'EXPENSE', 'DEDUCTION', 'BONUS'
+  amountOrMinutes: doublePrecision('amount_or_minutes').notNull(),
+  reason: text('reason').notNull(),
+  adjustedBy: uuid('adjusted_by').references(() => users.id).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 
 

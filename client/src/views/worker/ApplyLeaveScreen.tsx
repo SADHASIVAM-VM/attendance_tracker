@@ -52,7 +52,7 @@ interface ApplyLeaveModalProps {
 
 export const ApplyLeaveModal: React.FC<ApplyLeaveModalProps> = ({ onClose, onSuccess }) => {
   const { user } = useAuth();
-  const isSupervisor = user?.role === 'SUPERVISOR';
+  const isSupervisor = user?.roles?.includes('SUPERVISOR') || (user as any)?.role === 'SUPERVISOR';
   const reviewerAuthority = isSupervisor ? 'Administrator' : 'Assigned Supervisor';
 
   const todayStr = new Date().toISOString().split('T')[0];

@@ -8,8 +8,11 @@ import {
   users,
   auditLogs,
   notifications,
+  siteExpenses,
+  attendanceAdjustmentRequests,
 } from '../database/schema.js';
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, sql, gte, lte } from 'drizzle-orm';
+import { formatMinutes } from '../services/overtimeService.js';
 
 function sanitizeCsvField(val: any): string {
   if (val === null || val === undefined) return '';
@@ -253,9 +256,15 @@ export async function getAuditLogs(req: Request, res: Response): Promise<any> {
       action: auditLogs.action,
       entityType: auditLogs.entityType,
       entityId: auditLogs.entityId,
+      actorId: auditLogs.actorId,
       actorName: users.fullName,
+      actorNameSnapshot: auditLogs.actorNameSnapshot,
+      actorRole: auditLogs.actorRole,
       actorEmail: users.email,
+      reason: auditLogs.reason,
+      metadata: auditLogs.metadata,
       ipAddress: auditLogs.ipAddress,
+      userAgent: auditLogs.userAgent,
       beforeValues: auditLogs.beforeValues,
       afterValues: auditLogs.afterValues,
       createdAt: auditLogs.createdAt,
@@ -264,7 +273,13 @@ export async function getAuditLogs(req: Request, res: Response): Promise<any> {
     .leftJoin(users, eq(auditLogs.actorId, users.id))
     .where(eq(auditLogs.orgId as any, orgId as any));
 
-  allLogs.sort((a: any, b: any) => {
+  const resolvedLogs = allLogs.map((l: any) => ({
+    ...l,
+    actorName: l.actorNameSnapshot || l.actorName || (l.actorRole === 'SYSTEM' ? 'System Automated Service' : 'System User'),
+    actorRole: l.actorRole || 'USER',
+  }));
+
+  resolvedLogs.sort((a: any, b: any) => {
     if (sortBy === 'name') {
       const nameA = (a.actorName || '').toLowerCase();
       const nameB = (b.actorName || '').toLowerCase();
@@ -275,9 +290,9 @@ export async function getAuditLogs(req: Request, res: Response): Promise<any> {
     return sortOrder === 'asc' ? timeA - timeB : timeB - timeA;
   });
 
-  const total = allLogs.length;
+  const total = resolvedLogs.length;
   const totalPages = Math.ceil(total / limit) || 1;
-  const paginatedLogs = allLogs.slice(offset, offset + limit);
+  const paginatedLogs = resolvedLogs.slice(offset, offset + limit);
 
   return res.json({
     data: paginatedLogs,
@@ -319,3 +334,261 @@ export async function markNotificationRead(req: Request, res: Response): Promise
 
   return res.json({ success: true });
 }
+
+/**
+ * GET /reports/attendance-overtime
+ * Filterable attendance and overtime report with summary aggregates
+ */
+export async function getAttendanceOvertimeReport(req: Request, res: Response): Promise<any> {
+  const db = await getDb();
+  const orgId = req.user!.orgId;
+  const { startDate, endDate, worksiteId, workerId, supervisorId, status, otStatus } = req.query;
+
+  const conditions = [eq(attendanceSessions.orgId as any, orgId as any)];
+
+  if (startDate && typeof startDate === 'string') {
+    conditions.push(gte(attendanceSessions.workDate as any, startDate as any));
+  }
+  if (endDate && typeof endDate === 'string') {
+    conditions.push(lte(attendanceSessions.workDate as any, endDate as any));
+  }
+  if (worksiteId && typeof worksiteId === 'string') {
+    conditions.push(eq(attendanceSessions.worksiteSnapshotId as any, worksiteId as any));
+  }
+  if (workerId && typeof workerId === 'string') {
+    conditions.push(eq(attendanceSessions.workerId as any, workerId as any));
+  }
+  if (supervisorId && typeof supervisorId === 'string') {
+    conditions.push(eq(attendanceSessions.supervisorSnapshotId as any, supervisorId as any));
+  }
+  if (status && typeof status === 'string' && status !== 'ALL') {
+    conditions.push(eq(attendanceSessions.status as any, status as any));
+  }
+  if (otStatus && typeof otStatus === 'string' && otStatus !== 'ALL') {
+    conditions.push(eq(attendanceSessions.otStatus as any, otStatus as any));
+  }
+
+  const records = await db
+    .select({
+      id: attendanceSessions.id,
+      workDate: attendanceSessions.workDate,
+      clockInTime: attendanceSessions.clockInTime,
+      clockOutTime: attendanceSessions.clockOutTime,
+      status: attendanceSessions.status,
+      standardHoursMinutes: attendanceSessions.standardHoursMinutes,
+      breakDurationMinutes: attendanceSessions.breakDurationMinutes,
+      netWorkingSeconds: attendanceSessions.netWorkingSeconds,
+      calculatedOtMinutes: attendanceSessions.calculatedOtMinutes,
+      approvedOtMinutes: attendanceSessions.approvedOtMinutes,
+      otStatus: attendanceSessions.otStatus,
+      isAutoApproved: attendanceSessions.isAutoApproved,
+      exceptionStatus: attendanceSessions.exceptionStatus,
+      isPayrollLocked: attendanceSessions.isPayrollLocked,
+      workerId: users.id,
+      workerName: users.fullName,
+      employeeCode: users.employeeCode,
+      worksiteId: worksites.id,
+      worksiteName: worksites.name,
+      shiftName: siteAssignments.shiftName,
+    })
+    .from(attendanceSessions)
+    .innerJoin(users, eq(attendanceSessions.workerId, users.id))
+    .innerJoin(worksites, eq(attendanceSessions.worksiteSnapshotId, worksites.id))
+    .leftJoin(siteAssignments, eq(attendanceSessions.assignmentId, siteAssignments.id))
+    .where(and(...conditions))
+    .orderBy(desc(attendanceSessions.workDate));
+
+  let totalScheduledStandardMinutes = 0;
+  let totalNetWorkedMinutes = 0;
+  let totalCalculatedOtMinutes = 0;
+  let totalApprovedOtMinutes = 0;
+  let totalPendingOtMinutes = 0;
+  let totalRejectedOtMinutes = 0;
+  let incompleteAttendanceCount = 0;
+  let regularisationCount = 0;
+
+  const workerMap = new Map<string, any>();
+  const siteMap = new Map<string, any>();
+
+  const items = records.map((r: any) => {
+    const netMins = Math.floor((r.netWorkingSeconds || 0) / 60);
+    const stdMins = r.standardHoursMinutes || 540;
+    const isMissingClockOut = !r.clockOutTime;
+    const isRegularized = r.exceptionStatus === 'CORRECTION_APPLIED';
+
+    if (isMissingClockOut) incompleteAttendanceCount += 1;
+    if (isRegularized) regularisationCount += 1;
+
+    if (r.status === 'APPROVED' && !isMissingClockOut) {
+      totalScheduledStandardMinutes += stdMins;
+      totalNetWorkedMinutes += netMins;
+      totalCalculatedOtMinutes += (r.calculatedOtMinutes || 0);
+      totalApprovedOtMinutes += (r.approvedOtMinutes || 0);
+
+      if (r.otStatus === 'PENDING') totalPendingOtMinutes += (r.calculatedOtMinutes || 0);
+      if (r.otStatus === 'REJECTED') totalRejectedOtMinutes += (r.calculatedOtMinutes || 0);
+    }
+
+    // Worker aggregate
+    if (!workerMap.has(r.workerId)) {
+      workerMap.set(r.workerId, {
+        workerId: r.workerId,
+        workerName: r.workerName,
+        employeeCode: r.employeeCode,
+        workedMinutes: 0,
+        approvedOtMinutes: 0,
+        calculatedOtMinutes: 0,
+        sessionsCount: 0,
+      });
+    }
+    const w = workerMap.get(r.workerId);
+    w.sessionsCount += 1;
+    if (r.status === 'APPROVED' && !isMissingClockOut) {
+      w.workedMinutes += netMins;
+      w.approvedOtMinutes += (r.approvedOtMinutes || 0);
+      w.calculatedOtMinutes += (r.calculatedOtMinutes || 0);
+    }
+
+    // Site aggregate
+    if (!siteMap.has(r.worksiteId)) {
+      siteMap.set(r.worksiteId, {
+        worksiteId: r.worksiteId,
+        worksiteName: r.worksiteName,
+        workedMinutes: 0,
+        approvedOtMinutes: 0,
+        calculatedOtMinutes: 0,
+        sessionsCount: 0,
+      });
+    }
+    const s = siteMap.get(r.worksiteId);
+    s.sessionsCount += 1;
+    if (r.status === 'APPROVED' && !isMissingClockOut) {
+      s.workedMinutes += netMins;
+      s.approvedOtMinutes += (r.approvedOtMinutes || 0);
+      s.calculatedOtMinutes += (r.calculatedOtMinutes || 0);
+    }
+
+    return {
+      id: r.id,
+      workDate: typeof r.workDate === 'string' ? r.workDate.split('T')[0] : new Date(r.workDate).toISOString().split('T')[0],
+      workerId: r.workerId,
+      workerName: r.workerName,
+      employeeCode: r.employeeCode,
+      worksiteName: r.worksiteName,
+      shiftName: r.shiftName || 'Standard',
+      clockInTime: r.clockInTime,
+      clockOutTime: r.clockOutTime,
+      status: r.status,
+      standardHoursMinutes: stdMins,
+      breakDurationMinutes: r.breakDurationMinutes || 0,
+      netWorkingMinutes: netMins,
+      calculatedOtMinutes: r.calculatedOtMinutes || 0,
+      approvedOtMinutes: r.approvedOtMinutes || 0,
+      otStatus: r.otStatus,
+      isAutoApproved: r.isAutoApproved,
+      exceptionStatus: r.exceptionStatus,
+      isPayrollLocked: Boolean(r.isPayrollLocked),
+      formattedNetHours: formatMinutes(netMins),
+      formattedCalculatedOt: formatMinutes(r.calculatedOtMinutes || 0),
+      formattedApprovedOt: formatMinutes(r.approvedOtMinutes || 0),
+      hasMissingClockOut: isMissingClockOut,
+    };
+  });
+
+  return res.json({
+    metrics: {
+      totalRecords: records.length,
+      totalScheduledStandardHoursFormatted: formatMinutes(totalScheduledStandardMinutes),
+      totalNetWorkedHoursFormatted: formatMinutes(totalNetWorkedMinutes),
+      totalCalculatedOtFormatted: formatMinutes(totalCalculatedOtMinutes),
+      totalApprovedOtFormatted: formatMinutes(totalApprovedOtMinutes),
+      totalPendingOtFormatted: formatMinutes(totalPendingOtMinutes),
+      totalRejectedOtFormatted: formatMinutes(totalRejectedOtMinutes),
+      incompleteAttendanceCount,
+      regularisationCount,
+    },
+    workerTotals: Array.from(workerMap.values()).map((w) => ({
+      ...w,
+      formattedWorkedHours: formatMinutes(w.workedMinutes),
+      formattedApprovedOt: formatMinutes(w.approvedOtMinutes),
+    })),
+    siteTotals: Array.from(siteMap.values()).map((s) => ({
+      ...s,
+      formattedWorkedHours: formatMinutes(s.workedMinutes),
+      formattedApprovedOt: formatMinutes(s.approvedOtMinutes),
+    })),
+    records: items,
+  });
+}
+
+/**
+ * GET /reports/expenses-summary
+ * Site expense aggregates by site and category
+ */
+export async function getExpensesSummaryReport(req: Request, res: Response): Promise<any> {
+  const db = await getDb();
+  const orgId = req.user!.orgId;
+  const { startDate, endDate, worksiteId, status } = req.query;
+
+  const conditions = [eq(siteExpenses.orgId as any, orgId as any)];
+  if (startDate && typeof startDate === 'string') conditions.push(gte(siteExpenses.date as any, startDate as any));
+  if (endDate && typeof endDate === 'string') conditions.push(lte(siteExpenses.date as any, endDate as any));
+  if (worksiteId && typeof worksiteId === 'string') conditions.push(eq(siteExpenses.worksiteId as any, worksiteId as any));
+  if (status && typeof status === 'string' && status !== 'ALL') conditions.push(eq(siteExpenses.status as any, status as any));
+
+  const records = await db
+    .select({
+      id: siteExpenses.id,
+      amount: siteExpenses.amount,
+      category: siteExpenses.category,
+      status: siteExpenses.status,
+      date: siteExpenses.date,
+      worksiteId: siteExpenses.worksiteId,
+      worksiteName: worksites.name,
+    })
+    .from(siteExpenses)
+    .innerJoin(worksites, eq(siteExpenses.worksiteId, worksites.id))
+    .where(and(...conditions));
+
+  let totalExpensesAmount = 0;
+  let totalApprovedAmount = 0;
+  let totalPendingAmount = 0;
+  let totalRejectedAmount = 0;
+
+  const categoryMap = new Map<string, number>();
+  const siteMap = new Map<string, { siteName: string; total: number; approved: number }>();
+
+  records.forEach((r: any) => {
+    const amt = Number(r.amount) || 0;
+    totalExpensesAmount += amt;
+
+    if (r.status === 'APPROVED') totalApprovedAmount += amt;
+    else if (r.status === 'REJECTED') totalRejectedAmount += amt;
+    else totalPendingAmount += amt;
+
+    categoryMap.set(r.category, (categoryMap.get(r.category) || 0) + amt);
+
+    if (!siteMap.has(r.worksiteId)) {
+      siteMap.set(r.worksiteId, { siteName: r.worksiteName, total: 0, approved: 0 });
+    }
+    const s = siteMap.get(r.worksiteId)!;
+    s.total += amt;
+    if (r.status === 'APPROVED') s.approved += amt;
+  });
+
+  return res.json({
+    totalCount: records.length,
+    totalExpensesAmount,
+    totalApprovedAmount,
+    totalPendingAmount,
+    totalRejectedAmount,
+    categoryDistribution: Object.fromEntries(categoryMap),
+    siteDistribution: Array.from(siteMap.entries()).map(([worksiteId, val]) => ({
+      worksiteId,
+      worksiteName: val.siteName,
+      totalAmount: val.total,
+      approvedAmount: val.approved,
+    })),
+  });
+}
+

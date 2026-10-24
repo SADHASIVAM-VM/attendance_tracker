@@ -27,6 +27,7 @@ import {
     MapPin,
     ExternalLink,
     ChevronDown,
+    FileEdit,
 } from 'lucide-react';
 
 interface SupervisorHomeTabProps {
@@ -233,6 +234,29 @@ export const SupervisorHomeTab: React.FC<SupervisorHomeTabProps> = ({
                     variant="default"
                     onClick={() => onNavigateTab('leaves')}
                 />
+            </div>
+
+            {/* ─── QUICK ATTENDANCE REGULARISATION BANNER ────────────────────── */}
+            <div className="bg-gradient-to-r from-blue-50/80 to-indigo-50/60 border border-blue-200/80 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <FileEdit className="w-5 h-5 stroke-[2.5]" />
+                    </div>
+                    <div>
+                        <h4 className="text-xs font-bold text-slate-900 m-0">Attendance Regularisation Queue</h4>
+                        <p className="text-[11px] text-slate-600 m-0 mt-0.5">
+                            Review and approve missed punches and timestamp adjustment requests from workers.
+                        </p>
+                    </div>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => onNavigateTab('regularization')}
+                    className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shrink-0 cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+                >
+                    <span>Review Regularisations</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                </button>
             </div>
 
             {/* ─── 3. PENDING VERIFICATIONS ACTION QUEUE ───────────────────── */}

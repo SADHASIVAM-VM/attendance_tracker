@@ -14,13 +14,15 @@ import {
   leaveRequests,
   leaveTypes,
   attendanceFlags,
+  attendanceExceptions,
 } from '../database/schema.js';
-import { eq, ne, and, sql, desc, inArray } from 'drizzle-orm';
+import { eq, ne, and, or, sql, desc, inArray } from 'drizzle-orm';
 import { calculateHaversineDistance, isWithinGeofence, isAccuracyAcceptable } from '../utils/geo.js';
-import { generateUploadAuthorization, generateSignedDownloadUrl, savePhoto, verifyStorageToken } from '../services/storage.js';
 import { logAuditEvent } from '../utils/audit.js';
-
+import { detectAndFlagLeaveAttendanceConflict } from '../services/escalationService.js';
 import { supervisorClockIn, supervisorClockOut } from './supervisorAttendanceController.js';
+import { generateSignedDownloadUrl, generateUploadAuthorization, savePhoto, verifyStorageToken } from '../services/storage.js';
+import { calculateSessionOvertime } from '../services/overtimeService.js';
 
 const clockInSchema = z.object({
   assignmentId: z.string().uuid().optional(),
@@ -352,6 +354,7 @@ export async function clockIn(req: Request, res: Response): Promise<any> {
       assignmentId,
       workerId,
       supervisorSnapshotId: assignment.supervisorId, // Immutable snapshot of assigned supervisor
+      currentApproverId: isAutoApproved ? null : assignment.supervisorId,
       worksiteSnapshotId: assignment.worksiteId,
       workDate: todayStr,
       status: initialStatus,
@@ -359,6 +362,8 @@ export async function clockIn(req: Request, res: Response): Promise<any> {
       autoApprovalReason,
       idempotencyKey,
       clockInTime: now,
+      approvalSource: isAutoApproved ? 'SYSTEM_AUTO_APPROVAL' : 'MANUAL',
+      approvedAt: isAutoApproved ? now : null,
     })
     .returning();
 
@@ -423,6 +428,9 @@ export async function clockIn(req: Request, res: Response): Promise<any> {
   } catch (flagErr) {
     console.warn('Could not update missing clock-in flag resolution:', flagErr);
   }
+
+  // 7c. Check and flag any leave vs attendance conflict
+  await detectAndFlagLeaveAttendanceConflict(workerId, todayStr, session.id, orgId, assignment.supervisorId);
 
   // 8. Audit event
   await logAuditEvent({
@@ -489,15 +497,15 @@ export async function clockOut(req: Request, res: Response): Promise<any> {
     .where(
       sessionIdParam && sessionIdParam !== 'current' && sessionIdParam !== 'today'
         ? and(
-            eq(attendanceSessions.id as any, sessionIdParam as any),
-            eq(attendanceSessions.workerId as any, workerId as any),
-            eq(attendanceSessions.orgId as any, orgId as any)
-          )
+          eq(attendanceSessions.id as any, sessionIdParam as any),
+          eq(attendanceSessions.workerId as any, workerId as any),
+          eq(attendanceSessions.orgId as any, orgId as any)
+        )
         : and(
-            eq(attendanceSessions.workerId as any, workerId as any),
-            eq(attendanceSessions.orgId as any, orgId as any),
-            sql`DATE(${attendanceSessions.workDate}) = ${todayStr}`
-          )
+          eq(attendanceSessions.workerId as any, workerId as any),
+          eq(attendanceSessions.orgId as any, orgId as any),
+          sql`DATE(${attendanceSessions.workDate}) = ${todayStr}`
+        )
     )
     .orderBy(desc(attendanceSessions.createdAt))
     .limit(1);
@@ -538,6 +546,14 @@ export async function clockOut(req: Request, res: Response): Promise<any> {
     (req.user!.roles || []).includes('SUPER_ADMIN') ||
     session.workerId === session.supervisorSnapshotId;
 
+  // Rule: Non-supervisor field workers MUST provide a verified selfie to clock out
+  if (!isSupervisorUser && (!photoObjectKey || typeof photoObjectKey !== 'string' || photoObjectKey.trim() === '')) {
+    return res.status(400).json({
+      error: 'PHOTO_REQUIRED',
+      message: 'A verified selfie is required to clock out',
+    });
+  }
+
   const isAutoApproved = Boolean(
     session.isAutoApproved || (isSupervisorUser && (org?.supervisorAutoApprove ?? true))
   );
@@ -546,20 +562,51 @@ export async function clockOut(req: Request, res: Response): Promise<any> {
     isSupervisorUser && (org?.supervisorBypassLocation ?? true) && (!isWithinGeofence || bypassLocation)
   );
 
-  // Update session: record clockOutTime and maintain APPROVED if auto-approved
+  let totalDurationSeconds = 0;
+  if (session.clockInTime) {
+    totalDurationSeconds = Math.max(0, Math.round((now.getTime() - new Date(session.clockInTime).getTime()) / 1000));
+  }
+  const breakMinutes = session.breakDurationMinutes || 0;
+  const otCalc = calculateSessionOvertime(
+    session.clockInTime,
+    now,
+    updatedStatus,
+    breakMinutes,
+    {
+      standardHoursMinutes: session.standardHoursMinutes || 540,
+      defaultBreakMinutes: breakMinutes,
+      policyVersion: session.policyVersionSnapshot || 'v1.0',
+    }
+  );
+  const netWorkingSeconds = otCalc.netWorkingMinutes * 60;
+
+  // Update session: record clockOutTime, clockOutSource, duration, overtime and maintain APPROVED if auto-approved
   const [updatedSession] = await db
     .update(attendanceSessions)
     .set({
       clockOutTime: now,
       status: updatedStatus,
+      clockOutSource: 'WORKER_SELF',
+      totalDurationSeconds,
+      netWorkingSeconds,
+      standardHoursMinutes: otCalc.standardHoursMinutes,
+      breakDurationMinutes: otCalc.breakDurationMinutes,
+      calculatedOtMinutes: otCalc.calculatedOtMinutes,
+      approvedOtMinutes: 0,
+      otStatus: otCalc.otStatus,
+      policyVersionSnapshot: otCalc.policyVersion,
+      exceptionStatus: 'NONE',
+      clockOutLatitude: latitude != null ? Number(latitude) : ws?.latitude,
+      clockOutLongitude: longitude != null ? Number(longitude) : ws?.longitude,
+      clockOutAccuracy: reportedAccuracyMeters != null ? Number(reportedAccuracyMeters) : 10,
       updatedAt: now,
     })
     .where(eq(attendanceSessions.id as any, session.id as any))
     .returning();
 
   // Record CLOCK_OUT attendance event with coordinates and selfie
-  const outPhotoKey = photoObjectKey || `selfie_out_${Date.now()}_${workerId}.jpg`;
-  const photoUrl = generateSignedDownloadUrl(outPhotoKey, workerId);
+  const outPhotoKey = photoObjectKey || (isSupervisorUser ? `supervisor_out_${Date.now()}_${workerId}.jpg` : '');
+  const photoUrl = outPhotoKey ? generateSignedDownloadUrl(outPhotoKey, workerId) : '';
 
   await db.insert(attendanceEvents).values({
     sessionId: session.id,
@@ -688,12 +735,12 @@ export async function getPendingApprovals(req: Request, res: Response): Promise<
   const filtered = isSuperOrAdmin
     ? pendingList
     : pendingList.filter(
-        (p: any) =>
-          p.supervisorSnapshotId === user.id ||
-          p.assignmentSupervisorId === user.id ||
-          userWorksiteIds.has(p.worksiteId) ||
-          userWorkerIds.has(p.workerId)
-      );
+      (p: any) =>
+        p.supervisorSnapshotId === user.id ||
+        p.assignmentSupervisorId === user.id ||
+        userWorksiteIds.has(p.worksiteId) ||
+        userWorkerIds.has(p.workerId)
+    );
 
   // Fetch events for these sessions to get location & selfie details
   const sessionIds = filtered.map((p: any) => p.sessionId);
@@ -739,19 +786,31 @@ export async function isSupervisorAuthorizedForSession(
   const isAdminOrSuper = reviewer.roles.includes('ADMIN') || reviewer.roles.includes('SUPER_ADMIN');
   if (isAdminOrSuper) return true;
 
+  // Rule: Workers & supervisors CANNOT approve their own attendance session
+  if (session.workerId === reviewer.id) {
+    return false;
+  }
+
   // 1. Direct snapshot supervisor match
   if (session.supervisorSnapshotId === reviewer.id) return true;
 
-  // 2. Direct assignment supervisor match
+  // 1b. Current approver match (handles fallback supervisor and escalated requests)
+  if (session.currentApproverId === reviewer.id) return true;
+
+  // 2. Direct assignment supervisor or fallback supervisor match
   if (session.assignmentId) {
     const [assignment] = await db
-      .select({ supervisorId: siteAssignments.supervisorId })
+      .select({
+        supervisorId: siteAssignments.supervisorId,
+        fallbackSupervisorId: siteAssignments.fallbackSupervisorId,
+      })
       .from(siteAssignments)
       .where(eq(siteAssignments.id, session.assignmentId))
       .limit(1);
 
-    if (assignment && assignment.supervisorId === reviewer.id) {
-      return true;
+    if (assignment) {
+      if (assignment.supervisorId === reviewer.id) return true;
+      if (assignment.fallbackSupervisorId === reviewer.id) return true;
     }
   }
 
@@ -764,7 +823,10 @@ export async function isSupervisorAuthorizedForSession(
         and(
           eq(siteAssignments.orgId, reviewer.orgId),
           eq(siteAssignments.worksiteId, session.worksiteSnapshotId),
-          eq(siteAssignments.supervisorId, reviewer.id),
+          or(
+            eq(siteAssignments.supervisorId, reviewer.id),
+            eq(siteAssignments.fallbackSupervisorId, reviewer.id)
+          ),
           ne(siteAssignments.status, 'CANCELLED')
         )
       )
@@ -847,6 +909,14 @@ export async function approveAttendance(req: Request, res: Response): Promise<an
     });
   }
 
+  // Rule: A worker or supervisor cannot approve their own attendance session
+  if (session.workerId === reviewer.id) {
+    return res.status(403).json({
+      error: 'CANNOT_APPROVE_OWN_ATTENDANCE',
+      message: 'You cannot approve your own attendance session',
+    });
+  }
+
   // Check authorization across snapshot, assignment, worksite, or worker assignments
   const isAuthorized = await isSupervisorAuthorizedForSession(db, session, reviewer);
 
@@ -912,9 +982,15 @@ export async function rejectAttendance(req: Request, res: Response): Promise<any
     ? (parseResult.data.reason || parseResult.data.decisionNote || parseResult.data.note || parseResult.data.rejectionReason)
     : ((req.body as any)?.decisionNote || (req.body as any)?.reason || (req.body as any)?.note);
 
-  const reason = rawReason && rawReason.trim().length >= 3
-    ? rawReason.trim()
-    : 'Attendance verification rejected by supervisor';
+  // Rejection requires a mandatory reason
+  if (!rawReason || rawReason.trim().length < 3) {
+    return res.status(400).json({
+      error: 'REJECTION_REASON_REQUIRED',
+      message: 'A mandatory rejection reason (at least 3 characters) is required',
+    });
+  }
+
+  const reason = rawReason.trim();
 
   const db = await getDb();
   const reviewer = req.user!;
@@ -1078,6 +1154,7 @@ export async function transferSupervisor(req: Request, res: Response): Promise<a
 export async function getWorkerMyAttendance(req: Request, res: Response): Promise<any> {
   const db = await getDb();
   const workerId = req.user!.id;
+  const todayStr = new Date().toISOString().split('T')[0];
 
   const sessions = await db
     .select({
@@ -1087,6 +1164,15 @@ export async function getWorkerMyAttendance(req: Request, res: Response): Promis
       clockInTime: attendanceSessions.clockInTime,
       clockOutTime: attendanceSessions.clockOutTime,
       rejectionReason: attendanceSessions.rejectionReason,
+      standardHoursMinutes: attendanceSessions.standardHoursMinutes,
+      breakDurationMinutes: attendanceSessions.breakDurationMinutes,
+      netWorkingSeconds: attendanceSessions.netWorkingSeconds,
+      totalDurationSeconds: attendanceSessions.totalDurationSeconds,
+      calculatedOtMinutes: attendanceSessions.calculatedOtMinutes,
+      approvedOtMinutes: attendanceSessions.approvedOtMinutes,
+      otStatus: attendanceSessions.otStatus,
+      isPayrollLocked: attendanceSessions.isPayrollLocked,
+      exceptionStatus: attendanceSessions.exceptionStatus,
       worksiteName: worksites.name,
       worksiteCode: worksites.code,
       shiftName: siteAssignments.shiftName,
@@ -1099,7 +1185,189 @@ export async function getWorkerMyAttendance(req: Request, res: Response): Promis
     .where(eq(attendanceSessions.workerId, workerId))
     .orderBy(desc(attendanceSessions.workDate));
 
-  return res.json(sessions);
+  // Query exceptions for missing clock-in / absence
+  const exceptions = await db
+    .select({
+      id: attendanceExceptions.id,
+      workDate: attendanceExceptions.workDate,
+      exceptionType: attendanceExceptions.exceptionType,
+      status: attendanceExceptions.status,
+      resolutionType: attendanceExceptions.resolutionType,
+      resolutionNote: attendanceExceptions.resolutionNote,
+      worksiteId: attendanceExceptions.worksiteId,
+      worksiteName: worksites.name,
+      worksiteCode: worksites.code,
+      supervisorName: users.fullName,
+      createdAt: attendanceExceptions.createdAt,
+    })
+    .from(attendanceExceptions)
+    .leftJoin(worksites, eq(attendanceExceptions.worksiteId, worksites.id))
+    .leftJoin(users, eq(attendanceExceptions.primarySupervisorId, users.id))
+    .where(eq(attendanceExceptions.workerId, workerId));
+
+  // Query worker's assigned past shifts in roster
+  const assignedDays = await db
+    .select({
+      assignmentId: siteAssignments.id,
+      workDate: siteAssignments.workDate,
+      worksiteId: siteAssignments.worksiteId,
+      worksiteName: worksites.name,
+      worksiteCode: worksites.code,
+      shiftName: siteAssignments.shiftName,
+      supervisorName: users.fullName,
+    })
+    .from(siteAssignmentWorkers)
+    .innerJoin(siteAssignments, eq(siteAssignmentWorkers.assignmentId, siteAssignments.id))
+    .leftJoin(worksites, eq(siteAssignments.worksiteId, worksites.id))
+    .leftJoin(users, eq(siteAssignments.supervisorId, users.id))
+    .where(
+      and(
+        eq(siteAssignmentWorkers.workerId, workerId),
+        ne(siteAssignments.status, 'CANCELLED'),
+        sql`${siteAssignments.workDate} <= ${todayStr}::date`
+      )
+    );
+
+  // Query supervisor-reviewed missing clock-in flags
+  const flags = await db
+    .select({
+      id: attendanceFlags.id,
+      workDate: attendanceFlags.workDate,
+      flagStatus: attendanceFlags.flagStatus,
+      reason: attendanceFlags.reason,
+      note: attendanceFlags.note,
+      reviewedBy: attendanceFlags.reviewedBy,
+      reviewedAt: attendanceFlags.reviewedAt,
+      resolvedByClockIn: attendanceFlags.resolvedByClockIn,
+      resolvedAt: attendanceFlags.resolvedAt,
+      supervisorName: users.fullName,
+    })
+    .from(attendanceFlags)
+    .leftJoin(users, eq(attendanceFlags.reviewedBy, users.id))
+    .where(eq(attendanceFlags.workerId, workerId));
+
+  const flagByDate = new Map<string, any>();
+  for (const f of flags) {
+    const dStr = String(f.workDate).split('T')[0];
+    flagByDate.set(dStr, f);
+  }
+
+  // Attach flag details to existing punch sessions (e.g. late arrivals)
+  for (const s of sessions) {
+    const dStr = String(s.workDate).split('T')[0];
+    const flag = flagByDate.get(dStr);
+    if (flag) {
+      (s as any).flagStatus = flag.flagStatus;
+      (s as any).flagReason = flag.reason;
+      (s as any).flagNote = flag.note;
+      (s as any).flagApproved = flag.flagStatus === 'APPROVED';
+    }
+  }
+
+  const sessionDateSet = new Set(sessions.map((s) => String(s.workDate).split('T')[0]));
+  const result: any[] = [...sessions];
+
+  // 1. Process attendance exceptions
+  for (const ex of exceptions) {
+    const dStr = String(ex.workDate).split('T')[0];
+    if (!sessionDateSet.has(dStr)) {
+      let synthStatus = 'MISSING_CLOCK_IN';
+      if (ex.resolutionType === 'EXCUSED_ABSENCE') {
+        synthStatus = 'EXCUSED_ABSENCE';
+      } else if (ex.resolutionType === 'UNEXCUSED_ABSENCE') {
+        synthStatus = 'ABSENT';
+      } else if (ex.status === 'RESOLVED') {
+        synthStatus = ex.resolutionType || 'RESOLVED';
+      }
+
+      result.push({
+        id: `exception_${ex.id}`,
+        workDate: dStr,
+        status: synthStatus,
+        isAbsent: true,
+        absenceType: ex.resolutionType || 'MISSING_CLOCK_IN',
+        exceptionId: ex.id,
+        exceptionStatus: ex.status,
+        resolutionType: ex.resolutionType,
+        resolutionNote: ex.resolutionNote,
+        worksiteName: ex.worksiteName || 'Assigned Worksite',
+        worksiteCode: ex.worksiteCode || 'SITE',
+        shiftName: 'Scheduled Shift',
+        supervisorName: ex.supervisorName || 'Site Supervisor',
+        clockInTime: null,
+        clockOutTime: null,
+        standardHoursMinutes: 540,
+        breakDurationMinutes: 0,
+        calculatedOtMinutes: 0,
+        approvedOtMinutes: 0,
+        otStatus: 'NONE',
+        isPayrollLocked: false,
+      });
+      sessionDateSet.add(dStr);
+    }
+  }
+
+  // 2. Process assigned past roster days (incorporating supervisor flag decisions)
+  for (const asg of assignedDays) {
+    const dStr = String(asg.workDate).split('T')[0];
+    if (dStr < todayStr && !sessionDateSet.has(dStr)) {
+      const flag = flagByDate.get(dStr);
+      let status = 'ABSENT';
+      let absenceType = 'UNEXCUSED_ABSENCE';
+      let resolutionType = 'UNEXCUSED_ABSENCE';
+      let resolutionNote = 'Scheduled shift missed without clock-in or prior leave';
+
+      if (flag) {
+        if (flag.flagStatus === 'APPROVED') {
+          status = 'EXCUSED_ABSENCE';
+          absenceType = 'EXCUSED_ABSENCE';
+          resolutionType = 'EXCUSED_ABSENCE';
+          resolutionNote = flag.reason
+            ? `Absence Excused by Supervisor: ${flag.reason}${flag.note ? ` ("${flag.note}")` : ''}`
+            : (flag.note || 'Absence excused by supervisor');
+        } else if (flag.flagStatus === 'REJECTED') {
+          status = 'ABSENT';
+          absenceType = 'UNEXCUSED_ABSENCE';
+          resolutionType = 'UNEXCUSED_ABSENCE';
+          resolutionNote = flag.reason
+            ? `Unexcused Absence - Explanation Rejected: ${flag.reason}${flag.note ? ` ("${flag.note}")` : ''}`
+            : (flag.note || 'Unexcused absence - supervisor rejected explanation');
+        } else if (flag.flagStatus === 'PENDING_REVIEW') {
+          status = 'MISSING_CLOCK_IN';
+          absenceType = 'MISSING_CLOCK_IN';
+          resolutionType = 'PENDING';
+          resolutionNote = 'Missing clock-in pending supervisor review';
+        }
+      }
+
+      result.push({
+        id: flag ? `flag_${flag.id}` : `scheduled_absent_${dStr}`,
+        workDate: dStr,
+        status,
+        isAbsent: true,
+        absenceType,
+        exceptionStatus: flag?.flagStatus || 'OPEN',
+        resolutionType,
+        resolutionNote,
+        worksiteName: asg.worksiteName || 'Assigned Worksite',
+        worksiteCode: asg.worksiteCode || 'SITE',
+        shiftName: asg.shiftName || 'Scheduled Shift',
+        supervisorName: flag?.supervisorName || asg.supervisorName || 'Site Supervisor',
+        clockInTime: null,
+        clockOutTime: null,
+        standardHoursMinutes: 540,
+        breakDurationMinutes: 0,
+        calculatedOtMinutes: 0,
+        approvedOtMinutes: 0,
+        otStatus: 'NONE',
+        isPayrollLocked: false,
+      });
+      sessionDateSet.add(dStr);
+    }
+  }
+
+  result.sort((a, b) => (a.workDate < b.workDate ? 1 : -1));
+  return res.json(result);
 }
 
 export async function getSupervisorTeamRoster(req: Request, res: Response): Promise<any> {
@@ -1381,3 +1649,171 @@ export async function getSupervisorTeamRoster(req: Request, res: Response): Prom
     workers: rosterWorkers,
   });
 }
+
+/**
+ * POST /attendance/:id/supervisor-clock-out
+ * Allows an authorized supervisor or admin to clock out an assigned worker
+ */
+export async function supervisorClockOutWorker(req: Request, res: Response): Promise<any> {
+  const { id } = req.params;
+  const supervisor = req.user!;
+  const orgId = supervisor.orgId;
+  const { reason, note } = req.body || {};
+
+  const effectiveReason = (reason || note || '').trim();
+  if (!effectiveReason || effectiveReason.length < 3) {
+    return res.status(400).json({
+      error: 'REASON_REQUIRED',
+      message: 'A mandatory reason (at least 3 characters) is required to record assisted clock-out',
+    });
+  }
+
+  const db = await getDb();
+
+  // Try fetching session by ID, or fallback to worker's active session without clockOutTime
+  let [session] = await db
+    .select()
+    .from(attendanceSessions)
+    .where(and(eq(attendanceSessions.id as any, id as any), eq(attendanceSessions.orgId as any, orgId as any)))
+    .limit(1);
+
+  if (!session) {
+    const [workerSession] = await db
+      .select()
+      .from(attendanceSessions)
+      .where(
+        and(
+          eq(attendanceSessions.workerId as any, id as any),
+          eq(attendanceSessions.orgId as any, orgId as any),
+          sql`${attendanceSessions.clockOutTime} IS NULL`
+        )
+      )
+      .orderBy(desc(attendanceSessions.createdAt))
+      .limit(1);
+
+    if (workerSession) {
+      session = workerSession;
+    }
+  }
+
+  if (!session) {
+    return res.status(404).json({ error: 'SESSION_NOT_FOUND', message: 'Active attendance session not found' });
+  }
+
+  if (session.clockOutTime) {
+    return res.status(400).json({
+      error: 'ALREADY_CLOCKED_OUT',
+      message: 'Worker has already clocked out for this attendance session',
+    });
+  }
+
+  // Verify supervisor is authorized for this worker/session
+  const isAuthorized = await isSupervisorAuthorizedForSession(db, session, supervisor);
+  if (!isAuthorized) {
+    return res.status(403).json({
+      error: 'UNAUTHORIZED_SUPERVISOR',
+      message: 'You are not authorized to clock out this worker',
+    });
+  }
+
+  const now = new Date();
+
+  // Duration calculation
+  let totalDurationSeconds = 0;
+  if (session.clockInTime) {
+    totalDurationSeconds = Math.max(0, Math.round((now.getTime() - new Date(session.clockInTime).getTime()) / 1000));
+  }
+  const netWorkingSeconds = totalDurationSeconds;
+
+  // Worksite coordinates
+  const [ws] = await db
+    .select()
+    .from(worksites)
+    .where(eq(worksites.id, session.worksiteSnapshotId))
+    .limit(1);
+
+  // Update attendance session
+  const [updatedSession] = await db
+    .update(attendanceSessions)
+    .set({
+      clockOutTime: now,
+      clockOutSource: 'SUPERVISOR_ASSISTED',
+      totalDurationSeconds,
+      netWorkingSeconds,
+      exceptionStatus: 'NONE',
+      updatedAt: now,
+    })
+    .where(eq(attendanceSessions.id as any, session.id as any))
+    .returning();
+
+  // Insert CLOCK_OUT event
+  await db.insert(attendanceEvents).values({
+    sessionId: session.id,
+    eventType: 'CLOCK_OUT',
+    eventTimestamp: now,
+    latitude: ws?.latitude ?? 0,
+    longitude: ws?.longitude ?? 0,
+    reportedAccuracyMeters: 10,
+    calculatedDistanceMeters: 0,
+    isWithinGeofence: true,
+    isLocationBypassed: true,
+    photoObjectKey: 'supervisor_assisted_clockout',
+    photoUrl: '',
+    clientDeviceInfo: `[SUPERVISOR_ASSISTED] Clocked out by ${supervisor.fullName} (${supervisor.id}). Reason: ${effectiveReason}`,
+  });
+
+  // Record approval/action
+  await db.insert(approvalActions).values({
+    sessionId: session.id,
+    action: 'SUPERVISOR_CLOCK_OUT',
+    reviewerId: supervisor.id,
+    note: effectiveReason,
+    performedAt: now,
+  });
+
+  // Notify worker
+  await db.insert(notifications).values({
+    userId: session.workerId,
+    title: 'Clocked Out by Supervisor',
+    message: `Your supervisor ${supervisor.fullName} recorded your clock-out. Reason: ${effectiveReason}`,
+    type: 'ATTENDANCE_SUPERVISOR_CLOCK_OUT',
+    entityType: 'ATTENDANCE_SESSION',
+    entityId: session.id,
+  });
+
+  // Audit log
+  await logAuditEvent({
+    orgId: supervisor.orgId,
+    actorId: supervisor.id,
+    actorNameSnapshot: supervisor.fullName,
+    actorRole: supervisor.roles[0],
+    action: 'SUPERVISOR_CLOCK_OUT_WORKER',
+    entityType: 'ATTENDANCE_SESSION',
+    entityId: session.id,
+    reason: effectiveReason,
+    beforeValues: {
+      clockOutTime: null,
+      clockOutSource: session.clockOutSource,
+    },
+    afterValues: {
+      clockOutTime: now.toISOString(),
+      clockOutSource: 'SUPERVISOR_ASSISTED',
+      totalDurationSeconds,
+      supervisorId: supervisor.id,
+      workerId: session.workerId,
+    },
+    metadata: JSON.stringify({
+      workerId: session.workerId,
+      supervisorId: supervisor.id,
+      clockOutTime: now.toISOString(),
+    }),
+    req,
+  });
+
+  return res.json({
+    success: true,
+    message: 'Worker clocked out successfully by supervisor',
+    session: updatedSession,
+  });
+}
+

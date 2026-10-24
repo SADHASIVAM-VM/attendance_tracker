@@ -25,6 +25,9 @@ import {
   Table,
   LayoutGrid,
   InfoIcon,
+  XCircle,
+  ShieldCheck,
+  FileEdit,
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -84,6 +87,7 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
   // Regularization Modal State
   const [regModalOpen, setRegModalOpen] = useState<boolean>(false);
   const [selectedSessionForReg, setSelectedSessionForReg] = useState<any | null>(null);
+  const [regCorrectionType, setRegCorrectionType] = useState<string>('INCORRECT_HOURS');
   const [regReason, setRegReason] = useState<string>('');
   const [proposedClockIn, setProposedClockIn] = useState<string>('');
   const [proposedClockOut, setProposedClockOut] = useState<string>('');
@@ -99,9 +103,42 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
   const [applyHalfDayPeriod, setApplyHalfDayPeriod] = useState<string>('FIRST_HALF');
   const [submittingLeave, setSubmittingLeave] = useState<boolean>(false);
 
+  // Overtime Monthly Summary state (Phase 3)
+  const [overtimeSummary, setOvertimeSummary] = useState<{
+    month: string;
+    totalAttendanceDays: number;
+    totalNetWorkedMinutes: number;
+    totalStandardHoursMinutes: number;
+    totalCalculatedOtMinutes: number;
+    totalApprovedOtMinutes: number;
+    totalPendingOtMinutes: number;
+    totalRejectedOtMinutes: number;
+    daysWithOtCount: number;
+    formattedTotalNetHours: string;
+    formattedTotalCalculatedOt: string;
+    formattedTotalApprovedOt: string;
+    formattedTotalPendingOt: string;
+  } | null>(null);
+
   useEffect(() => {
     loadAllWorkerData();
   }, []);
+
+  useEffect(() => {
+    loadOvertimeSummary(currentYear, currentMonth);
+  }, [currentYear, currentMonth]);
+
+  const loadOvertimeSummary = async (year: number, monthIndex: number) => {
+    try {
+      const monthStr = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+      const data = await apiRequest(`/attendance/me/overtime-summary?month=${monthStr}`);
+      if (data && typeof data === 'object') {
+        setOvertimeSummary(data);
+      }
+    } catch (err: any) {
+      console.warn('Could not load overtime summary:', err);
+    }
+  };
 
   const loadAllWorkerData = async () => {
     try {
@@ -118,6 +155,7 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
       if (typesData.length > 0 && !applyLeaveTypeId) {
         setApplyLeaveTypeId(typesData[0].id);
       }
+      await loadOvertimeSummary(currentYear, currentMonth);
     } catch (err: any) {
       setMessage({ text: err.message || 'Failed to load attendance and leave data', type: 'error' });
     } finally {
@@ -161,6 +199,13 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
         worksiteCode: existing?.worksiteCode || todayWorksite?.code || 'WS-TODAY',
         shiftName: existing?.shiftName || assignedShiftInfo?.shiftName || 'General Shift',
         supervisorName: existing?.supervisorName || assignedShiftInfo?.supervisorName || 'Site Supervisor',
+        calculatedOtMinutes: existing?.calculatedOtMinutes || 0,
+        approvedOtMinutes: existing?.approvedOtMinutes || 0,
+        otStatus: existing?.otStatus || 'NONE',
+        standardHoursMinutes: existing?.standardHoursMinutes || 540,
+        breakDurationMinutes: existing?.breakDurationMinutes || 0,
+        isPayrollLocked: Boolean(existing?.isPayrollLocked),
+        exceptionStatus: existing?.exceptionStatus || 'NONE',
       });
     }
 
@@ -256,6 +301,7 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
     let pastLeaveCount = 0;
     let futureLeaveCount = 0;
     let pendingApprovalCount = 0;
+    let missedCount = 0;
 
     for (const day of calendarDays) {
       if (!day.isCurrentMonth) continue;
@@ -263,6 +309,14 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
       if (day.attendance) {
         if (day.attendance.status === 'APPROVED') presentCount++;
         if (day.attendance.status === 'PENDING') pendingApprovalCount++;
+        if (
+          day.attendance.isAbsent ||
+          day.attendance.status === 'ABSENT' ||
+          day.attendance.status === 'UNEXCUSED_ABSENCE' ||
+          day.attendance.status === 'MISSING_CLOCK_IN'
+        ) {
+          missedCount++;
+        }
       }
 
       if (day.leave && day.leave.status !== 'REJECTED' && day.leave.status !== 'CANCELLED') {
@@ -274,7 +328,7 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
       }
     }
 
-    return { presentCount, pastLeaveCount, futureLeaveCount, pendingApprovalCount };
+    return { presentCount, pastLeaveCount, futureLeaveCount, pendingApprovalCount, missedCount };
   }, [calendarDays]);
 
   // Calendar Navigation Handlers
@@ -385,8 +439,12 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
   const openRegularizationModal = (session: any) => {
     setSelectedSessionForReg(session);
     setRegReason('');
-    setProposedClockIn(session.clockInTime ? new Date(session.clockInTime).toISOString().slice(0, 16) : '');
-    setProposedClockOut(session.clockOutTime ? new Date(session.clockOutTime).toISOString().slice(0, 16) : '');
+    const dStr = session.workDate || session.date || (session.clockInTime ? new Date(session.clockInTime).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
+    setProposedClockIn(session.clockInTime ? new Date(session.clockInTime).toISOString().slice(0, 16) : `${dStr}T09:00`);
+    setProposedClockOut(session.clockOutTime ? new Date(session.clockOutTime).toISOString().slice(0, 16) : `${dStr}T18:00`);
+    if (session.isAbsent || session.status === 'MISSING_CLOCK_IN' || session.status === 'ABSENT' || session.status === 'UNEXCUSED_ABSENCE') {
+      setRegCorrectionType('MISSING_CLOCK_IN');
+    }
     setDateModalOpen(false);
     setRegModalOpen(true);
   };
@@ -400,6 +458,7 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
       await apiRequest(`/attendance/${selectedSessionForReg.id}/regularization`, {
         method: 'POST',
         body: JSON.stringify({
+          correctionType: regCorrectionType,
           reason: regReason,
           proposedClockInTime: proposedClockIn ? new Date(proposedClockIn).toISOString() : undefined,
           proposedClockOutTime: proposedClockOut ? new Date(proposedClockOut).toISOString() : undefined,
@@ -456,6 +515,100 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
               </h1>
 
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* SECTION B: WORKER MONTHLY OVERTIME DASHBOARD */}
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-5 text-white shadow-lg border border-slate-800">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-white/10">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                Overtime Summary
+              </span>
+              <span className="text-xs text-slate-400">Standard: 9 Hours / Workday</span>
+            </div>
+            <h2 className="text-lg font-bold text-white mt-1">
+              Monthly Overtime Overview • {MONTH_NAMES[currentMonth]} {currentYear}
+            </h2>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handlePrevMonth}
+              className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+              title="Previous Month"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-xs font-bold px-3 py-1 bg-white/5 rounded-xl border border-white/10">
+              {MONTH_NAMES[currentMonth].slice(0, 3)} {currentYear}
+            </span>
+            <button
+              onClick={handleNextMonth}
+              className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+              title="Next Month"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* 5 Overtime & Working Metrics Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-4">
+          {/* 1. Total Net Worked Hours */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 backdrop-blur-xs">
+            <span className="text-[11px] font-medium text-slate-400 block">Total Net Worked</span>
+            <span className="text-xl font-extrabold text-white block mt-1">
+              {overtimeSummary?.formattedTotalNetHours || '0m'}
+            </span>
+            <span className="text-[10px] text-slate-400 mt-0.5 block">Minus unpaid breaks</span>
+          </div>
+
+          {/* 2. Total Calculated OT */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 backdrop-blur-xs">
+            <span className="text-[11px] font-medium text-slate-400 block">Calculated OT</span>
+            <span className="text-xl font-extrabold text-indigo-300 block mt-1">
+              {overtimeSummary?.formattedTotalCalculatedOt || '0m'}
+            </span>
+            <span className="text-[10px] text-indigo-300/70 mt-0.5 block">&gt; 9h workday threshold</span>
+          </div>
+
+          {/* 3. Approved OT */}
+          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-3.5 backdrop-blur-xs">
+            <span className="text-[11px] font-medium text-emerald-400 flex items-center justify-between">
+              Approved OT
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+            </span>
+            <span className="text-xl font-extrabold text-emerald-300 block mt-1">
+              {overtimeSummary?.formattedTotalApprovedOt || '0m'}
+            </span>
+            <span className="text-[10px] text-emerald-400/80 mt-0.5 block">Approved by supervisor</span>
+          </div>
+
+          {/* 4. Pending Review OT */}
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3.5 backdrop-blur-xs">
+            <span className="text-[11px] font-medium text-amber-400 flex items-center justify-between">
+              Pending Review
+              <Clock className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+            </span>
+            <span className="text-xl font-extrabold text-amber-300 block mt-1">
+              {overtimeSummary?.formattedTotalPendingOt || '0m'}
+            </span>
+            <span className="text-[10px] text-amber-400/80 mt-0.5 block">In review queue</span>
+          </div>
+
+          {/* 5. Days with OT */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 backdrop-blur-xs col-span-2 sm:col-span-1">
+            <span className="text-[11px] font-medium text-slate-400 block">Days With OT</span>
+            <span className="text-xl font-extrabold text-white block mt-1">
+              {overtimeSummary?.daysWithOtCount ?? 0}
+              <span className="text-xs font-normal text-slate-400 ml-1">days</span>
+            </span>
+            <span className="text-[10px] text-slate-400 mt-0.5 block">
+              of {overtimeSummary?.totalAttendanceDays ?? 0} active days
+            </span>
           </div>
         </div>
       </div>
@@ -592,7 +745,7 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
           </div>
 
           {/* Month Summary Metrics Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-2xs">
               <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
                 Days Present
@@ -625,6 +778,14 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
                 {monthStats.pendingApprovalCount} Records
               </span>
             </div>
+            <div className="bg-white rounded-2xl border border-rose-100 bg-rose-50/30 p-3.5 shadow-2xs">
+              <span className="text-[11px] font-semibold text-rose-600 uppercase tracking-wider block">
+                Missed / Absent
+              </span>
+              <span className="text-md font-bold text-rose-600 mt-0.5 block">
+                {monthStats.missedCount} Days
+              </span>
+            </div>
           </div>
 
           {/* Master Calendar Grid */}
@@ -654,10 +815,13 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
                 // 2. If he applied a leave in future -> fill up VIOLET colour
                 const isVioletLeaveFill = hasLeave && isFuture && day.leave.status !== 'CANCELLED';
 
-                // 3. Other states
-                const isPresentGreen = hasAttendance && day.attendance.status === 'APPROVED';
-                const isPendingAmber = hasAttendance && day.attendance.status === 'PENDING';
-                const isRejectedRed = (hasAttendance && day.attendance.status === 'REJECTED') || (hasLeave && day.leave.status === 'REJECTED');
+                // 3. Attendance & Absence states
+                const isAbsentUnexcused = hasAttendance && (day.attendance.status === 'ABSENT' || day.attendance.status === 'UNEXCUSED_ABSENCE');
+                const isExcusedAbsence = hasAttendance && day.attendance.status === 'EXCUSED_ABSENCE';
+                const isMissingClockIn = hasAttendance && day.attendance.status === 'MISSING_CLOCK_IN';
+                const isPresentGreen = hasAttendance && day.attendance.status === 'APPROVED' && !day.attendance.isAbsent;
+                const isPendingAmber = hasAttendance && day.attendance.status === 'PENDING' && !day.attendance.isAbsent;
+                const isRejectedRed = (hasAttendance && day.attendance.status === 'REJECTED' && !day.attendance.isAbsent) || (hasLeave && day.leave.status === 'REJECTED');
                 const isTodayPendingClockIn = isToday && !hasAttendance && !hasLeave;
 
                 return (
@@ -671,16 +835,23 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
                         // 2. Gray color fill for past leave taken
                         : isGrayLeaveFill
                           ? 'bg-slate-200 hover:bg-slate-300/80 text-slate-800 border-slate-300'
-                          // 3. Attendance states
-                          : isPresentGreen
-                            ? 'bg-emerald-50/50 hover:bg-emerald-100/60 text-slate-800 border-emerald-200'
-                            : isPendingAmber
-                              ? 'bg-amber-50/80 hover:bg-amber-100/70 text-amber-950 border-amber-300'
-                              : isTodayPendingClockIn
-                                ? 'bg-amber-50/60 hover:bg-amber-100/60 text-amber-950 border-amber-200'
-                                : day.isCurrentMonth
-                                  ? 'bg-white hover:bg-slate-50/80 text-slate-700'
-                                  : 'bg-slate-50/30 text-slate-300 hover:bg-slate-50'
+                          // 3. Absence and Missed punch states
+                          : isAbsentUnexcused
+                            ? 'bg-rose-50/90 hover:bg-rose-100/80 text-rose-950 border-rose-300'
+                            : isExcusedAbsence
+                              ? 'bg-blue-50/80 hover:bg-blue-100/80 text-blue-950 border-blue-200'
+                              : isMissingClockIn
+                                ? 'bg-amber-50/80 hover:bg-amber-100/70 text-amber-950 border-amber-300'
+                                // 4. Attendance states
+                                : isPresentGreen
+                                  ? 'bg-emerald-50/50 hover:bg-emerald-100/60 text-slate-800 border-emerald-200'
+                                  : isPendingAmber
+                                    ? 'bg-amber-50/80 hover:bg-amber-100/70 text-amber-950 border-amber-300'
+                                    : isTodayPendingClockIn
+                                      ? 'bg-amber-50/60 hover:bg-amber-100/60 text-amber-950 border-amber-200'
+                                      : day.isCurrentMonth
+                                        ? 'bg-white hover:bg-slate-50/80 text-slate-700'
+                                        : 'bg-slate-50/30 text-slate-300 hover:bg-slate-50'
                       } ${isSelected ? 'ring-2 ring-inset ring-slate-900' : ''}`}
                   >
                     {/* Top Row: Date Number and Pill */}
@@ -741,6 +912,60 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
                         </div>
                       )}
 
+                      {/* Absent Unexcused Indicator */}
+                      {!hasLeave && isAbsentUnexcused && (
+                        <div className="bg-rose-100 border border-rose-300 p-1.5 rounded-md text-[10px] font-bold text-rose-900 flex flex-col gap-0.5 shadow-2xs">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="flex items-center gap-1 text-rose-900 font-extrabold truncate">
+                              <XCircle className="w-3 h-3 text-rose-600 shrink-0" />
+                              Absent
+                            </span>
+                            <span className="text-[8px] bg-rose-200 text-rose-900 px-1 py-0.2 rounded font-black tracking-wider uppercase shrink-0">
+                              Unexcused
+                            </span>
+                          </div>
+                          <span className="text-[9px] text-rose-700 truncate">
+                            {day.attendance.resolutionNote || 'No punch recorded'}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Excused Absence Indicator */}
+                      {!hasLeave && isExcusedAbsence && (
+                        <div className="bg-blue-100 border border-blue-300 p-1.5 rounded-md text-[10px] font-bold text-blue-900 flex flex-col gap-0.5 shadow-2xs">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="flex items-center gap-1 text-blue-900 font-extrabold truncate">
+                              <ShieldCheck className="w-3 h-3 text-blue-600 shrink-0" />
+                              Excused
+                            </span>
+                            <span className="text-[8px] bg-blue-200 text-blue-900 px-1 py-0.2 rounded font-black tracking-wider uppercase shrink-0">
+                              Approved
+                            </span>
+                          </div>
+                          <span className="text-[9px] text-blue-700 truncate">
+                            {day.attendance.resolutionNote || 'Excused absence'}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Missing Clock-In / Missed Punch */}
+                      {!hasLeave && isMissingClockIn && (
+                        <div className="bg-amber-100 border border-amber-300 p-1.5 rounded-md text-[10px] font-bold text-amber-900 flex flex-col gap-0.5 shadow-2xs">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="flex items-center gap-1 text-amber-900 font-extrabold truncate">
+                              <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
+                              Missed Punch
+                            </span>
+                            <span className="text-[8px] bg-amber-200 text-amber-900 px-1 py-0.2 rounded font-black tracking-wider uppercase shrink-0">
+                              Action Req.
+                            </span>
+                          </div>
+                          <span className="text-[9px] text-amber-700 truncate">
+                            No clock-in logged
+                          </span>
+                        </div>
+                      )}
+
                       {/* Attendance: Clock-In Present */}
                       {!hasLeave && isPresentGreen && (
                         <div className="bg-emerald-100/80 border border-emerald-200 p-1 rounded-md text-[10px] font-medium text-emerald-900 flex items-center justify-between">
@@ -794,6 +1019,32 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
                           Rejected
                         </div>
                       )}
+
+                      {/* Compact Overtime Badge (Section C) */}
+                      {day.attendance && day.attendance.calculatedOtMinutes > 0 && (() => {
+                        const calcOt = day.attendance.calculatedOtMinutes;
+                        const isApproved = day.attendance.otStatus === 'APPROVED';
+                        const isPending = day.attendance.otStatus === 'PENDING';
+                        const otH = Math.floor(calcOt / 60);
+                        const otM = calcOt % 60;
+                        const otText = otM > 0 ? `${otH}h ${otM}m` : `${otH}h`;
+
+                        return (
+                          <div
+                            className={`px-1.5 py-0.5 rounded-md text-[9px] font-extrabold inline-flex items-center gap-1 border shadow-2xs ${
+                              isApproved
+                                ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                : isPending
+                                ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                : 'bg-slate-100 text-slate-700 border-slate-300'
+                            }`}
+                            title={`Calculated Overtime: ${otText} (${day.attendance.otStatus || 'PENDING'})`}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full ${isApproved ? 'bg-emerald-600' : isPending ? 'bg-amber-600' : 'bg-slate-500'}`}></span>
+                            <span>OT {otText}</span>
+                          </div>
+                        );
+                      })()}
 
                       {/* Unscheduled past day (excluding today) */}
                       {!hasLeave && !hasAttendance && !isFuture && !isToday && day.isCurrentMonth && (
@@ -1041,87 +1292,277 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
                 </div>
               )}
 
-              {/* Attendance Session Details if clocked in */}
+              {/* Attendance Session Details if clocked in or recorded as absent/missed */}
               {modalDayData.attendance ? (
-                <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                        Work Attendance Record
-                      </span>
-                      <h4 className="text-base font-bold text-slate-900 mt-0.5 m-0">
-                        {modalDayData.attendance.worksiteName}
-                      </h4>
-                      <span className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                        Code: {modalDayData.attendance.worksiteCode}
-                      </span>
-                    </div>
-                    <StatusBadge status={modalDayData.attendance.status} />
-                  </div>
+                modalDayData.attendance.isAbsent ? (() => {
+                  const isExcused = modalDayData.attendance.status === 'EXCUSED_ABSENCE';
+                  const isMissing = modalDayData.attendance.status === 'MISSING_CLOCK_IN';
 
-                  {modalDayData.attendance.status === 'PENDING' && (
-                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2.5 text-amber-950 text-xs">
-                      <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5 animate-pulse" />
+                  return (
+                    <div className={`p-4 rounded-xl bg-white border shadow-2xs space-y-3 ${
+                      isExcused
+                        ? 'border-blue-200'
+                        : isMissing
+                        ? 'border-amber-200'
+                        : 'border-rose-200'
+                    }`}>
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <span className={`text-[11px] font-semibold uppercase tracking-wider block ${
+                            isExcused
+                              ? 'text-blue-600'
+                              : isMissing
+                              ? 'text-amber-600'
+                              : 'text-rose-600'
+                          }`}>
+                            {isExcused ? 'Excused Absence' : isMissing ? 'Missing Punch Case' : 'Attendance Exception / Absence'}
+                          </span>
+                          <h4 className="text-base font-bold text-slate-900 mt-0.5 m-0">
+                            {modalDayData.attendance.worksiteName || 'Assigned Worksite'}
+                          </h4>
+                          <span className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                            <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                            Shift: {modalDayData.attendance.shiftName || 'Standard Day Shift'}
+                          </span>
+                        </div>
+                        <StatusBadge status={modalDayData.attendance.status} />
+                      </div>
+
+                      <div className={`p-3 border rounded-xl space-y-1.5 text-xs ${
+                        isExcused
+                          ? 'bg-blue-50 border-blue-200 text-blue-950'
+                          : isMissing
+                          ? 'bg-amber-50 border-amber-200 text-amber-950'
+                          : 'bg-rose-50 border-rose-200 text-rose-950'
+                      }`}>
+                        <div className={`flex items-center gap-2 font-bold ${
+                          isExcused ? 'text-blue-900' : isMissing ? 'text-amber-900' : 'text-rose-900'
+                        }`}>
+                          {isExcused ? (
+                            <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0" />
+                          ) : isMissing ? (
+                            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                          ) : (
+                            <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                          )}
+                          <span>
+                            {isExcused
+                              ? 'Excused Absence Recorded • Approved by Supervisor'
+                              : isMissing
+                              ? 'Missing Clock-In (Pending Review)'
+                              : 'Unexcused Absence Recorded'}
+                          </span>
+                        </div>
+                        <p className={`text-[11px] m-0 ${
+                          isExcused ? 'text-blue-800' : isMissing ? 'text-amber-800' : 'text-rose-800'
+                        }`}>
+                          {modalDayData.attendance.resolutionNote
+                            ? `Supervisor Resolution: "${modalDayData.attendance.resolutionNote}"`
+                            : isExcused
+                            ? 'Your absence explanation was accepted and approved by your supervisor.'
+                            : 'No clock-in punch was logged for this scheduled workday, and no approved leave was on file.'}
+                        </p>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <span className="text-[11px] text-slate-500">
+                          Were you present or need to regularise this date?
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleOpenQuickApplyLeave(modalDateStr)}
+                            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
+                          >
+                            Apply Retroactive Leave
+                          </button>
+                          <button
+                            onClick={() => openRegularizationModal(modalDayData.attendance)}
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer shadow-xs flex items-center gap-1"
+                          >
+                            <FileEdit className="w-3.5 h-3.5" />
+                            Request Regularisation
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })() : (
+                  <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-3">
+                    <div className="flex items-start justify-between">
                       <div>
-                        <span className="font-bold block">Clock-In Registered • Pending Supervisor Review</span>
-                        <span className="text-amber-800 text-[11px]">
-                          Your punch has been recorded and submitted. It is currently waiting for review and approval from your supervisor.
+                        <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                          Work Attendance Record
+                        </span>
+                        <h4 className="text-base font-bold text-slate-900 mt-0.5 m-0">
+                          {modalDayData.attendance.worksiteName}
+                        </h4>
+                        <span className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                          Code: {modalDayData.attendance.worksiteCode}
+                        </span>
+                      </div>
+                      <StatusBadge status={modalDayData.attendance.status} />
+                    </div>
+
+                    {modalDayData.attendance.status === 'PENDING' && (
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2.5 text-amber-950 text-xs">
+                        <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5 animate-pulse" />
+                        <div>
+                          <span className="font-bold block">Clock-In Registered • Pending Supervisor Review</span>
+                          <span className="text-amber-800 text-[11px]">
+                            Your punch has been recorded and submitted. It is currently waiting for review and approval from your supervisor.
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {modalDayData.attendance.flagApproved && (
+                      <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 text-xs text-emerald-950">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <div>
+                          <span className="font-bold block text-emerald-900">Late Clock-In Approved by Supervisor</span>
+                          <span className="text-emerald-700 text-[11px]">
+                            {modalDayData.attendance.flagReason || 'Approved delay'}
+                            {modalDayData.attendance.flagNote ? ` • Note: "${modalDayData.attendance.flagNote}"` : ''}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-3 rounded-lg border border-slate-100">
+                      <div>
+                        <span className="text-slate-500 block text-[11px]">Clock-In Time</span>
+                        <span className="font-bold text-emerald-700 text-sm block mt-0.5">
+                          {modalDayData.attendance.clockInTime
+                            ? (typeof modalDayData.attendance.clockInTime === 'string' && (modalDayData.attendance.clockInTime.includes('AM') || modalDayData.attendance.clockInTime.includes('PM'))
+                              ? modalDayData.attendance.clockInTime
+                              : new Date(modalDayData.attendance.clockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
+                            : '—'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[11px]">Clock-Out Time</span>
+                        <span className="font-bold text-slate-800 text-sm block mt-0.5">
+                          {modalDayData.attendance.clockOutTime
+                            ? (typeof modalDayData.attendance.clockOutTime === 'string' && (modalDayData.attendance.clockOutTime.includes('AM') || modalDayData.attendance.clockOutTime.includes('PM'))
+                              ? modalDayData.attendance.clockOutTime
+                              : new Date(modalDayData.attendance.clockOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
+                            : <span className="text-amber-700 font-bold flex items-center gap-1">Missing Clock-Out</span>}
                         </span>
                       </div>
                     </div>
-                  )}
 
-                  <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-3 rounded-lg border border-slate-100">
-                    <div>
-                      <span className="text-slate-500 block text-[11px]">Clock-In Time</span>
-                      <span className="font-bold text-emerald-700 text-sm block mt-0.5">
-                        {modalDayData.attendance.clockInTime
-                          ? (typeof modalDayData.attendance.clockInTime === 'string' && (modalDayData.attendance.clockInTime.includes('AM') || modalDayData.attendance.clockInTime.includes('PM'))
-                            ? modalDayData.attendance.clockInTime
-                            : new Date(modalDayData.attendance.clockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
-                          : '—'}
-                      </span>
+                    {/* Missing punch alert */}
+                    {!modalDayData.attendance.clockOutTime && (
+                      <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl flex items-start gap-2 text-amber-950 text-xs">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold block">Incomplete Session • Missing Clock-Out</span>
+                          <span className="text-[11px] text-amber-800">
+                            Overtime cannot be finalized without a valid clock-out. Request regularization below if you forgot to clock out.
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Overtime and Working Duration Card */}
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                          Hours & Overtime Breakdown
+                        </span>
+                        {modalDayData.attendance.isPayrollLocked && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-700 border border-slate-300">
+                            🔒 Payroll Locked
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-xs">
+                        <div className="bg-white p-2 rounded-lg border border-slate-200">
+                          <span className="text-[10px] text-slate-500 block">Standard Hours</span>
+                          <span className="font-bold text-slate-900 block mt-0.5">
+                            {Math.floor((modalDayData.attendance.standardHoursMinutes || 540) / 60)}h
+                          </span>
+                        </div>
+
+                        <div className="bg-white p-2 rounded-lg border border-slate-200">
+                          <span className="text-[10px] text-slate-500 block">Break Deducted</span>
+                          <span className="font-bold text-slate-900 block mt-0.5">
+                            {modalDayData.attendance.breakDurationMinutes || 0}m
+                          </span>
+                        </div>
+
+                        <div className="bg-white p-2 rounded-lg border border-slate-200">
+                          <span className="text-[10px] text-slate-500 block">Calculated OT</span>
+                          <span className="font-bold text-indigo-700 block mt-0.5">
+                            {modalDayData.attendance.calculatedOtMinutes
+                              ? `${Math.floor(modalDayData.attendance.calculatedOtMinutes / 60)}h ${modalDayData.attendance.calculatedOtMinutes % 60}m`
+                              : '0m'}
+                          </span>
+                        </div>
+
+                        <div className="bg-white p-2 rounded-lg border border-slate-200">
+                          <span className="text-[10px] text-slate-500 block">Approved OT</span>
+                          <span className="font-bold text-emerald-700 block mt-0.5">
+                            {modalDayData.attendance.approvedOtMinutes
+                              ? `${Math.floor(modalDayData.attendance.approvedOtMinutes / 60)}h ${modalDayData.attendance.approvedOtMinutes % 60}m`
+                              : '0m'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {modalDayData.attendance.otStatus && modalDayData.attendance.otStatus !== 'NONE' && (
+                        <div className="flex items-center justify-between pt-1 border-t border-slate-200 text-xs">
+                          <span className="text-slate-500 text-[11px]">OT Decision Status:</span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                              modalDayData.attendance.otStatus === 'APPROVED'
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : modalDayData.attendance.otStatus === 'REJECTED'
+                                ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                                : 'bg-amber-100 text-amber-800 border border-amber-300'
+                            }`}
+                          >
+                            {modalDayData.attendance.otStatus === 'APPROVED'
+                              ? 'Approved by Supervisor'
+                              : modalDayData.attendance.otStatus === 'REJECTED'
+                              ? 'Rejected by Supervisor'
+                              : 'Pending Supervisor Review'}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <span className="text-slate-500 block text-[11px]">Clock-Out Time</span>
-                      <span className="font-bold text-slate-800 text-sm block mt-0.5">
-                        {modalDayData.attendance.clockOutTime
-                          ? (typeof modalDayData.attendance.clockOutTime === 'string' && (modalDayData.attendance.clockOutTime.includes('AM') || modalDayData.attendance.clockOutTime.includes('PM'))
-                            ? modalDayData.attendance.clockOutTime
-                            : new Date(modalDayData.attendance.clockOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
-                          : 'Pending Punch'}
-                      </span>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-slate-500 block text-[11px]">Shift</span>
+                        <span className="font-semibold text-slate-800">{modalDayData.attendance.shiftName}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[11px]">Supervisor</span>
+                        <span className="font-semibold text-slate-800">{modalDayData.attendance.supervisorName}</span>
+                      </div>
+                    </div>
+
+                    {modalDayData.attendance.rejectionReason && (
+                      <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-800">
+                        <span className="font-bold block text-[11px]">Supervisor Rejection Note:</span>
+                        <span>{modalDayData.attendance.rejectionReason}</span>
+                      </div>
+                    )}
+
+                    <div className="pt-2 border-t border-slate-100 flex justify-end">
+                      <button
+                        onClick={() => openRegularizationModal(modalDayData.attendance)}
+                        className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                      >
+                        Request Regularization / Correction
+                      </button>
                     </div>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <span className="text-slate-500 block text-[11px]">Shift</span>
-                      <span className="font-semibold text-slate-800">{modalDayData.attendance.shiftName}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block text-[11px]">Supervisor</span>
-                      <span className="font-semibold text-slate-800">{modalDayData.attendance.supervisorName}</span>
-                    </div>
-                  </div>
-
-                  {modalDayData.attendance.rejectionReason && (
-                    <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-800">
-                      <span className="font-bold block text-[11px]">Supervisor Rejection Note:</span>
-                      <span>{modalDayData.attendance.rejectionReason}</span>
-                    </div>
-                  )}
-
-                  <div className="pt-2 border-t border-slate-100 flex justify-end">
-                    <button
-                      onClick={() => openRegularizationModal(modalDayData.attendance)}
-                      className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-                    >
-                      Request Regularization / Correction
-                    </button>
-                  </div>
-                </div>
+                )
               ) : !modalDayData.leave ? (
                 modalDayData.isToday ? (
                   <div className="p-5 rounded-xl bg-amber-50/80 border-2 border-amber-300 text-center space-y-3">
@@ -1164,6 +1605,20 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
                         className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer"
                       >
                         Apply Retroactive Leave
+                      </button>
+                      <button
+                        onClick={() => openRegularizationModal({
+                          id: `scheduled_absent_${modalDateStr}`,
+                          workDate: modalDateStr,
+                          date: modalDateStr,
+                          worksiteName: 'Assigned Worksite',
+                          isAbsent: true,
+                          status: 'MISSING_CLOCK_IN'
+                        })}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold cursor-pointer shadow-xs flex items-center gap-1"
+                      >
+                        <FileEdit className="w-3.5 h-3.5" />
+                        Request Regularisation
                       </button>
                     </div>
                   </div>
@@ -1324,6 +1779,25 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
             <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-700 border border-slate-200">
               {selectedSessionForReg?.workDate} — {selectedSessionForReg?.worksiteName}
             </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-700 block mb-1">
+              Correction Type <span className="text-rose-500">*</span>
+            </label>
+            <select
+              value={regCorrectionType}
+              onChange={(e) => setRegCorrectionType(e.target.value)}
+              className="w-full text-xs p-2.5 rounded-xl border border-slate-200 bg-white"
+            >
+              <option value="INCORRECT_HOURS">Incorrect Working Hours</option>
+              <option value="MISSING_CLOCK_IN">Missing Clock-In</option>
+              <option value="MISSING_CLOCK_OUT">Missing Clock-Out</option>
+              <option value="INCORRECT_CLOCK_IN">Incorrect Clock-In Timestamp</option>
+              <option value="INCORRECT_CLOCK_OUT">Incorrect Clock-Out Timestamp</option>
+              <option value="INCORRECT_SITE">Incorrect Site Assignment</option>
+              <option value="OTHER">Other Reason</option>
+            </select>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

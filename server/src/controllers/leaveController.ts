@@ -1,8 +1,18 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { getDb } from '../database/db.js';
-import { leaveTypes, leaveRequests, users, notifications, userRoles } from '../database/schema.js';
-import { eq, and, sql, desc } from 'drizzle-orm';
+import {
+  leaveTypes,
+  leaveRequests,
+  users,
+  notifications,
+  userRoles,
+  siteAssignments,
+  siteAssignmentWorkers,
+  attendanceSessions,
+  attendanceExceptions,
+} from '../database/schema.js';
+import { eq, and, sql, desc, or } from 'drizzle-orm';
 import { logAuditEvent } from '../utils/audit.js';
 
 const leaveRequestSchema = z.object({
@@ -69,6 +79,32 @@ export async function createLeaveRequest(req: Request, res: Response): Promise<a
     });
   }
 
+  // Resolve worker's assigned supervisor
+  const [assignmentRow] = await db
+    .select({ supervisorId: siteAssignments.supervisorId })
+    .from(siteAssignmentWorkers)
+    .innerJoin(siteAssignments, eq(siteAssignmentWorkers.assignmentId, siteAssignments.id))
+    .where(eq(siteAssignmentWorkers.workerId, userId))
+    .orderBy(desc(siteAssignments.createdAt))
+    .limit(1);
+
+  // Check if attendance session already exists on requested dates (conflict detection)
+  const [existingAttendance] = await db
+    .select({ id: attendanceSessions.id, workDate: attendanceSessions.workDate })
+    .from(attendanceSessions)
+    .where(
+      and(
+        eq(attendanceSessions.workerId, userId),
+        sql`DATE(${attendanceSessions.workDate}) >= ${data.startDate} AND DATE(${attendanceSessions.workDate}) <= ${data.endDate}`
+      )
+    )
+    .limit(1);
+
+  const initialConflictStatus = existingAttendance ? 'PENDING_ATTENDANCE_CONFLICT' : 'NONE';
+  const initialConflictDetails = existingAttendance
+    ? `Worker already clocked in on ${existingAttendance.workDate} for which leave was requested.`
+    : null;
+
   const [request] = await db
     .insert(leaveRequests)
     .values({
@@ -81,17 +117,40 @@ export async function createLeaveRequest(req: Request, res: Response): Promise<a
       halfDayPeriod: data.halfDayPeriod,
       reason: data.reason,
       status: 'PENDING',
+      currentApproverId: assignmentRow?.supervisorId || null,
+      conflictStatus: initialConflictStatus,
+      conflictDetails: initialConflictDetails,
     })
     .returning();
+
+  // If conflict detected, also log exception
+  if (existingAttendance) {
+    await db.insert(attendanceExceptions).values({
+      orgId,
+      workerId: userId,
+      sessionId: existingAttendance.id,
+      leaveRequestId: request.id,
+      workDate: String(existingAttendance.workDate).split('T')[0],
+      exceptionType: 'LEAVE_ATTENDANCE_CONFLICT',
+      severity: 'MEDIUM',
+      status: 'OPEN',
+      primarySupervisorId: assignmentRow?.supervisorId || null,
+      currentApproverId: assignmentRow?.supervisorId || null,
+      escalationReason: initialConflictDetails,
+    });
+  }
 
   await logAuditEvent({
     orgId,
     actorId: userId,
+    actorNameSnapshot: req.user!.fullName,
+    actorRole: req.user!.roles[0],
     action: 'CREATE_LEAVE_REQUEST',
     entityType: 'LEAVE_REQUEST',
     entityId: request.id,
+    reason: data.reason,
     afterValues: request,
-    ipAddress: req.ip,
+    req,
   });
 
   return res.status(201).json(request);
@@ -194,6 +253,14 @@ export async function approveLeaveRequest(req: Request, res: Response): Promise<
     return res.status(404).json({ error: 'REQUEST_NOT_FOUND', message: 'Pending leave request not found' });
   }
 
+  // Rule: Workers & supervisors CANNOT approve their own leave request
+  if (request.userId === reviewer.id) {
+    return res.status(403).json({
+      error: 'CANNOT_APPROVE_OWN_LEAVE',
+      message: 'You cannot approve your own leave request',
+    });
+  }
+
   // Check requester's role
   const [requesterRoleRecord] = await db
     .select()
@@ -267,6 +334,22 @@ export async function rejectLeaveRequest(req: Request, res: Response): Promise<a
 
   if (!request || request.status !== 'PENDING') {
     return res.status(404).json({ error: 'REQUEST_NOT_FOUND', message: 'Pending leave request not found' });
+  }
+
+  // Rule: Workers & supervisors CANNOT decide their own leave request
+  if (request.userId === reviewer.id) {
+    return res.status(403).json({
+      error: 'CANNOT_REJECT_OWN_LEAVE',
+      message: 'You cannot decide your own leave request',
+    });
+  }
+
+  // Rejection requires a mandatory reason
+  if (!parseResult.success || !parseResult.data.decisionNote || parseResult.data.decisionNote.trim().length < 3) {
+    return res.status(400).json({
+      error: 'REJECTION_REASON_REQUIRED',
+      message: 'A mandatory decisionNote / reason (at least 3 characters) is required to reject a leave request',
+    });
   }
 
   // Check requester's role
@@ -343,14 +426,34 @@ export async function cancelLeaveRequest(req: Request, res: Response): Promise<a
     return res.status(400).json({ error: 'CANNOT_CANCEL', message: 'Only pending leave requests can be cancelled' });
   }
 
+  const cancelReason = (req.body as any)?.cancellationReason || (req.body as any)?.reason || 'Cancelled by requester';
+  const now = new Date();
+
   const [updated] = await db
     .update(leaveRequests)
     .set({
       status: 'CANCELLED',
-      updatedAt: new Date(),
+      cancellationReason: cancelReason,
+      cancelledAt: now,
+      cancelledBy: userId,
+      updatedAt: now,
     })
     .where(eq(leaveRequests.id as any, id as any))
     .returning();
+
+  await logAuditEvent({
+    orgId: request.orgId,
+    actorId: userId,
+    actorNameSnapshot: req.user!.fullName,
+    actorRole: req.user!.roles[0],
+    action: 'CANCEL_LEAVE_REQUEST',
+    entityType: 'LEAVE_REQUEST',
+    entityId: id,
+    reason: cancelReason,
+    beforeValues: { status: 'PENDING' },
+    afterValues: { status: 'CANCELLED', cancellationReason: cancelReason },
+    req,
+  });
 
   return res.json({ success: true, message: 'Leave request cancelled', request: updated });
 }

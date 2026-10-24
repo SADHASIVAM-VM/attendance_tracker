@@ -12,6 +12,7 @@ import {
   FileText,
   User,
   RotateCcw,
+  LogOut,
 } from 'lucide-react';
 
 interface ReviewSheetProps {
@@ -20,6 +21,7 @@ interface ReviewSheetProps {
   onClose: () => void;
   onApprove: (worker: SupervisorWorkerAttendance) => void;
   onReject: (worker: SupervisorWorkerAttendance, reason: string) => void;
+  onClockOutWorker?: (worker: SupervisorWorkerAttendance, reason: string) => void | Promise<void>;
 }
 
 const QUICK_REASONS = [
@@ -35,12 +37,19 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = ({
   onClose,
   onApprove,
   onReject,
+  onClockOutWorker,
 }) => {
   const [zoomedPhoto, setZoomedPhoto] = useState<string | null>(null);
   const [showRejectForm, setShowRejectForm] = useState<boolean>(false);
   const [selectedQuickReason, setSelectedQuickReason] = useState<string>('Photo unclear');
   const [customReason, setCustomReason] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
+
+  // Supervisor-assisted clock-out modal state
+  const [showClockOutModal, setShowClockOutModal] = useState<boolean>(false);
+  const [clockOutReason, setClockOutReason] = useState<string>('Shift concluded - assisted clock-out');
+  const [clockOutSubmitting, setClockOutSubmitting] = useState<boolean>(false);
+  const [clockOutError, setClockOutError] = useState<string>('');
 
   if (!isOpen || !worker) return null;
 
@@ -56,6 +65,26 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = ({
     setErrorMsg('');
     setShowRejectForm(false);
     onReject(worker, finalReason);
+  };
+
+  const handleConfirmClockOut = async () => {
+    if (!clockOutReason.trim() || clockOutReason.trim().length < 3) {
+      setClockOutError('Please provide a reason (minimum 3 characters) for this clock-out.');
+      return;
+    }
+    setClockOutError('');
+    setClockOutSubmitting(true);
+    try {
+      if (onClockOutWorker) {
+        await onClockOutWorker(worker, clockOutReason.trim());
+      }
+      setShowClockOutModal(false);
+      onClose();
+    } catch (err: any) {
+      setClockOutError(err.message || 'Failed to clock out worker.');
+    } finally {
+      setClockOutSubmitting(false);
+    }
   };
 
   return (
@@ -322,30 +351,135 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = ({
         </div>
 
         {/* Sticky Action Bar */}
-        <div className="p-4 border-t border-[#E8EEF4] bg-white sticky bottom-0 inset-x-0">
-          <div className="flex items-center gap-3">
+        <div className="p-4 border-t border-[#E8EEF4] bg-white sticky bottom-0 inset-x-0 space-y-2.5">
+          {/* If worker is clocked in and not clocked out, show Clock Out Worker button */}
+          {worker.clockInTime && !worker.clockOutTime && onClockOutWorker && (
             <button
               type="button"
-              onClick={() => {
-                setShowRejectForm(!showRejectForm);
-              }}
-              className="flex-1 py-3 border-2 border-[#DC2626] hover:bg-rose-50 text-[#DC2626] rounded-[14px] text-xs font-bold transition-all active:scale-98 flex items-center justify-center gap-1.5"
+              onClick={() => setShowClockOutModal(true)}
+              className="w-full py-2.5 px-4 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-[14px] text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
             >
-              <X className="w-4 h-4 stroke-[2.5]" />
-              Reject Attendance
+              <LogOut className="w-4 h-4 text-amber-700" />
+              <span>Clock Out Worker (Assisted Punch)</span>
             </button>
+          )}
 
-            <button
-              type="button"
-              onClick={() => onApprove(worker)}
-              className="flex-1 py-3 bg-[#12A66A] hover:bg-[#0E8F5B] text-white rounded-[14px] text-xs font-bold transition-all active:scale-98 flex items-center justify-center gap-1.5 shadow-md shadow-[#12A66A]/20"
-            >
-              <Check className="w-4 h-4 stroke-[2.5]" />
-              Approve Attendance
-            </button>
-          </div>
+          {/* Approve / Reject buttons displayed ONLY when status is PENDING */}
+          {worker.status === 'PENDING' ? (
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowRejectForm(!showRejectForm);
+                }}
+                className="flex-1 py-3 border-2 border-[#DC2626] hover:bg-rose-50 text-[#DC2626] rounded-[14px] text-xs font-bold transition-all active:scale-98 flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <X className="w-4 h-4 stroke-[2.5]" />
+                Reject Attendance
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onApprove(worker)}
+                className="flex-1 py-3 bg-[#12A66A] hover:bg-[#0E8F5B] text-white rounded-[14px] text-xs font-bold transition-all active:scale-98 flex items-center justify-center gap-1.5 shadow-md shadow-[#12A66A]/20 cursor-pointer"
+              >
+                <Check className="w-4 h-4 stroke-[2.5]" />
+                Approve Attendance
+              </button>
+            </div>
+          ) : (
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-[14px] flex items-center justify-between text-xs">
+              <span className="font-semibold text-slate-700">Attendance Decision Recorded</span>
+              <StatusPill status={worker.status} size="sm" />
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Supervisor Assisted Clock-Out Confirmation Modal */}
+      {showClockOutModal && (
+        <div className="fixed inset-0 z-60 bg-black/70 flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-white rounded-3xl p-6 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 pb-2 border-b border-slate-100">
+              <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center font-bold">
+                <LogOut className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 leading-tight">
+                  Confirm Assisted Clock-Out
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Supervisor-initiated shift conclusion
+                </p>
+              </div>
+            </div>
+
+            {/* Worker Details Card */}
+            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/60 text-xs space-y-2">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Worker:</span>
+                <span className="font-bold text-slate-900">{worker.name} ({worker.role})</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Clock-In Time:</span>
+                <span className="font-bold text-slate-900">{worker.clockInTime || 'Recorded today'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Worksite:</span>
+                <span className="font-semibold text-slate-700">{worker.worksiteName || 'Assigned Site'}</span>
+              </div>
+              <div className="pt-1.5 border-t border-slate-200/60 text-amber-800 bg-amber-50/60 -mx-3.5 -mb-3.5 p-3 rounded-b-2xl">
+                <span className="font-bold block text-[11px]">Notice:</span>
+                This will record a verified server-recorded clock-out timestamp under your supervisor actor ID (SUPERVISOR_ASSISTED) and notify the worker.
+              </div>
+            </div>
+
+            {/* Reason input */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Reason / Note for Clock-Out <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                rows={2}
+                value={clockOutReason}
+                onChange={(e) => setClockOutReason(e.target.value)}
+                placeholder="e.g. Worker completed scheduled tasks, shift ended..."
+                className="w-full text-xs p-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+              {clockOutError && (
+                <p className="text-xs text-rose-600 font-medium mt-1">{clockOutError}</p>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowClockOutModal(false);
+                  setClockOutError('');
+                }}
+                disabled={clockOutSubmitting}
+                className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmClockOut}
+                disabled={clockOutSubmitting}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {clockOutSubmitting ? (
+                  <span>Saving...</span>
+                ) : (
+                  <span>Record Clock-Out</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Fullscreen Photo Zoom Modal */}
       {zoomedPhoto && (

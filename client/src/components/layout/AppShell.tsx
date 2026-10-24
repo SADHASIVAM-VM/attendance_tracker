@@ -20,6 +20,8 @@ import {
   CalendarDays,
   FileText,
   ShieldCheck,
+  AlertTriangle,
+  History,
 } from 'lucide-react';
 
 interface AppShellProps {
@@ -47,6 +49,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   const mainNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'attendance-overview', label: 'Attendance', icon: Clock },
+    { id: 'exceptions', label: 'Exceptions & Escalations', icon: AlertTriangle },
     { id: 'roster', label: 'Site Assignments', icon: CalendarDays },
     { id: 'users', label: 'Workers', icon: Users },
     { id: 'worksites', label: 'Locations', icon: MapPin },
@@ -54,6 +57,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   ];
 
   const otherNavItems = [
+    { id: 'audit-logs', label: 'Audit Logs', icon: History },
     { id: 'org-settings', label: 'Settings', icon: Settings },
     { id: 'help', label: 'Help/Support', icon: HelpCircle },
   ];

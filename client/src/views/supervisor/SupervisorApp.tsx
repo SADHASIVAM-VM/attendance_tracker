@@ -15,6 +15,7 @@ import { SupervisorLeavesTab } from './SupervisorLeavesTab';
 import { SupervisorSpendTab } from './SupervisorSpendTab';
 import { SupervisorHistoryTab } from './SupervisorHistoryTab';
 import { SupervisorProfileTab } from './SupervisorProfileTab';
+import { SupervisorRegularizationView } from './SupervisorRegularizationView';
 import {
   Home,
   UserCheck,
@@ -34,9 +35,10 @@ import {
   ArrowRightLeft,
   X,
   User,
+  FileEdit,
 } from 'lucide-react';
 
-export type SupervisorTabId = 'home' | 'attendance' | 'leaves' | 'spend' | 'history' | 'profile';
+export type SupervisorTabId = 'home' | 'attendance' | 'regularization' | 'leaves' | 'spend' | 'history' | 'profile';
 
 const DEFAULT_FALLBACK_WORKSITE: SupervisorWorksite = {
   id: '',
@@ -453,6 +455,40 @@ export const SupervisorApp: React.FC = () => {
     }
   };
 
+  // Action: Supervisor-Assisted Clock-Out
+  const handleClockOutWorker = async (worker: SupervisorWorkerAttendance, reason: string) => {
+    const effectiveReason = reason && reason.trim().length >= 3 ? reason.trim() : 'Clocked out by supervisor';
+    const nowTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    setWorkers((prev) =>
+      prev.map((w) =>
+        w.id === worker.id
+          ? {
+              ...w,
+              clockOutTime: nowTimeStr,
+              decisionNote: `Supervisor Clock-Out: ${effectiveReason}`,
+            }
+          : w
+      )
+    );
+
+    try {
+      await apiRequest(`/attendance/${worker.id}/supervisor-clock-out`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: effectiveReason }),
+      });
+      if (selectedWorksite?.id) {
+        await loadRosterAndAttendance(selectedWorksite.id, attendanceDate, true);
+      }
+    } catch (err: any) {
+      console.warn('API supervisor clock out failed, refreshed roster:', err);
+      if (selectedWorksite?.id) {
+        await loadRosterAndAttendance(selectedWorksite.id, attendanceDate, true);
+      }
+      throw err;
+    }
+  };
+
   // Action: Undo Last Decision
   const handleUndoLastAction = () => {
     if (undoStack) {
@@ -617,6 +653,7 @@ export const SupervisorApp: React.FC = () => {
               [
                 { id: 'home', label: 'Home', icon: Home },
                 { id: 'attendance', label: 'Attendance', icon: UserCheck },
+                { id: 'regularization', label: 'Regularisation', icon: FileEdit },
                 { id: 'leaves', label: 'Leaves', icon: CalendarDays },
                 { id: 'spend', label: 'Spend', icon: Receipt },
                 { id: 'history', label: 'History', icon: History },
@@ -846,12 +883,17 @@ export const SupervisorApp: React.FC = () => {
             onSelectDate={setAttendanceDate}
             onApproveWorker={handleApproveWorker}
             onRejectWorker={handleRejectWorker}
+            onClockOutWorker={handleClockOutWorker}
             onBulkApprove={handleBulkApprove}
             onUndoLastAction={handleUndoLastAction}
             undoAvailable={undoStack}
             isLoading={isLoadingRoster}
             currentWorksite={selectedWorksite}
           />
+        )}
+
+        {activeTab === 'regularization' && (
+          <SupervisorRegularizationView />
         )}
 
         {activeTab === 'leaves' && (
@@ -910,6 +952,7 @@ export const SupervisorApp: React.FC = () => {
             [
               { id: 'home', label: 'Home', icon: Home },
               { id: 'attendance', label: 'Attendance', icon: UserCheck },
+              { id: 'regularization', label: 'Regularise', icon: FileEdit },
               { id: 'leaves', label: 'Leaves', icon: CalendarDays },
               { id: 'spend', label: 'Spend', icon: Receipt },
               { id: 'history', label: 'History', icon: History },

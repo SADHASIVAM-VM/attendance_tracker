@@ -80,6 +80,7 @@ export const FieldWorkerApp: React.FC = () => {
 
   // Camera & submission state
   const [showCamera, setShowCamera] = useState<boolean>(false);
+  const [cameraMode, setCameraMode] = useState<'CLOCK_IN' | 'CLOCK_OUT'>('CLOCK_IN');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [showClockOutConfirm, setShowClockOutConfirm] = useState<boolean>(false);
 
@@ -354,10 +355,18 @@ export const FieldWorkerApp: React.FC = () => {
       return;
     }
 
+    setCameraMode('CLOCK_IN');
     setShowCamera(true);
   };
 
-  // Clock in submission
+  // Clock out selfie trigger
+  const handleStartClockOut = () => {
+    if (effectiveStatus !== 'WORKING') return;
+    setCameraMode('CLOCK_OUT');
+    setShowCamera(true);
+  };
+
+  // Selfie submission (handles both clock-in and clock-out)
   const handleCaptureSelfie = async (photoBlob: Blob, dataUrl: string) => {
     setShowCamera(false);
     setIsSubmitting(true);
@@ -365,6 +374,61 @@ export const FieldWorkerApp: React.FC = () => {
     try {
       const effectiveOffline = isOffline || edgeControls.mockOffline;
 
+      if (cameraMode === 'CLOCK_OUT') {
+        // CLOCK OUT FLOW
+        if (effectiveOffline) {
+          const offlineAction: OfflineAction = {
+            id: `off_out_${Date.now()}`,
+            type: 'CLOCK_OUT',
+            timestamp: new Date().toISOString(),
+            worksiteId: activeWorksite?.id || '',
+            latitude: userCoords?.lat || 0,
+            longitude: userCoords?.lng || 0,
+            accuracy: userCoords?.accuracy || 10,
+            photoDataUrl: dataUrl,
+            synced: false,
+          };
+
+          setOfflineQueue((prev) => [...prev, offlineAction]);
+          setTodaySession((prev: any) => ({
+            ...prev,
+            clockOutTime: offlineAction.timestamp,
+          }));
+
+          toast.info(
+            'Clock-out selfie saved offline. Will sync once your connection is restored.',
+            'Saved Offline'
+          );
+          return;
+        }
+
+        // 1. Request short-lived photo upload auth
+        const uploadAuth = await apiRequest('/attendance/photo-upload-auth', { method: 'POST' });
+
+        // 2. Upload photo securely
+        const uploadResult = await uploadPhotoRequest(photoBlob, uploadAuth);
+
+        // 3. Submit clock-out with selfie photoObjectKey
+        const sessionId = todaySession?.id || 'current';
+        const payload = {
+          latitude: userCoords?.lat || activeWorksite?.latitude,
+          longitude: userCoords?.lng || activeWorksite?.longitude,
+          reportedAccuracyMeters: userCoords?.accuracy || 5,
+          photoObjectKey: uploadResult.photoObjectKey,
+          clientDeviceInfo: `${navigator.userAgent} [FreshCart Field Portal]`,
+        };
+
+        await apiRequest(`/attendance/${sessionId}/clock-out`, {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+
+        toast.success(t.clockOutSuccess, 'Shift Finished');
+        await loadMyAttendance();
+        return;
+      }
+
+      // CLOCK IN FLOW
       if (effectiveOffline) {
         // Offline punch storage
         const offlineAction: OfflineAction = {
@@ -425,63 +489,7 @@ export const FieldWorkerApp: React.FC = () => {
       setTodaySession(res.session);
       await loadMyAttendance();
     } catch (err: any) {
-      toast.error(err.message || 'Failed to submit clock-in. Please try again.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Clock out submission
-  const handleClockOut = async () => {
-    setShowClockOutConfirm(false);
-    setIsSubmitting(true);
-
-    try {
-      const effectiveOffline = isOffline || edgeControls.mockOffline;
-
-      if (effectiveOffline) {
-        const offlineAction: OfflineAction = {
-          id: `off_out_${Date.now()}`,
-          type: 'CLOCK_OUT',
-          timestamp: new Date().toISOString(),
-          worksiteId: activeWorksite?.id || '',
-          latitude: userCoords?.lat || 0,
-          longitude: userCoords?.lng || 0,
-          accuracy: userCoords?.accuracy || 10,
-          photoDataUrl: '',
-          synced: false,
-        };
-
-        setOfflineQueue((prev) => [...prev, offlineAction]);
-        setTodaySession((prev: any) => ({
-          ...prev,
-          clockOutTime: offlineAction.timestamp,
-        }));
-
-        toast.info(
-          'Clock-out saved offline. Will sync once your connection is restored.',
-          'Saved Offline'
-        );
-        return;
-      }
-
-      const sessionId = todaySession?.id || 'current';
-      const payload = {
-        latitude: userCoords?.lat || activeWorksite?.latitude,
-        longitude: userCoords?.lng || activeWorksite?.longitude,
-        reportedAccuracyMeters: userCoords?.accuracy || 5,
-        clientDeviceInfo: `${navigator.userAgent} [FreshCart Field Portal]`,
-      };
-
-      await apiRequest(`/attendance/${sessionId}/clock-out`, {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
-
-      toast.success(t.clockOutSuccess, 'Shift Finished');
-      await loadMyAttendance();
-    } catch (err: any) {
-      toast.error(err.message || 'Clock out failed. Please try again.');
+      toast.error(err.message || 'Failed to submit attendance selfie. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -767,11 +775,11 @@ export const FieldWorkerApp: React.FC = () => {
               {effectiveStatus === 'WORKING' && (
                 <PrimaryActionButton
                   label={t.clockOut}
-                  subLabel="End shift and send hours to supervisor"
+                  subLabel="End shift • Selfie verification required"
                   icon={LogOut}
                   variant="safety-red"
                   isLoading={isSubmitting}
-                  onClick={() => setShowClockOutConfirm(true)}
+                  onClick={handleStartClockOut}
                 />
               )}
 
@@ -1056,7 +1064,7 @@ export const FieldWorkerApp: React.FC = () => {
           onCapture={handleCaptureSelfie}
           onClose={() => setShowCamera(false)}
           language={language}
-          title="Take Attendance Selfie"
+          title={cameraMode === 'CLOCK_OUT' ? 'Take Clock-Out Selfie' : 'Take Attendance Selfie'}
           simulatedCameraDenied={edgeControls.mockCameraDenied}
         />
       )}
@@ -1073,7 +1081,7 @@ export const FieldWorkerApp: React.FC = () => {
                 {t.confirmClockOut}
               </h3>
               <p className="text-xs text-slate-500 mt-1">
-                {t.confirmClockOutDesc}
+                A verified selfie is required to finish your shift and submit hours to supervisor.
               </p>
             </div>
             <div className="flex items-center gap-3 pt-2">
@@ -1086,15 +1094,14 @@ export const FieldWorkerApp: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={handleClockOut}
+                onClick={() => {
+                  setShowClockOutConfirm(false);
+                  handleStartClockOut();
+                }}
                 disabled={isSubmitting}
                 className="flex-1 py-3 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
-                {isSubmitting ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <span>Confirm Clock Out</span>
-                )}
+                <span>Capture Selfie</span>
               </button>
             </div>
           </div>

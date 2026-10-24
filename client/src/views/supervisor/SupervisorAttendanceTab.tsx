@@ -30,6 +30,7 @@ interface SupervisorAttendanceTabProps {
   onSelectDate: (date: string) => void;
   onApproveWorker: (worker: SupervisorWorkerAttendance) => void;
   onRejectWorker: (worker: SupervisorWorkerAttendance, reason: string) => void;
+  onClockOutWorker?: (worker: SupervisorWorkerAttendance, reason: string) => void | Promise<void>;
   onBulkApprove: (workerIds: string[]) => void;
   onUndoLastAction?: () => void;
   undoAvailable?: { message: string } | null;
@@ -46,6 +47,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
   onSelectDate,
   onApproveWorker,
   onRejectWorker,
+  onClockOutWorker,
   onBulkApprove,
   onUndoLastAction,
   undoAvailable,
@@ -528,6 +530,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
           onRejectWorker(w, reason);
           setSelectedWorkerForReview(null);
         }}
+        onClockOutWorker={onClockOutWorker}
       />
         </div>
       )}

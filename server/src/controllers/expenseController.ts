@@ -42,7 +42,7 @@ export async function getExpenses(req: Request, res: Response): Promise<any> {
   const user = req.user!;
   const orgId = user.orgId;
 
-  const { worksiteId, date, startDate, endDate, category, workerId } = req.query;
+  const { worksiteId, date, startDate, endDate, category, workerId, status } = req.query;
 
   const conditions = [eq(siteExpenses.orgId, orgId)];
 
@@ -69,6 +69,10 @@ export async function getExpenses(req: Request, res: Response): Promise<any> {
     conditions.push(eq(siteExpenses.workerId, workerId as any));
   }
 
+  if (status && typeof status === 'string' && status !== 'ALL') {
+    conditions.push(eq(siteExpenses.status, status as any));
+  }
+
   const records = await db
     .select({
       id: siteExpenses.id,
@@ -81,7 +85,13 @@ export async function getExpenses(req: Request, res: Response): Promise<any> {
       receiptUrl: siteExpenses.receiptUrl,
       date: siteExpenses.date,
       time: siteExpenses.time,
+      currency: siteExpenses.currency,
+      status: siteExpenses.status,
+      reviewerId: siteExpenses.reviewerId,
+      reviewedAt: siteExpenses.reviewedAt,
+      rejectionReason: siteExpenses.rejectionReason,
       isLocked: siteExpenses.isLocked,
+      payrollPeriodId: siteExpenses.payrollPeriodId,
       worksiteId: siteExpenses.worksiteId,
       supervisorId: siteExpenses.supervisorId,
       createdAt: siteExpenses.createdAt,
@@ -105,7 +115,13 @@ export async function getExpenses(req: Request, res: Response): Promise<any> {
     receiptUrl: r.receiptUrl || undefined,
     date: typeof r.date === 'string' ? r.date.split('T')[0] : new Date(r.date).toISOString().split('T')[0],
     time: r.time,
+    currency: r.currency || 'INR',
+    status: r.status || 'PENDING',
+    reviewerId: r.reviewerId || undefined,
+    reviewedAt: r.reviewedAt || undefined,
+    rejectionReason: r.rejectionReason || undefined,
     isLocked: r.isLocked,
+    payrollPeriodId: r.payrollPeriodId || undefined,
     worksiteId: r.worksiteId,
     worksiteName: r.worksiteName || undefined,
     supervisorId: r.supervisorId,
@@ -379,3 +395,141 @@ export async function deleteExpense(req: Request, res: Response): Promise<any> {
     message: 'Site expense deleted successfully',
   });
 }
+
+/**
+ * POST /expenses/:id/approve
+ * Authorized role (Admin, Super Admin, Supervisor) approves a site expense.
+ */
+export async function approveExpense(req: Request, res: Response): Promise<any> {
+  const { id } = req.params;
+  const db = await getDb();
+  const user = req.user!;
+  const orgId = user.orgId;
+
+  const [existing] = await db
+    .select()
+    .from(siteExpenses)
+    .where(and(eq(siteExpenses.id as any, id as any), eq(siteExpenses.orgId as any, orgId as any)))
+    .limit(1);
+
+  if (!existing) {
+    return res.status(404).json({ error: 'EXPENSE_NOT_FOUND', message: 'Site expense voucher not found' });
+  }
+
+  if (existing.isLocked) {
+    return res.status(403).json({
+      error: 'EXPENSE_LOCKED',
+      message: 'This expense entry is locked in finalized payroll and cannot be modified.',
+    });
+  }
+
+  if (existing.status === 'APPROVED') {
+    return res.status(400).json({
+      error: 'ALREADY_APPROVED',
+      message: 'This expense has already been approved.',
+    });
+  }
+
+  const now = new Date();
+  const [updated] = await db
+    .update(siteExpenses)
+    .set({
+      status: 'APPROVED',
+      reviewerId: user.id as any,
+      reviewedAt: now,
+      updatedAt: now,
+    })
+    .where(eq(siteExpenses.id as any, id as any))
+    .returning();
+
+  await logAuditEvent({
+    orgId,
+    actorId: user.id,
+    action: 'APPROVE_SITE_EXPENSE',
+    entityType: 'SITE_EXPENSE',
+    entityId: id,
+    reason: req.body?.note || 'Approved by reviewer',
+    beforeValues: { status: existing.status, amount: existing.amount },
+    afterValues: { status: 'APPROVED', reviewerId: user.id },
+    ipAddress: req.ip,
+  });
+
+  return res.json({
+    success: true,
+    message: 'Site expense approved successfully',
+    expense: updated,
+  });
+}
+
+/**
+ * POST /expenses/:id/reject
+ * Authorized role rejects a site expense with mandatory reason.
+ */
+export async function rejectExpense(req: Request, res: Response): Promise<any> {
+  const { id } = req.params;
+  const { reason } = req.body || {};
+
+  if (!reason || typeof reason !== 'string' || !reason.trim()) {
+    return res.status(400).json({ error: 'REASON_REQUIRED', message: 'Rejection reason is mandatory' });
+  }
+
+  const db = await getDb();
+  const user = req.user!;
+  const orgId = user.orgId;
+
+  const [existing] = await db
+    .select()
+    .from(siteExpenses)
+    .where(and(eq(siteExpenses.id as any, id as any), eq(siteExpenses.orgId as any, orgId as any)))
+    .limit(1);
+
+  if (!existing) {
+    return res.status(404).json({ error: 'EXPENSE_NOT_FOUND', message: 'Site expense voucher not found' });
+  }
+
+  if (existing.isLocked) {
+    return res.status(403).json({
+      error: 'EXPENSE_LOCKED',
+      message: 'This expense entry is locked in finalized payroll and cannot be modified.',
+    });
+  }
+
+  if (existing.status === 'REJECTED') {
+    return res.status(400).json({
+      error: 'ALREADY_REJECTED',
+      message: 'This expense has already been rejected.',
+    });
+  }
+
+  const now = new Date();
+  const [updated] = await db
+    .update(siteExpenses)
+    .set({
+      status: 'REJECTED',
+      reviewerId: user.id as any,
+      reviewedAt: now,
+      rejectionReason: reason.trim(),
+      updatedAt: now,
+    })
+    .where(eq(siteExpenses.id as any, id as any))
+    .returning();
+
+  await logAuditEvent({
+    orgId,
+    actorId: user.id,
+    action: 'REJECT_SITE_EXPENSE',
+    entityType: 'SITE_EXPENSE',
+    entityId: id,
+    reason: reason.trim(),
+    beforeValues: { status: existing.status, amount: existing.amount },
+    afterValues: { status: 'REJECTED', rejectionReason: reason.trim(), reviewerId: user.id },
+    ipAddress: req.ip,
+  });
+
+  return res.json({
+    success: true,
+    message: 'Site expense rejected',
+    expense: updated,
+  });
+}
+

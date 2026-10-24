@@ -64,6 +64,9 @@ export interface SpendEntry {
   receiptUrl?: string;
   date: string; // YYYY-MM-DD
   time: string; // e.g. 11:30 AM
+  status?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  rejectionReason?: string;
+  currency?: string;
   isLocked?: boolean;
   isOffline?: boolean;
   worksiteId: string;
@@ -123,7 +126,10 @@ export interface MissingClockInCase {
   reviewerName?: string | null;
   reviewedByName?: string | null;
   reviewedAt?: string | null;
+  employmentType?: string;
   resolvedByClockIn: boolean;
   resolvedAt?: string | null;
 }
+
+export type SupervisorTabId = 'home' | 'attendance' | 'leaves' | 'spend' | 'history' | 'profile';
 

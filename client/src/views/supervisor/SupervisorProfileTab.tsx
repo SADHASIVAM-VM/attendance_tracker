@@ -14,6 +14,7 @@ import {
   LogOut,
   MapPin,
   CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface SupervisorProfileTabProps {
@@ -118,7 +119,7 @@ export const SupervisorProfileTab: React.FC<SupervisorProfileTabProps> = ({
               Organization
             </span>
             <span className="text-xs font-bold text-slate-800 mt-1 block truncate">
-              {user?.orgName || 'Enterprise'}
+              {(user as any)?.orgName || 'Enterprise'}
             </span>
           </div>
         </div>
@@ -155,7 +156,7 @@ export const SupervisorProfileTab: React.FC<SupervisorProfileTabProps> = ({
                 <Building2 className="w-3.5 h-3.5 text-slate-400" />
                 Organization
               </span>
-              <strong className="text-slate-900 font-semibold">{user?.orgName || 'Enterprise Corp'}</strong>
+              <strong className="text-slate-900 font-semibold">{(user as any)?.orgName || 'Enterprise Corp'}</strong>
             </div>
           </div>
         </div>

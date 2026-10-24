@@ -15,12 +15,20 @@ import {
   MapPin,
   ExternalLink,
   ShieldCheck,
+  FileSpreadsheet,
+  Receipt,
+  DollarSign,
 } from 'lucide-react';
 
 import { SupervisorAttendanceAuditView } from './SupervisorAttendanceAuditView';
+import { OvertimeReportTab } from './OvertimeReportTab';
+import { SiteExpensesTab } from './SiteExpensesTab';
+import { PayrollReconciliationTab } from './PayrollReconciliationTab';
+import { ExcelExportModal } from '../../components/admin/ExcelExportModal';
 
 export const ReportsView: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'workers' | 'supervisors'>('workers');
+  const [activeTab, setActiveTab] = useState<'workers' | 'supervisors' | 'overtime' | 'expenses' | 'payroll'>('workers');
+  const [showExcelModal, setShowExcelModal] = useState<boolean>(false);
   const [records, setRecords] = useState<any[]>([]);
   const [worksites, setWorksites] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -127,36 +135,94 @@ export const ReportsView: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Tab Switcher: Worker Attendance vs Supervisor Attendance & Location Audit */}
-      <div className="flex items-center gap-2 bg-white border border-[#E8EEF4] p-1.5 rounded-2xl w-fit shadow-2xs">
+      {/* Tab Switcher */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-1.5 bg-white border border-[#E8EEF4] p-1.5 rounded-2xl shadow-2xs">
+          <button
+            type="button"
+            onClick={() => setActiveTab('workers')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'workers'
+                ? 'bg-[#12A66A] text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>Worker Attendance</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('supervisors')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'supervisors'
+                ? 'bg-[#12A66A] text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>Supervisor Audit</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('overtime')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'overtime'
+                ? 'bg-[#12A66A] text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            <span>Overtime & Hours</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('expenses')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'expenses'
+                ? 'bg-[#12A66A] text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            <Receipt className="w-3.5 h-3.5" />
+            <span>Site Expenses</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('payroll')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'payroll'
+                ? 'bg-[#12A66A] text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            <DollarSign className="w-3.5 h-3.5" />
+            <span>Payroll Reconciliation</span>
+          </button>
+        </div>
+
+        {/* Global Excel Export Modal Button */}
         <button
-          type="button"
-          onClick={() => setActiveTab('workers')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
-            activeTab === 'workers'
-              ? 'bg-[#12A66A] text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-          }`}
+          onClick={() => setShowExcelModal(true)}
+          className="px-4 py-2.5 bg-[#12A66A] text-white rounded-xl text-xs font-semibold hover:bg-[#0f8a58] transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
         >
-          <Users className="w-4 h-4" />
-          <span>Worker Attendance Reports</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('supervisors')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
-            activeTab === 'supervisors'
-              ? 'bg-[#12A66A] text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-          }`}
-        >
-          <ShieldCheck className="w-4 h-4" />
-          <span>Supervisor Attendance & Location Audit</span>
+          <FileSpreadsheet className="w-4 h-4" />
+          <span>Excel Exports (.xlsx)</span>
         </button>
       </div>
 
+      <ExcelExportModal
+        isOpen={showExcelModal}
+        onClose={() => setShowExcelModal(false)}
+      />
+
       {activeTab === 'supervisors' ? (
         <SupervisorAttendanceAuditView />
+      ) : activeTab === 'overtime' ? (
+        <OvertimeReportTab />
+      ) : activeTab === 'expenses' ? (
+        <SiteExpensesTab />
+      ) : activeTab === 'payroll' ? (
+        <PayrollReconciliationTab />
       ) : (
         <>
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">

@@ -81,7 +81,7 @@ const formatDuration = (req: LeaveRequest) => {
 // ─── Component ────────────────────────────────────────────────────────────────
 export const WorkerLeaveView: React.FC = () => {
   const { user } = useAuth();
-  const isSupervisor = user?.role === 'SUPERVISOR';
+  const isSupervisor = user?.roles?.includes('SUPERVISOR') || (user as any)?.role === 'SUPERVISOR';
   const [requests, setRequests] = useState<LeaveRequest[]>(DEMO_REQUESTS);
   const [loading, setLoading] = useState(false);
   const [showApplyModal, setShowApplyModal] = useState(false);

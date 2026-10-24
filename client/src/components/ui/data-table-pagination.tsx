@@ -12,6 +12,7 @@ import { ChevronsLeft, ChevronsRight } from 'lucide-react';
 
 export interface PaginationMetadata {
   total: number;
+  totalCount?: number;
   page: number;
   limit: number;
   offset: number;
@@ -35,7 +36,11 @@ export const DataTablePagination: React.FC<DataTablePaginationProps> = ({
   pageSizeOptions = [5, 10, 25, 50],
   isLoading = false,
 }) => {
-  const { total, page, limit, totalPages } = metadata;
+  if (!metadata) return null;
+  const total = metadata.total ?? metadata.totalCount ?? 0;
+  const page = metadata.page ?? 1;
+  const limit = metadata.limit ?? 10;
+  const totalPages = metadata.totalPages ?? Math.ceil(total / limit) ?? 1;
 
   const startEntry = total === 0 ? 0 : (page - 1) * limit + 1;
   const endEntry = Math.min(page * limit, total);
