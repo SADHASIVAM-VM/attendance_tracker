@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Search,
   CheckCircle2,
+  Repeat,
 } from 'lucide-react';
 
 export const SupervisorTodayRosterView: React.FC = () => {
@@ -123,11 +124,19 @@ export const SupervisorTodayRosterView: React.FC = () => {
                 <div>
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="text-xs font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">
                           {assignment.groupName || 'Regional Group'}
                         </span>
                         <StatusBadge status={assignment.status} />
+                        {assignment.carryForward !== false && (
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
+                            <Repeat className="w-3 h-3" />
+                            {assignment.isCarriedForward || assignment.workDate !== selectedDate
+                              ? `Carried Forward (${String(assignment.workDate).split('T')[0]})`
+                              : 'Daily Carry-Forward'}
+                          </span>
+                        )}
                       </div>
                       <h3 className="font-bold text-slate-900 text-lg mt-1 mb-0">
                         {assignment.worksiteName}
@@ -192,7 +201,7 @@ export const SupervisorTodayRosterView: React.FC = () => {
                                 <span className="font-semibold text-slate-800 block leading-tight">
                                   {w.fullName}
                                 </span>
-                                <span className="text-[10px] text-slate-400 font-mono">
+                                <span className="text-[10px] text-slate-400  ">
                                   {w.employeeCode}
                                 </span>
                               </div>

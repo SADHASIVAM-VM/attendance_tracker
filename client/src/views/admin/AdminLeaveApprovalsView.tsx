@@ -73,11 +73,10 @@ export const AdminLeaveApprovalsView: React.FC = () => {
 
       {message && (
         <div
-          className={`p-4 rounded-xl text-sm border flex items-center justify-between ${
-            message.type === 'success'
+          className={`p-4 rounded-xl text-sm border flex items-center justify-between ${message.type === 'success'
               ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
               : 'bg-rose-50 text-rose-800 border-rose-200'
-          }`}
+            }`}
         >
           <span>{message.text}</span>
           <button onClick={() => setMessage(null)} className="text-xs font-bold">
@@ -104,7 +103,7 @@ export const AdminLeaveApprovalsView: React.FC = () => {
               <div className="flex items-start justify-between">
                 <div>
                   <h3 className="font-bold text-slate-900 text-base m-0">{l.workerName}</h3>
-                  <span className="text-xs font-mono text-slate-500">{l.employeeCode}</span>
+                  <span className="text-xs   text-slate-500">{l.employeeCode}</span>
                 </div>
                 <StatusBadge status="PENDING" />
               </div>

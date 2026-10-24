@@ -24,6 +24,7 @@ import {
   ArrowRight,
   Table,
   LayoutGrid,
+  InfoIcon,
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -33,7 +34,28 @@ const MONTH_NAMES = [
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export const WorkerAttendanceView: React.FC = () => {
+export interface WorkerAttendanceViewProps {
+  todayStatus?: string; // 'NOT_CLOCKED_IN' | 'WORKING' | 'ON_BREAK' | 'SHIFT_DONE'
+  todayClockInTime?: string | null;
+  todayClockOutTime?: string | null;
+  todayWorksite?: { name?: string; code?: string; address?: string } | null;
+  assignedShiftInfo?: {
+    shiftName?: string;
+    supervisorName?: string;
+    shiftStartTime?: string;
+    shiftEndTime?: string;
+  } | null;
+  onNavigateToday?: () => void;
+}
+
+export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
+  todayStatus,
+  todayClockInTime,
+  todayClockOutTime,
+  todayWorksite,
+  assignedShiftInfo,
+  onNavigateToday,
+}) => {
   // Current real-world date
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
   const todayDate = useMemo(() => new Date(), []);
@@ -90,9 +112,9 @@ export const WorkerAttendanceView: React.FC = () => {
         apiRequest('/leave/types'),
       ]);
 
-      setAttendanceRecords(attData);
-      setLeaveRequests(leaveData);
-      setLeaveTypes(typesData);
+      setAttendanceRecords(Array.isArray(attData) ? attData : []);
+      setLeaveRequests(Array.isArray(leaveData) ? leaveData : []);
+      setLeaveTypes(Array.isArray(typesData) ? typesData : []);
       if (typesData.length > 0 && !applyLeaveTypeId) {
         setApplyLeaveTypeId(typesData[0].id);
       }
@@ -119,14 +141,40 @@ export const WorkerAttendanceView: React.FC = () => {
   const attendanceMap = useMemo(() => {
     const map = new Map<string, any>();
     for (const record of attendanceRecords) {
-      map.set(record.workDate, record);
+      if (!record || !record.workDate) continue;
+      const cleanDate = typeof record.workDate === 'string'
+        ? record.workDate.split('T')[0]
+        : new Date(record.workDate).toISOString().split('T')[0];
+      map.set(cleanDate, record);
     }
+
+    // Merge live today session if worker clocked in
+    if (todayStatus === 'WORKING' || todayStatus === 'SHIFT_DONE' || todayClockInTime) {
+      const existing = map.get(todayStr);
+      map.set(todayStr, {
+        id: existing?.id || 'live_today',
+        workDate: todayStr,
+        status: existing?.status || 'PENDING',
+        clockInTime: existing?.clockInTime || todayClockInTime,
+        clockOutTime: existing?.clockOutTime || todayClockOutTime,
+        worksiteName: existing?.worksiteName || todayWorksite?.name || 'Assigned Worksite',
+        worksiteCode: existing?.worksiteCode || todayWorksite?.code || 'WS-TODAY',
+        shiftName: existing?.shiftName || assignedShiftInfo?.shiftName || 'General Shift',
+        supervisorName: existing?.supervisorName || assignedShiftInfo?.supervisorName || 'Site Supervisor',
+      });
+    }
+
     return map;
-  }, [attendanceRecords]);
+  }, [attendanceRecords, todayStatus, todayClockInTime, todayClockOutTime, todayWorksite, assignedShiftInfo, todayStr]);
 
   // 2. Helper to find leave request covering a given date
   const getLeaveForDate = (dateStr: string) => {
-    return leaveRequests.find((l) => dateStr >= l.startDate && dateStr <= l.endDate);
+    return leaveRequests.find((l) => {
+      if (!l.startDate) return false;
+      const start = typeof l.startDate === 'string' ? l.startDate.split('T')[0] : l.startDate;
+      const end = typeof l.endDate === 'string' ? l.endDate.split('T')[0] : (l.endDate || start);
+      return dateStr >= start && dateStr <= end;
+    });
   };
 
   // Calendar Days calculation for the active month and year
@@ -301,6 +349,10 @@ export const WorkerAttendanceView: React.FC = () => {
       setMessage({ text: 'Please fill in all required leave fields', type: 'error' });
       return;
     }
+    if (applyReason.trim().length < 5) {
+      setMessage({ text: 'Reason must be at least 5 characters long', type: 'error' });
+      return;
+    }
 
     try {
       setSubmittingLeave(true);
@@ -309,10 +361,10 @@ export const WorkerAttendanceView: React.FC = () => {
         body: JSON.stringify({
           leaveTypeId: applyLeaveTypeId,
           startDate: applyStartDate,
-          endDate: applyEndDate,
+          endDate: applyIsHalfDay ? applyStartDate : applyEndDate,
           isHalfDay: applyIsHalfDay,
           halfDayPeriod: applyIsHalfDay ? applyHalfDayPeriod : undefined,
-          reason: applyReason,
+          reason: applyReason.trim(),
         }),
       });
 
@@ -320,7 +372,10 @@ export const WorkerAttendanceView: React.FC = () => {
       setApplyLeaveModalOpen(false);
       await loadAllWorkerData();
     } catch (err: any) {
-      setMessage({ text: err.message || 'Failed to submit leave request', type: 'error' });
+      const errorMsg = (err.details && Array.isArray(err.details))
+        ? err.details.map((d: any) => d.message || d.code).join(' • ')
+        : (err.message || 'Failed to submit leave request');
+      setMessage({ text: errorMsg, type: 'error' });
     } finally {
       setSubmittingLeave(false);
     }
@@ -366,11 +421,10 @@ export const WorkerAttendanceView: React.FC = () => {
       {/* Top Banner Alert Message */}
       {message && (
         <div
-          className={`p-4 rounded-2xl text-xs font-medium border flex items-center justify-between shadow-2xs transition-all ${
-            message.type === 'success'
-              ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
-              : 'bg-rose-50 text-rose-900 border-rose-200'
-          }`}
+          className={`p-4 rounded-2xl text-xs font-medium border flex items-center justify-between shadow-2xs transition-all ${message.type === 'success'
+            ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+            : 'bg-rose-50 text-rose-900 border-rose-200'
+            }`}
         >
           <div className="flex items-center gap-2">
             {message.type === 'success' ? (
@@ -400,37 +454,9 @@ export const WorkerAttendanceView: React.FC = () => {
               <h1 className="text-xl font-bold tracking-tight text-slate-900 m-0">
                 My Attendance & Leave Calendar
               </h1>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Full multi-year calendar view with color fills for taken and future applied leaves. Click any date to inspect details.
-              </p>
+
             </div>
           </div>
-        </div>
-
-        {/* View mode toggle */}
-        <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200">
-          <button
-            onClick={() => setActiveTab('calendar')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all cursor-pointer ${
-              activeTab === 'calendar'
-                ? 'bg-white text-slate-900 shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <LayoutGrid className="w-3.5 h-3.5" />
-            Full Calendar View
-          </button>
-          <button
-            onClick={() => setActiveTab('table')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all cursor-pointer ${
-              activeTab === 'table'
-                ? 'bg-white text-slate-900 shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Table className="w-3.5 h-3.5" />
-            Records List
-          </button>
         </div>
       </div>
 
@@ -441,23 +467,23 @@ export const WorkerAttendanceView: React.FC = () => {
           <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
             <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
               <span className="font-bold text-slate-900 flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-indigo-500" />
-                Color Fill Guide:
+                <InfoIcon className="w-4 h-4 text-indigo-500" />
+                Color Guide:
               </span>
 
               <div className="flex flex-wrap items-center gap-4">
                 {/* Gray color for past leave taken */}
                 <div className="flex items-center gap-1.5">
                   <span className="w-3.5 h-3.5 rounded-md bg-slate-200 border border-slate-300 inline-block shadow-2xs"></span>
-                  <span className="font-semibold text-slate-700">Gray Fill:</span>
+
                   <span className="text-slate-500">Past Leave Taken</span>
                 </div>
 
                 {/* Violet color for future leave applied */}
                 <div className="flex items-center gap-1.5">
                   <span className="w-3.5 h-3.5 rounded-md bg-violet-200 border border-violet-400 inline-block shadow-2xs"></span>
-                  <span className="font-semibold text-violet-900">Violet Fill:</span>
-                  <span className="text-slate-500">Future Leave Applied</span>
+
+                  <span className="text-slate-500"> Leave Applied</span>
                 </div>
 
                 {/* Green for Present */}
@@ -571,7 +597,7 @@ export const WorkerAttendanceView: React.FC = () => {
               <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
                 Days Present
               </span>
-              <span className="text-xl font-bold text-emerald-600 mt-0.5 block">
+              <span className="text-md font-bold text-emerald-600 mt-0.5 block">
                 {monthStats.presentCount} Days
               </span>
             </div>
@@ -579,16 +605,16 @@ export const WorkerAttendanceView: React.FC = () => {
               <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
                 Past Leaves Taken
               </span>
-              <span className="text-xl font-bold text-slate-700 mt-0.5 block">
-                {monthStats.pastLeaveCount} Days (Gray)
+              <span className="text-md font-bold text-slate-700 mt-0.5 block">
+                {monthStats.pastLeaveCount} Days
               </span>
             </div>
             <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-2xs">
               <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                Future Planned Leaves
+                Planned Leaves
               </span>
-              <span className="text-xl font-bold text-violet-600 mt-0.5 block">
-                {monthStats.futureLeaveCount} Days (Violet)
+              <span className="text-md font-bold text-violet-600 mt-0.5 block">
+                {monthStats.futureLeaveCount} Days
               </span>
             </div>
             <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-2xs">
@@ -632,6 +658,7 @@ export const WorkerAttendanceView: React.FC = () => {
                 const isPresentGreen = hasAttendance && day.attendance.status === 'APPROVED';
                 const isPendingAmber = hasAttendance && day.attendance.status === 'PENDING';
                 const isRejectedRed = (hasAttendance && day.attendance.status === 'REJECTED') || (hasLeave && day.leave.status === 'REJECTED');
+                const isTodayPendingClockIn = isToday && !hasAttendance && !hasLeave;
 
                 return (
                   <div
@@ -643,31 +670,32 @@ export const WorkerAttendanceView: React.FC = () => {
                         ? 'bg-violet-100/90 hover:bg-violet-200/80 text-violet-950 border-violet-200'
                         // 2. Gray color fill for past leave taken
                         : isGrayLeaveFill
-                        ? 'bg-slate-200 hover:bg-slate-300/80 text-slate-800 border-slate-300'
-                        // 3. Normal Current Month / Other Month
-                        : day.isCurrentMonth
-                        ? isPresentGreen
-                          ? 'bg-emerald-50/40 hover:bg-emerald-50 text-slate-800'
-                          : isFuture
-                          ? 'bg-white hover:bg-slate-50/80 text-slate-700'
-                          : 'bg-white hover:bg-slate-50/80 text-slate-700'
-                        : 'bg-slate-50/30 text-slate-300 hover:bg-slate-50'
-                    } ${isSelected ? 'ring-2 ring-inset ring-slate-900' : ''}`}
+                          ? 'bg-slate-200 hover:bg-slate-300/80 text-slate-800 border-slate-300'
+                          // 3. Attendance states
+                          : isPresentGreen
+                            ? 'bg-emerald-50/50 hover:bg-emerald-100/60 text-slate-800 border-emerald-200'
+                            : isPendingAmber
+                              ? 'bg-amber-50/80 hover:bg-amber-100/70 text-amber-950 border-amber-300'
+                              : isTodayPendingClockIn
+                                ? 'bg-amber-50/60 hover:bg-amber-100/60 text-amber-950 border-amber-200'
+                                : day.isCurrentMonth
+                                  ? 'bg-white hover:bg-slate-50/80 text-slate-700'
+                                  : 'bg-slate-50/30 text-slate-300 hover:bg-slate-50'
+                      } ${isSelected ? 'ring-2 ring-inset ring-slate-900' : ''}`}
                   >
                     {/* Top Row: Date Number and Pill */}
                     <div className="flex items-center justify-between">
                       <span
-                        className={`text-xs font-bold w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${
-                          isToday
-                            ? 'bg-slate-900 text-white shadow-2xs'
-                            : isVioletLeaveFill
+                        className={`text-xs font-bold w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${isToday
+                          ? 'bg-slate-900 text-white shadow-2xs'
+                          : isVioletLeaveFill
                             ? 'bg-violet-700 text-white font-extrabold shadow-2xs'
                             : isGrayLeaveFill
-                            ? 'bg-slate-600 text-white font-bold'
-                            : day.isCurrentMonth
-                            ? 'text-slate-800'
-                            : 'text-slate-400'
-                        }`}
+                              ? 'bg-slate-600 text-white font-bold'
+                              : day.isCurrentMonth
+                                ? 'text-slate-800'
+                                : 'text-slate-400'
+                          }`}
                       >
                         {day.dayNumber}
                       </span>
@@ -722,7 +750,9 @@ export const WorkerAttendanceView: React.FC = () => {
                           </span>
                           {day.attendance.clockInTime && (
                             <span className="text-[9px] opacity-80">
-                              {new Date(day.attendance.clockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {typeof day.attendance.clockInTime === 'string' && (day.attendance.clockInTime.includes('AM') || day.attendance.clockInTime.includes('PM'))
+                                ? day.attendance.clockInTime
+                                : new Date(day.attendance.clockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           )}
                         </div>
@@ -730,9 +760,31 @@ export const WorkerAttendanceView: React.FC = () => {
 
                       {/* Attendance: Pending Approval */}
                       {!hasLeave && isPendingAmber && (
-                        <div className="bg-amber-100/80 border border-amber-200 p-1 rounded-md text-[10px] font-medium text-amber-900 flex items-center gap-1">
-                          <Clock className="w-3 h-3 text-amber-600 shrink-0" />
-                          <span>Pending Sup.</span>
+                        <div className="bg-amber-100 border border-amber-300 p-1.5 rounded-md text-[10px] font-bold text-amber-950 flex flex-col gap-0.5 shadow-2xs">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="flex items-center gap-1 text-amber-900 font-extrabold">
+                              <Clock className="w-3 h-3 text-amber-600 shrink-0 animate-pulse" />
+                              Pending Sup.
+                            </span>
+                            <span className="text-[8px] bg-amber-200 text-amber-900 px-1 py-0.2 rounded font-black tracking-wider uppercase">
+                              Review
+                            </span>
+                          </div>
+                          {day.attendance.clockInTime && (
+                            <span className="text-[9px] text-amber-800 font-mono font-medium">
+                              In: {typeof day.attendance.clockInTime === 'string' && (day.attendance.clockInTime.includes('AM') || day.attendance.clockInTime.includes('PM'))
+                                ? day.attendance.clockInTime
+                                : new Date(day.attendance.clockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Today: Pending Clock-In (Not Clocked In Yet) */}
+                      {isTodayPendingClockIn && (
+                        <div className="bg-amber-100/70 border border-amber-300 p-1.5 rounded-md text-[10px] font-bold text-amber-900 flex items-center gap-1 shadow-2xs">
+                          <Clock className="w-3 h-3 text-amber-600 shrink-0 animate-pulse" />
+                          <span>Pending Clock-In</span>
                         </div>
                       )}
 
@@ -743,8 +795,8 @@ export const WorkerAttendanceView: React.FC = () => {
                         </div>
                       )}
 
-                      {/* Unscheduled past day */}
-                      {!hasLeave && !hasAttendance && !isFuture && day.isCurrentMonth && (
+                      {/* Unscheduled past day (excluding today) */}
+                      {!hasLeave && !hasAttendance && !isFuture && !isToday && day.isCurrentMonth && (
                         <span className="text-[9px] text-slate-400 block opacity-0 group-hover:opacity-100 transition-opacity text-center">
                           No Record
                         </span>
@@ -837,7 +889,7 @@ export const WorkerAttendanceView: React.FC = () => {
         maxWidth="lg"
         footer={
           <div className="flex items-center justify-between w-full">
-            <span className="text-[11px] text-slate-400 font-mono">Date: {modalDateStr}</span>
+            <span className="text-[11px] text-slate-400  ">Date: {modalDateStr}</span>
             <button
               onClick={() => setDateModalOpen(false)}
               className="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-xl cursor-pointer"
@@ -1008,12 +1060,26 @@ export const WorkerAttendanceView: React.FC = () => {
                     <StatusBadge status={modalDayData.attendance.status} />
                   </div>
 
+                  {modalDayData.attendance.status === 'PENDING' && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2.5 text-amber-950 text-xs">
+                      <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5 animate-pulse" />
+                      <div>
+                        <span className="font-bold block">Clock-In Registered • Pending Supervisor Review</span>
+                        <span className="text-amber-800 text-[11px]">
+                          Your punch has been recorded and submitted. It is currently waiting for review and approval from your supervisor.
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-3 rounded-lg border border-slate-100">
                     <div>
                       <span className="text-slate-500 block text-[11px]">Clock-In Time</span>
                       <span className="font-bold text-emerald-700 text-sm block mt-0.5">
                         {modalDayData.attendance.clockInTime
-                          ? new Date(modalDayData.attendance.clockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                          ? (typeof modalDayData.attendance.clockInTime === 'string' && (modalDayData.attendance.clockInTime.includes('AM') || modalDayData.attendance.clockInTime.includes('PM'))
+                            ? modalDayData.attendance.clockInTime
+                            : new Date(modalDayData.attendance.clockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
                           : '—'}
                       </span>
                     </div>
@@ -1021,7 +1087,9 @@ export const WorkerAttendanceView: React.FC = () => {
                       <span className="text-slate-500 block text-[11px]">Clock-Out Time</span>
                       <span className="font-bold text-slate-800 text-sm block mt-0.5">
                         {modalDayData.attendance.clockOutTime
-                          ? new Date(modalDayData.attendance.clockOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                          ? (typeof modalDayData.attendance.clockOutTime === 'string' && (modalDayData.attendance.clockOutTime.includes('AM') || modalDayData.attendance.clockOutTime.includes('PM'))
+                            ? modalDayData.attendance.clockOutTime
+                            : new Date(modalDayData.attendance.clockOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
                           : 'Pending Punch'}
                       </span>
                     </div>
@@ -1055,23 +1123,51 @@ export const WorkerAttendanceView: React.FC = () => {
                   </div>
                 </div>
               ) : !modalDayData.leave ? (
-                <div className="p-5 rounded-xl bg-slate-50 border border-slate-200 text-center space-y-3">
-                  <AlertCircle className="w-8 h-8 text-slate-400 mx-auto" />
-                  <div>
-                    <h4 className="font-bold text-slate-800 text-sm m-0">No Clock-In or Leave Logged</h4>
-                    <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                      No clock-in timestamp or approved leave record exists for this past date.
-                    </p>
+                modalDayData.isToday ? (
+                  <div className="p-5 rounded-xl bg-amber-50/80 border-2 border-amber-300 text-center space-y-3">
+                    <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center mx-auto">
+                      <Clock className="w-5 h-5 animate-pulse" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-amber-950 text-sm m-0">Today's Clock-In Pending</h4>
+                      <p className="text-xs text-amber-800 mt-1 max-w-sm mx-auto">
+                        You have not clocked in for today's shift yet. Go to the Today screen to verify your geofence and record your attendance.
+                      </p>
+                    </div>
+                    {onNavigateToday && (
+                      <div className="pt-1">
+                        <button
+                          onClick={() => {
+                            setDateModalOpen(false);
+                            onNavigateToday();
+                          }}
+                          className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
+                        >
+                          <Clock className="w-3.5 h-3.5" />
+                          Go to Today Screen to Clock In
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex justify-center gap-2 pt-1">
-                    <button
-                      onClick={() => handleOpenQuickApplyLeave(modalDateStr)}
-                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer"
-                    >
-                      Apply Retroactive Leave
-                    </button>
+                ) : (
+                  <div className="p-5 rounded-xl bg-slate-50 border border-slate-200 text-center space-y-3">
+                    <AlertCircle className="w-8 h-8 text-slate-400 mx-auto" />
+                    <div>
+                      <h4 className="font-bold text-slate-800 text-sm m-0">No Clock-In or Leave Logged</h4>
+                      <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                        No clock-in timestamp or approved leave record exists for this past date.
+                      </p>
+                    </div>
+                    <div className="flex justify-center gap-2 pt-1">
+                      <button
+                        onClick={() => handleOpenQuickApplyLeave(modalDateStr)}
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer"
+                      >
+                        Apply Retroactive Leave
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )
               ) : null}
             </div>
           )}

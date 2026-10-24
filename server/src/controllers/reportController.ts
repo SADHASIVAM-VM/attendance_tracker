@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { getDb } from '../database/db.js';
 import {
   attendanceSessions,
+  attendanceEvents,
   siteAssignments,
   worksites,
   users,
@@ -28,14 +29,28 @@ export async function getAttendanceReport(req: Request, res: Response): Promise<
   const orgId = req.user!.orgId;
   const { startDate, endDate, worksiteId, workerId, status } = req.query;
 
+  // Pagination params (offset & limit)
+  const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
+  const limit = Math.max(1, Math.min(100, parseInt(String(req.query.limit || '10'), 10) || 10));
+  const offset = req.query.offset !== undefined
+    ? Math.max(0, parseInt(String(req.query.offset), 10) || 0)
+    : (page - 1) * limit;
+
+  // Sorting filter params (sort based on name, asc, desc, newest first use createdAt)
+  const sortBy = String(req.query.sortBy || 'createdAt');
+  const sortOrder = String(req.query.sortOrder || 'desc').toLowerCase();
+
   const records = await db
     .select({
       id: attendanceSessions.id,
       workDate: attendanceSessions.workDate,
       status: attendanceSessions.status,
+      isAutoApproved: attendanceSessions.isAutoApproved,
+      autoApprovalReason: attendanceSessions.autoApprovalReason,
       clockInTime: attendanceSessions.clockInTime,
       clockOutTime: attendanceSessions.clockOutTime,
       rejectionReason: attendanceSessions.rejectionReason,
+      createdAt: attendanceSessions.createdAt,
       workerId: users.id,
       workerName: users.fullName,
       employeeCode: users.employeeCode,
@@ -49,8 +64,7 @@ export async function getAttendanceReport(req: Request, res: Response): Promise<
     .innerJoin(users, eq(attendanceSessions.workerId, users.id))
     .innerJoin(worksites, eq(attendanceSessions.worksiteSnapshotId, worksites.id))
     .innerJoin(siteAssignments, eq(attendanceSessions.assignmentId, siteAssignments.id))
-    .where(eq(attendanceSessions.orgId as any, orgId as any))
-    .orderBy(desc(attendanceSessions.workDate));
+    .where(eq(attendanceSessions.orgId as any, orgId as any));
 
   const supervisorIds = [...new Set(records.map((r: any) => r.supervisorSnapshotId))];
   const supervisorMap: Record<string, string> = {};
@@ -66,19 +80,89 @@ export async function getAttendanceReport(req: Request, res: Response): Promise<
     }
   }
 
+  // Fetch coordinates and event details for these sessions
+  const sessionIds = records.map((r: any) => r.id);
+  const eventMap: Record<string, any> = {};
+
+  if (sessionIds.length > 0) {
+    const events = await db
+      .select({
+        sessionId: attendanceEvents.sessionId,
+        latitude: attendanceEvents.latitude,
+        longitude: attendanceEvents.longitude,
+        reportedAccuracyMeters: attendanceEvents.reportedAccuracyMeters,
+        calculatedDistanceMeters: attendanceEvents.calculatedDistanceMeters,
+        isWithinGeofence: attendanceEvents.isWithinGeofence,
+        isLocationBypassed: attendanceEvents.isLocationBypassed,
+        eventType: attendanceEvents.eventType,
+        photoUrl: attendanceEvents.photoUrl,
+      })
+      .from(attendanceEvents)
+      .where(sql`${attendanceEvents.sessionId} IN (${sql.join(sessionIds.map((id: string) => sql`${id}`), sql`, `)})`);
+
+    for (const ev of events) {
+      if (ev.eventType === 'CLOCK_IN' || !eventMap[ev.sessionId]) {
+        eventMap[ev.sessionId] = ev;
+      }
+    }
+  }
+
   let filtered = records.map((r: any) => ({
     ...r,
     historicalSupervisorName: supervisorMap[r.supervisorSnapshotId] || 'Unassigned',
     missingClockOut: r.status === 'APPROVED' && !r.clockOutTime,
+    latitude: eventMap[r.id]?.latitude,
+    longitude: eventMap[r.id]?.longitude,
+    accuracyMeters: eventMap[r.id]?.reportedAccuracyMeters,
+    distanceMeters: eventMap[r.id]?.calculatedDistanceMeters,
+    isWithinGeofence: eventMap[r.id]?.isWithinGeofence,
+    isLocationBypassed: eventMap[r.id]?.isLocationBypassed,
+    photoUrl: eventMap[r.id]?.photoUrl,
   }));
 
+  // Apply filters
   if (startDate) filtered = filtered.filter((r: any) => r.workDate >= String(startDate));
   if (endDate) filtered = filtered.filter((r: any) => r.workDate <= String(endDate));
   if (worksiteId) filtered = filtered.filter((r: any) => r.worksiteId === String(worksiteId));
   if (workerId) filtered = filtered.filter((r: any) => r.workerId === String(workerId));
   if (status) filtered = filtered.filter((r: any) => r.status === String(status));
 
-  return res.json(filtered);
+  // Apply sorting filter
+  filtered.sort((a: any, b: any) => {
+    if (sortBy === 'name') {
+      const nameA = (a.workerName || '').toLowerCase();
+      const nameB = (b.workerName || '').toLowerCase();
+      return sortOrder === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+    }
+
+    if (sortBy === 'workDate') {
+      const dateA = String(a.workDate || '');
+      const dateB = String(b.workDate || '');
+      return sortOrder === 'asc' ? dateA.localeCompare(dateB) : dateB.localeCompare(dateA);
+    }
+
+    // Default: createdAt (newest first if desc, oldest first if asc)
+    const timeA = new Date(a.createdAt || a.workDate).getTime() || 0;
+    const timeB = new Date(b.createdAt || b.workDate).getTime() || 0;
+    return sortOrder === 'asc' ? timeA - timeB : timeB - timeA;
+  });
+
+  const total = filtered.length;
+  const totalPages = Math.ceil(total / limit) || 1;
+  const paginatedData = filtered.slice(offset, offset + limit);
+
+  return res.json({
+    data: paginatedData,
+    pagination: {
+      total,
+      page,
+      limit,
+      offset,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
+    },
+  });
 }
 
 export async function exportAttendanceCsv(req: Request, res: Response): Promise<any> {
@@ -154,7 +238,16 @@ export async function getAuditLogs(req: Request, res: Response): Promise<any> {
   const db = await getDb();
   const orgId = req.user!.orgId;
 
-  const logs = await db
+  const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
+  const limit = Math.max(1, Math.min(100, parseInt(String(req.query.limit || '10'), 10) || 10));
+  const offset = req.query.offset !== undefined
+    ? Math.max(0, parseInt(String(req.query.offset), 10) || 0)
+    : (page - 1) * limit;
+
+  const sortBy = String(req.query.sortBy || 'createdAt');
+  const sortOrder = String(req.query.sortOrder || 'desc').toLowerCase();
+
+  const allLogs = await db
     .select({
       id: auditLogs.id,
       action: auditLogs.action,
@@ -169,11 +262,35 @@ export async function getAuditLogs(req: Request, res: Response): Promise<any> {
     })
     .from(auditLogs)
     .leftJoin(users, eq(auditLogs.actorId, users.id))
-    .where(eq(auditLogs.orgId as any, orgId as any))
-    .orderBy(desc(auditLogs.createdAt))
-    .limit(100);
+    .where(eq(auditLogs.orgId as any, orgId as any));
 
-  return res.json(logs);
+  allLogs.sort((a: any, b: any) => {
+    if (sortBy === 'name') {
+      const nameA = (a.actorName || '').toLowerCase();
+      const nameB = (b.actorName || '').toLowerCase();
+      return sortOrder === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+    }
+    const timeA = new Date(a.createdAt).getTime() || 0;
+    const timeB = new Date(b.createdAt).getTime() || 0;
+    return sortOrder === 'asc' ? timeA - timeB : timeB - timeA;
+  });
+
+  const total = allLogs.length;
+  const totalPages = Math.ceil(total / limit) || 1;
+  const paginatedLogs = allLogs.slice(offset, offset + limit);
+
+  return res.json({
+    data: paginatedLogs,
+    pagination: {
+      total,
+      page,
+      limit,
+      offset,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
+    },
+  });
 }
 
 export async function getNotifications(req: Request, res: Response): Promise<any> {

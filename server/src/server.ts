@@ -8,11 +8,12 @@ import { seedDatabase } from './database/seed/seed.js';
 const app = express();
 
 app.use(cors({
-  origin: '*', // Adjust for production allowlists
+  origin: true,
   credentials: true,
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Health check endpoint
 app.get('/health', (_req, res) => {
@@ -44,7 +45,7 @@ async function startServer() {
     // Initialize DB and ensure tables
     await getDb();
     // Seed initial dataset if not present
-    await seedDatabase();
+    // await seedDatabase();
 
     app.listen(PORT, () => {
       console.log(`🚀 Workforce Attendance API running on http://localhost:${PORT}`);
@@ -59,6 +60,6 @@ async function startServer() {
 
 export { app, startServer };
 
-if (process.env.NODE_ENV !== 'test') {
-  startServer();
-}
+
+startServer();
+

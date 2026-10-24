@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { ToastProvider } from './context/ToastContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LoginView } from './views/auth/LoginView';
 import { AppShell } from './components/layout/AppShell';
-import { WorkerClockInView } from './views/worker/WorkerClockInView';
-import { WorkerAttendanceView } from './views/worker/WorkerAttendanceView';
-import { WorkerLeaveView } from './views/worker/WorkerLeaveView';
 import { SupervisorTodayRosterView } from './views/supervisor/SupervisorTodayRosterView';
 import { SupervisorApprovalsView } from './views/supervisor/SupervisorApprovalsView';
 import { SupervisorRegularizationView } from './views/supervisor/SupervisorRegularizationView';
@@ -16,10 +14,12 @@ import { AdminLeaveApprovalsView } from './views/admin/AdminLeaveApprovalsView';
 import { ReportsView } from './views/admin/ReportsView';
 import { AuditLogsView } from './views/admin/AuditLogsView';
 import { OrgSettingsView } from './views/admin/OrgSettingsView';
+import { FieldWorkerApp } from './views/worker/FieldWorkerApp';
+import { SupervisorApp } from './views/supervisor/SupervisorApp';
 import { RefreshCw } from 'lucide-react';
 
 const MainApplication: React.FC = () => {
-  const { user, isLoading } = useAuth();
+  const { user, isInitializing } = useAuth();
   const [currentTab, setCurrentTab] = useState<string>('');
 
   const roles = user?.roles || [];
@@ -40,7 +40,7 @@ const MainApplication: React.FC = () => {
     }
   }, [user?.id, user?.roles?.join(',')]);
 
-  if (isLoading) {
+  if (isInitializing) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-500 text-sm">
         <RefreshCw className="w-5 h-5 animate-spin mr-2" />
@@ -55,16 +55,6 @@ const MainApplication: React.FC = () => {
 
   const renderActiveView = () => {
     switch (currentTab) {
-      // Worker views
-      case 'clock-in':
-      case 'worker-home':
-        return <WorkerClockInView />;
-      case 'my-attendance':
-        return <WorkerAttendanceView />;
-      case 'leave-apply':
-      case 'my-leave':
-        return <WorkerLeaveView />;
-
       // Supervisor views
       case 'supervisor-dashboard':
       case 'pending-approvals':
@@ -96,21 +86,32 @@ const MainApplication: React.FC = () => {
         return <OrgSettingsView />;
 
       default:
-        return isWorker ? <WorkerClockInView /> : <DashboardOverview onNavigate={(t) => setCurrentTab(t)} />;
+        return <DashboardOverview onNavigate={(t) => setCurrentTab(t)} />;
     }
   };
 
-  return (
-    <AppShell currentTab={currentTab} onTabChange={setCurrentTab}>
-      {renderActiveView()}
-    </AppShell>
-  );
+  if (isSuperAdmin || isAdmin) {
+    return (
+      <AppShell currentTab={currentTab} onTabChange={setCurrentTab}>
+        {renderActiveView()}
+      </AppShell>
+    );
+  }
+
+  if (isSupervisor) {
+    return <SupervisorApp />;
+  }
+
+  // Field workers access worker portal alone
+  return <FieldWorkerApp />;
 };
 
 export default function App() {
   return (
-    <AuthProvider>
-      <MainApplication />
-    </AuthProvider>
+    <ToastProvider>
+      <AuthProvider>
+        <MainApplication />
+      </AuthProvider>
+    </ToastProvider>
   );
 }

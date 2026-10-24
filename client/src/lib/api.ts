@@ -31,10 +31,19 @@ export async function apiRequest<T = any>(
 
   const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers,
+    });
+  } catch (err: any) {
+    throw new ApiError(
+      'Unable to connect to the server. Please check your network connection or verify that the server is running.',
+      0,
+      'NETWORK_ERROR'
+    );
+  }
 
   // Handle CSV/blob downloads
   const contentType = response.headers.get('content-type');
@@ -46,10 +55,15 @@ export async function apiRequest<T = any>(
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
+    const message =
+      data.message ||
+      (response.status === 401
+        ? 'Invalid email/phone or password. Please try again.'
+        : `Request failed with status ${response.status}`);
     throw new ApiError(
-      data.message || `Request failed with status ${response.status}`,
+      message,
       response.status,
-      data.error,
+      data.error || (response.status === 401 ? 'INVALID_CREDENTIALS' : undefined),
       data.details
     );
   }

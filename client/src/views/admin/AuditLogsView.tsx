@@ -1,20 +1,57 @@
 import React, { useState, useEffect } from 'react';
 import { apiRequest } from '../../lib/api';
-import { History, ShieldAlert, Clock } from 'lucide-react';
+import { DataTablePagination, PaginationMetadata } from '../../components/ui/data-table-pagination';
+import { History, ShieldAlert, Clock, ArrowUpDown } from 'lucide-react';
 
 export const AuditLogsView: React.FC = () => {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
+  // Pagination state (limit options: 10, 25, 50)
+  const [page, setPage] = useState<number>(1);
+  const [limit, setLimit] = useState<number>(10);
+  const [pagination, setPagination] = useState<PaginationMetadata>({
+    total: 0,
+    page: 1,
+    limit: 10,
+    offset: 0,
+    totalPages: 1,
+  });
+
+  // Sorting filter
+  const [sortFilter, setSortFilter] = useState<string>('createdAt_desc');
+
   useEffect(() => {
     loadLogs();
-  }, []);
+  }, [page, limit, sortFilter]);
 
   const loadLogs = async () => {
     try {
       setLoading(true);
-      const data = await apiRequest('/audit-logs');
-      setLogs(data);
+      const [sortBy, sortOrder] = sortFilter.split('_');
+      const offset = (page - 1) * limit;
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(limit),
+        offset: String(offset),
+        sortBy,
+        sortOrder,
+      });
+
+      const res = await apiRequest(`/audit-logs?${params.toString()}`);
+      if (res && res.data && res.pagination) {
+        setLogs(res.data);
+        setPagination(res.pagination);
+      } else if (Array.isArray(res)) {
+        setLogs(res);
+        setPagination({
+          total: res.length,
+          page: 1,
+          limit: res.length || 10,
+          offset: 0,
+          totalPages: 1,
+        });
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -24,19 +61,41 @@ export const AuditLogsView: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 m-0">Security & Audit Logs</h1>
           <p className="text-sm text-slate-500 mt-1">
             Immutable log of user operations, clock-ins, approvals, transfers, and system overrides.
           </p>
         </div>
-        <button
-          onClick={loadLogs}
-          className="px-3.5 py-1.5 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl"
-        >
-          Refresh Trail
-        </button>
+
+        <div className="flex items-center gap-3">
+          {/* Sort Filter */}
+          <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-3 py-1.5 rounded-xl shadow-2xs">
+            <ArrowUpDown className="w-3.5 h-3.5 text-slate-500" />
+            <span className="text-xs text-slate-500 font-semibold hidden sm:inline">Sort:</span>
+            <select
+              value={sortFilter}
+              onChange={(e) => {
+                setSortFilter(e.target.value);
+                setPage(1);
+              }}
+              className="text-xs bg-transparent font-semibold text-slate-800 focus:outline-none cursor-pointer"
+            >
+              <option value="createdAt_desc">Newest First (Timestamp)</option>
+              <option value="createdAt_asc">Oldest First (Timestamp)</option>
+              <option value="name_asc">Actor Name (A to Z)</option>
+              <option value="name_desc">Actor Name (Z to A)</option>
+            </select>
+          </div>
+
+          <button
+            onClick={loadLogs}
+            className="px-3.5 py-1.5 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer shadow-2xs"
+          >
+            Refresh Trail
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
@@ -52,7 +111,7 @@ export const AuditLogsView: React.FC = () => {
                 <th className="py-3 px-4">Details</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-700 font-mono text-xs">
+            <tbody className="divide-y divide-slate-100 text-slate-700   text-xs">
               {loading ? (
                 <tr>
                   <td colSpan={6} className="py-8 text-center text-slate-400 font-sans">
@@ -73,7 +132,7 @@ export const AuditLogsView: React.FC = () => {
                     </td>
                     <td className="py-3 px-4 font-sans font-medium text-slate-900">
                       {l.actorName || 'System'}
-                      <span className="block text-[10px] text-slate-400 font-mono">{l.actorEmail}</span>
+                      <span className="block text-[10px] text-slate-400  ">{l.actorEmail}</span>
                     </td>
                     <td className="py-3 px-4">
                       <span className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded-md font-semibold text-[11px]">
@@ -91,6 +150,18 @@ export const AuditLogsView: React.FC = () => {
             </tbody>
           </table>
         </div>
+
+        {/* Shadcn Table Pagination with { 10, 25, 50 } and Metadata */}
+        <DataTablePagination
+          metadata={pagination}
+          onPageChange={(newPage) => setPage(newPage)}
+          onLimitChange={(newLimit) => {
+            setLimit(newLimit);
+            setPage(1);
+          }}
+          pageSizeOptions={[10, 25, 50]}
+          isLoading={loading}
+        />
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { getDb } from '../database/db.js';
-import { leaveTypes, leaveRequests, users, notifications } from '../database/schema.js';
+import { leaveTypes, leaveRequests, users, notifications, userRoles } from '../database/schema.js';
 import { eq, and, sql, desc } from 'drizzle-orm';
 import { logAuditEvent } from '../utils/audit.js';
 
@@ -127,9 +127,11 @@ export async function getMyLeaveRequests(req: Request, res: Response): Promise<a
 export async function getPendingLeaveRequests(req: Request, res: Response): Promise<any> {
   const db = await getDb();
   const orgId = req.user!.orgId;
+  const reviewer = req.user!;
+  const isSupervisor = reviewer.roles.includes('SUPERVISOR') && !reviewer.roles.includes('ADMIN') && !reviewer.roles.includes('SUPER_ADMIN');
 
-  // Leave requests route strictly to Admin / Super Admin
-  const requests = await db
+  // Query pending requests with requester role info
+  const allPending = await db
     .select({
       id: leaveRequests.id,
       startDate: leaveRequests.startDate,
@@ -145,10 +147,12 @@ export async function getPendingLeaveRequests(req: Request, res: Response): Prom
       workerEmail: users.email,
       leaveTypeName: leaveTypes.name,
       leaveTypeCode: leaveTypes.code,
+      requesterRole: userRoles.role,
     })
     .from(leaveRequests)
     .innerJoin(users, eq(leaveRequests.userId, users.id))
     .innerJoin(leaveTypes, eq(leaveRequests.leaveTypeId, leaveTypes.id))
+    .leftJoin(userRoles, eq(users.id, userRoles.userId))
     .where(
       and(
         eq(leaveRequests.orgId as any, orgId as any),
@@ -157,7 +161,19 @@ export async function getPendingLeaveRequests(req: Request, res: Response): Prom
     )
     .orderBy(desc(leaveRequests.createdAt));
 
-  return res.json(requests);
+  // If reviewer is a SUPERVISOR:
+  // - Worker leave requests go to supervisor for approval
+  // - Supervisor does NOT review other supervisors' leaves (those go to Admin)
+  if (isSupervisor) {
+    const workerPending = allPending.filter(
+      (r) => r.requesterRole !== 'SUPERVISOR' && r.requesterRole !== 'ADMIN'
+    );
+    return res.json(workerPending);
+  }
+
+  // If reviewer is ADMIN or SUPER_ADMIN:
+  // - Supervisor's leave request goes to the admin for approval!
+  return res.json(allPending);
 }
 
 export async function approveLeaveRequest(req: Request, res: Response): Promise<any> {
@@ -178,24 +194,43 @@ export async function approveLeaveRequest(req: Request, res: Response): Promise<
     return res.status(404).json({ error: 'REQUEST_NOT_FOUND', message: 'Pending leave request not found' });
   }
 
+  // Check requester's role
+  const [requesterRoleRecord] = await db
+    .select()
+    .from(userRoles)
+    .where(eq(userRoles.userId, request.userId))
+    .limit(1);
+
+  const requesterRole = requesterRoleRecord?.role || 'WORKER';
+  const isSupervisorReviewer = reviewer.roles.includes('SUPERVISOR') && !reviewer.roles.includes('ADMIN') && !reviewer.roles.includes('SUPER_ADMIN');
+
+  // Supervisor's leave request MUST go to Admin for approval
+  if (requesterRole === 'SUPERVISOR' && isSupervisorReviewer) {
+    return res.status(403).json({
+      error: 'FORBIDDEN',
+      message: "Supervisor's leave request must be approved by an Administrator.",
+    });
+  }
+
+  const reviewerTitle = reviewer.roles.includes('SUPERVISOR') ? 'Supervisor' : 'Administrator';
   const now = new Date();
   const [updated] = await db
     .update(leaveRequests)
     .set({
       status: 'APPROVED',
       reviewerId: reviewer.id,
-      decisionNote,
+      decisionNote: decisionNote || `Approved by ${reviewerTitle}`,
       decidedAt: now,
       updatedAt: now,
     })
     .where(eq(leaveRequests.id as any, id as any))
     .returning();
 
-  // Notify worker
+  // Notify requester
   await db.insert(notifications).values({
     userId: request.userId,
     title: 'Leave Request Approved',
-    message: `Your leave request for ${request.startDate} to ${request.endDate} has been approved.`,
+    message: `Your leave request for ${request.startDate} to ${request.endDate} has been approved by ${reviewerTitle} (${reviewer.fullName}).`,
     type: 'LEAVE_APPROVED',
     entityType: 'LEAVE_REQUEST',
     entityId: request.id,
@@ -208,20 +243,21 @@ export async function approveLeaveRequest(req: Request, res: Response): Promise<
     entityType: 'LEAVE_REQUEST',
     entityId: id,
     beforeValues: { status: 'PENDING' },
-    afterValues: { status: 'APPROVED', decisionNote },
+    afterValues: { status: 'APPROVED', decisionNote, reviewerTitle },
     ipAddress: req.ip,
   });
 
-  return res.json({ success: true, message: 'Leave request approved', request: updated });
+  return res.json({ success: true, message: `Leave request approved by ${reviewerTitle}`, request: updated });
 }
 
 export async function rejectLeaveRequest(req: Request, res: Response): Promise<any> {
   const { id } = req.params;
   const parseResult = decisionSchema.safeParse(req.body);
-  const decisionNote = parseResult.success ? parseResult.data.decisionNote : 'Rejected by administrator';
+  const reviewer = req.user!;
+  const reviewerTitle = reviewer.roles.includes('SUPERVISOR') ? 'Supervisor' : 'Administrator';
+  const decisionNote = parseResult.success && parseResult.data.decisionNote ? parseResult.data.decisionNote : `Rejected by ${reviewerTitle}`;
 
   const db = await getDb();
-  const reviewer = req.user!;
 
   const [request] = await db
     .select()
@@ -231,6 +267,24 @@ export async function rejectLeaveRequest(req: Request, res: Response): Promise<a
 
   if (!request || request.status !== 'PENDING') {
     return res.status(404).json({ error: 'REQUEST_NOT_FOUND', message: 'Pending leave request not found' });
+  }
+
+  // Check requester's role
+  const [requesterRoleRecord] = await db
+    .select()
+    .from(userRoles)
+    .where(eq(userRoles.userId, request.userId))
+    .limit(1);
+
+  const requesterRole = requesterRoleRecord?.role || 'WORKER';
+  const isSupervisorReviewer = reviewer.roles.includes('SUPERVISOR') && !reviewer.roles.includes('ADMIN') && !reviewer.roles.includes('SUPER_ADMIN');
+
+  // Supervisor's leave request MUST go to Admin for approval
+  if (requesterRole === 'SUPERVISOR' && isSupervisorReviewer) {
+    return res.status(403).json({
+      error: 'FORBIDDEN',
+      message: "Supervisor's leave request must be rejected by an Administrator.",
+    });
   }
 
   const now = new Date();
@@ -246,11 +300,11 @@ export async function rejectLeaveRequest(req: Request, res: Response): Promise<a
     .where(eq(leaveRequests.id as any, id as any))
     .returning();
 
-  // Notify worker
+  // Notify requester
   await db.insert(notifications).values({
     userId: request.userId,
     title: 'Leave Request Rejected',
-    message: `Your leave request for ${request.startDate} to ${request.endDate} was rejected. Note: ${decisionNote}`,
+    message: `Your leave request for ${request.startDate} to ${request.endDate} was rejected by ${reviewerTitle}. Note: ${decisionNote}`,
     type: 'LEAVE_REJECTED',
     entityType: 'LEAVE_REQUEST',
     entityId: request.id,
@@ -263,11 +317,11 @@ export async function rejectLeaveRequest(req: Request, res: Response): Promise<a
     entityType: 'LEAVE_REQUEST',
     entityId: id,
     beforeValues: { status: 'PENDING' },
-    afterValues: { status: 'REJECTED', decisionNote },
+    afterValues: { status: 'REJECTED', decisionNote, reviewerTitle },
     ipAddress: req.ip,
   });
 
-  return res.json({ success: true, message: 'Leave request rejected', request: updated });
+  return res.json({ success: true, message: `Leave request rejected by ${reviewerTitle}`, request: updated });
 }
 
 export async function cancelLeaveRequest(req: Request, res: Response): Promise<any> {

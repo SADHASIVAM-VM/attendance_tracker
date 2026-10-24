@@ -11,6 +11,8 @@ export const organizations = pgTable('organizations', {
   maxLocationAccuracy: integer('max_location_accuracy').default(50).notNull(),
   allowAdminClockInApproval: boolean('allow_admin_clock_in_approval').default(false).notNull(),
   clockOutEnabled: boolean('clock_out_enabled').default(true).notNull(),
+  supervisorAutoApprove: boolean('supervisor_auto_approve').default(true).notNull(),
+  supervisorBypassLocation: boolean('supervisor_bypass_location').default(true).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
@@ -23,7 +25,19 @@ export const users = pgTable('users', {
   email: varchar('email', { length: 255 }).notNull().unique(),
   fullName: varchar('full_name', { length: 255 }).notNull(),
   passwordHash: varchar('password_hash', { length: 255 }).notNull(),
-  phone: varchar('phone', { length: 50 }),
+  phone: varchar('phone', { length: 50 }).unique(), // Mobile number (unique, for login)
+  personalEmail: varchar('personal_email', { length: 255 }), // Personal email (optional)
+  dob: date('dob'), // Date of birth
+  age: integer('age'),
+  gender: varchar('gender', { length: 30 }), // Male, Female, Other, Prefer not to say
+  bloodGroup: varchar('blood_group', { length: 10 }), // A+, A-, B+, B-, AB+, AB-, O+, O-
+  currentAddress: text('current_address'),
+  permanentAddress: text('permanent_address'),
+  address: text('address'), // Backwards compatibility alias
+  emergencyContactName: varchar('emergency_contact_name', { length: 255 }),
+  emergencyContactPhone: varchar('emergency_contact_phone', { length: 50 }),
+  photoUrl: text('photo_url'),
+  employmentType: varchar('employment_type', { length: 50 }).default('full-time').notNull(), // 'full-time', 'part-time', 'contract'
   isActive: boolean('is_active').default(true).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -60,13 +74,15 @@ export const siteAssignments = pgTable('site_assignments', {
   orgId: uuid('org_id').references(() => organizations.id).notNull(),
   worksiteId: uuid('worksite_id').references(() => worksites.id).notNull(),
   supervisorId: uuid('supervisor_id').references(() => users.id).notNull(),
-  workDate: date('work_date').notNull(), // YYYY-MM-DD
+  workDate: date('work_date').notNull(), // YYYY-MM-DD (start date)
   groupName: varchar('group_name', { length: 100 }),
   shiftName: varchar('shift_name', { length: 100 }).notNull(),
   shiftStartTime: varchar('shift_start_time', { length: 10 }).notNull(), // HH:mm
   shiftEndTime: varchar('shift_end_time', { length: 10 }).notNull(),   // HH:mm
+  carryForward: boolean('carry_forward').default(true).notNull(),
   status: varchar('status', { length: 50 }).default('DRAFT').notNull(), // 'DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED'
   cancellationReason: text('cancellation_reason'),
+  cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
   publishedAt: timestamp('published_at', { withTimezone: true }),
   createdBy: uuid('created_by').references(() => users.id).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -95,6 +111,39 @@ export const attendanceSessions = pgTable('attendance_sessions', {
   clockInTime: timestamp('clock_in_time', { withTimezone: true }),
   clockOutTime: timestamp('clock_out_time', { withTimezone: true }),
   rejectionReason: text('rejection_reason'),
+  isAutoApproved: boolean('is_auto_approved').default(false).notNull(),
+  autoApprovalReason: text('auto_approval_reason'),
+  approvalSource: varchar('approval_source', { length: 50 }).default('MANUAL'), // 'SYSTEM_AUTO_APPROVAL', 'MANUAL'
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  totalDurationSeconds: integer('total_duration_seconds').default(0).notNull(),
+  netWorkingSeconds: integer('net_working_seconds').default(0).notNull(),
+  activeLocationId: uuid('active_location_id').references(() => worksites.id),
+  activeLocationStartedAt: timestamp('active_location_started_at', { withTimezone: true }),
+  clockInLatitude: doublePrecision('clock_in_latitude'),
+  clockInLongitude: doublePrecision('clock_in_longitude'),
+  clockInAccuracy: doublePrecision('clock_in_accuracy'),
+  clockOutLatitude: doublePrecision('clock_out_latitude'),
+  clockOutLongitude: doublePrecision('clock_out_longitude'),
+  clockOutAccuracy: doublePrecision('clock_out_accuracy'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Supervisor Location Visit History
+export const supervisorLocationVisits = pgTable('supervisor_location_visits', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  sessionId: uuid('session_id').references(() => attendanceSessions.id).notNull(),
+  supervisorId: uuid('supervisor_id').references(() => users.id).notNull(),
+  locationId: uuid('location_id').references(() => worksites.id).notNull(),
+  locationNameSnapshot: varchar('location_name_snapshot', { length: 255 }).notNull(),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+  endedAt: timestamp('ended_at', { withTimezone: true }),
+  durationSeconds: integer('duration_seconds').default(0).notNull(),
+  startLatitude: doublePrecision('start_latitude'),
+  startLongitude: doublePrecision('start_longitude'),
+  endLatitude: doublePrecision('end_latitude'),
+  endLongitude: doublePrecision('end_longitude'),
+  gpsAccuracyMeters: doublePrecision('gps_accuracy_meters'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
@@ -110,6 +159,7 @@ export const attendanceEvents = pgTable('attendance_events', {
   reportedAccuracyMeters: doublePrecision('reported_accuracy_meters').notNull(),
   calculatedDistanceMeters: doublePrecision('calculated_distance_meters').notNull(),
   isWithinGeofence: boolean('is_within_geofence').notNull(),
+  isLocationBypassed: boolean('is_location_bypassed').default(false).notNull(),
   photoObjectKey: varchar('photo_object_key', { length: 500 }).notNull(),
   photoUrl: text('photo_url').notNull(),
   clientDeviceInfo: text('client_device_info'),
@@ -202,3 +252,48 @@ export const auditLogs = pgTable('audit_logs', {
   afterValues: text('after_values'),   // JSON string
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+// Attendance Flags (Supervisor-managed Missing Clock-In Cases)
+export const attendanceFlags = pgTable('attendance_flags', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').references(() => organizations.id).notNull(),
+  assignmentId: uuid('assignment_id').references(() => siteAssignments.id).notNull(),
+  workerId: uuid('worker_id').references(() => users.id).notNull(),
+  supervisorId: uuid('supervisor_id').references(() => users.id).notNull(),
+  workDate: date('work_date').notNull(),
+  shiftName: varchar('shift_name', { length: 100 }).notNull(),
+  shiftStartTime: varchar('shift_start_time', { length: 10 }).notNull(),
+  gracePeriodMinutes: integer('grace_period_minutes').default(15).notNull(),
+  gracePeriodExpiresAt: timestamp('grace_period_expires_at', { withTimezone: true }).notNull(),
+  flagStatus: varchar('flag_status', { length: 50 }).default('PENDING_REVIEW').notNull(), // 'PENDING_REVIEW', 'APPROVED', 'REJECTED'
+  reason: varchar('reason', { length: 100 }),
+  note: text('note'),
+  reviewedBy: uuid('reviewed_by').references(() => users.id),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  resolvedByClockIn: boolean('resolved_by_clock_in').default(false).notNull(),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Site Expenses (Spend Ledger)
+export const siteExpenses = pgTable('site_expenses', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').references(() => organizations.id).notNull(),
+  worksiteId: uuid('worksite_id').references(() => worksites.id).notNull(),
+  supervisorId: uuid('supervisor_id').references(() => users.id).notNull(),
+  amount: doublePrecision('amount').notNull(),
+  category: varchar('category', { length: 50 }).notNull(), // 'Materials', 'Food', 'Transport', 'Worker payment', 'Other'
+  appliesToType: varchar('applies_to_type', { length: 50 }).default('LOCATION').notNull(), // 'LOCATION', 'WORKER'
+  workerId: uuid('worker_id').references(() => users.id),
+  workerName: varchar('worker_name', { length: 255 }),
+  note: text('note').notNull(),
+  receiptUrl: text('receipt_url'),
+  date: date('date').notNull(), // YYYY-MM-DD
+  time: varchar('time', { length: 20 }).notNull(), // e.g. '11:30 AM'
+  isLocked: boolean('is_locked').default(false).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+

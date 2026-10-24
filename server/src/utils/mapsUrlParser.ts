@@ -76,6 +76,62 @@ export function isPrivateOrLoopbackHost(hostname: string): boolean {
   return false;
 }
 
+function extractAllPinProtobuf(text: string): { latitude: number; longitude: number }[] {
+  const matches: { latitude: number; longitude: number }[] = [];
+  const regex = /!3d(-?\d+(?:\.\d+)?)\s*!4d(-?\d+(?:\.\d+)?)/g;
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(text)) !== null) {
+    const lat = parseFloat(m[1]);
+    const lng = parseFloat(m[2]);
+    if (isValidCoordinate(lat, lng)) {
+      matches.push({ latitude: lat, longitude: lng });
+    }
+  }
+  return matches;
+}
+
+import { calculateHaversineDistance } from './geo.js';
+
+function selectBestPin(
+  pins: { latitude: number; longitude: number }[],
+  cameraCoords: { lat: number; lng: number } | null
+): { latitude: number; longitude: number } | null {
+  if (pins.length === 0) return null;
+  if (pins.length === 1) return pins[0];
+
+  if (cameraCoords) {
+    // Rank by Haversine distance in meters to camera viewport center.
+    // The active place pin is positioned directly inside the camera viewport.
+    let bestPin = pins[pins.length - 1];
+    let minDistanceMeters = calculateHaversineDistance(
+      bestPin.latitude,
+      bestPin.longitude,
+      cameraCoords.lat,
+      cameraCoords.lng
+    );
+
+    // Search backwards (from innermost leaf to outermost container)
+    for (let i = pins.length - 1; i >= 0; i--) {
+      const p = pins[i];
+      const distMeters = calculateHaversineDistance(
+        p.latitude,
+        p.longitude,
+        cameraCoords.lat,
+        cameraCoords.lng
+      );
+      if (distMeters < minDistanceMeters) {
+        minDistanceMeters = distMeters;
+        bestPin = p;
+      }
+    }
+
+    return bestPin;
+  }
+
+  // Without camera viewport, Google Maps serializes the target selected place at the end of the protobuf stream
+  return pins[pins.length - 1];
+}
+
 /**
  * Extracts coordinates from a URL string or HTML content, prioritizing place-pin over camera-viewport.
  */
@@ -83,14 +139,23 @@ export function extractCoordinatesFromUrlOrHtml(
   urlStr: string,
   htmlContent: string = ''
 ): { latitude: number; longitude: number; source: 'place_pin' | 'query_param' | 'camera_viewport' | 'meta_tag'; isPinExact: boolean } | null {
-  // 1. Highest Priority: Place-Pin Protobuf (!3dLAT!4dLNG)
-  const pinMatch = urlStr.match(PIN_PROTOBUF_REGEX);
-  if (pinMatch) {
-    const lat = parseFloat(pinMatch[1]);
-    const lng = parseFloat(pinMatch[2]);
-    if (isValidCoordinate(lat, lng)) {
-      return { latitude: lat, longitude: lng, source: 'place_pin', isPinExact: true };
-    }
+  // Extract camera viewport (@LAT,LNG) if present for reference
+  const cameraMatch = urlStr.match(CAMERA_VIEWPORT_REGEX);
+  const cameraCoords =
+    cameraMatch && isValidCoordinate(parseFloat(cameraMatch[1]), parseFloat(cameraMatch[2]))
+      ? { lat: parseFloat(cameraMatch[1]), lng: parseFloat(cameraMatch[2]) }
+      : null;
+
+  // 1. Highest Priority: Place-Pin Protobuf (!3dLAT!4dLNG) from URL
+  const urlPins = extractAllPinProtobuf(urlStr);
+  const bestUrlPin = selectBestPin(urlPins, cameraCoords);
+  if (bestUrlPin) {
+    return {
+      latitude: bestUrlPin.latitude,
+      longitude: bestUrlPin.longitude,
+      source: 'place_pin',
+      isPinExact: true,
+    };
   }
 
   // 2. Query param coordinates (e.g. ?q=37.7749,-122.4194)
@@ -113,8 +178,20 @@ export function extractCoordinatesFromUrlOrHtml(
     }
   }
 
-  // 4. HTML meta tags if available
+  // 4. HTML content inspection if available
   if (htmlContent) {
+    // Check for place-pin protobuf in HTML
+    const htmlPins = extractAllPinProtobuf(htmlContent);
+    const bestHtmlPin = selectBestPin(htmlPins, cameraCoords);
+    if (bestHtmlPin) {
+      return {
+        latitude: bestHtmlPin.latitude,
+        longitude: bestHtmlPin.longitude,
+        source: 'place_pin',
+        isPinExact: true,
+      };
+    }
+
     const metaMatch = htmlContent.match(META_CENTER_REGEX);
     if (metaMatch) {
       const lat = parseFloat(metaMatch[1]);
@@ -135,14 +212,14 @@ export function extractCoordinatesFromUrlOrHtml(
     }
   }
 
-  // 5. Camera Viewport (@LAT,LNG) as fallback (noting it is camera-viewport)
-  const cameraMatch = urlStr.match(CAMERA_VIEWPORT_REGEX);
-  if (cameraMatch) {
-    const lat = parseFloat(cameraMatch[1]);
-    const lng = parseFloat(cameraMatch[2]);
-    if (isValidCoordinate(lat, lng)) {
-      return { latitude: lat, longitude: lng, source: 'camera_viewport', isPinExact: false };
-    }
+  // 5. Camera Viewport (@LAT,LNG) as fallback if no specific place pin found
+  if (cameraCoords) {
+    return {
+      latitude: cameraCoords.lat,
+      longitude: cameraCoords.lng,
+      source: 'camera_viewport',
+      isPinExact: false,
+    };
   }
 
   return null;

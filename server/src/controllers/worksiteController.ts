@@ -24,12 +24,96 @@ export async function getWorksites(req: Request, res: Response): Promise<any> {
   const db = await getDb();
   const orgId = req.user!.orgId;
 
-  const sites = await db
+  const hasPaginationParams =
+    req.query.page !== undefined ||
+    req.query.limit !== undefined ||
+    req.query.offset !== undefined ||
+    req.query.sortBy !== undefined ||
+    req.query.search !== undefined ||
+    req.query.status !== undefined;
+
+  const allSites = await db
     .select()
     .from(worksites)
     .where(eq(worksites.orgId as any, orgId as any));
 
-  return res.json(sites);
+  if (!hasPaginationParams) {
+    return res.json(allSites);
+  }
+
+  const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
+  const limit = Math.max(1, Math.min(100, parseInt(String(req.query.limit || '10'), 10) || 10));
+  const offset =
+    req.query.offset !== undefined
+      ? Math.max(0, parseInt(String(req.query.offset), 10) || 0)
+      : (page - 1) * limit;
+
+  const sortBy = String(req.query.sortBy || 'createdAt');
+  const sortOrder = String(req.query.sortOrder || 'desc').toLowerCase();
+  const search = String(req.query.search || '').trim().toLowerCase();
+  const statusFilter = String(req.query.status || 'ALL').toUpperCase();
+
+  let filtered = allSites;
+
+  // Search filter
+  if (search) {
+    filtered = filtered.filter(
+      (s: any) =>
+        s.name.toLowerCase().includes(search) ||
+        s.code.toLowerCase().includes(search) ||
+        s.address.toLowerCase().includes(search) ||
+        (s.description && s.description.toLowerCase().includes(search))
+    );
+  }
+
+  // Status filter
+  if (statusFilter === 'ACTIVE') {
+    filtered = filtered.filter((s: any) => s.isActive === true);
+  } else if (statusFilter === 'INACTIVE') {
+    filtered = filtered.filter((s: any) => s.isActive === false);
+  }
+
+  // Sorting
+  filtered.sort((a: any, b: any) => {
+    let valA: any = a[sortBy];
+    let valB: any = b[sortBy];
+
+    if (sortBy === 'name' || sortBy === 'code' || sortBy === 'address') {
+      valA = String(valA || '').toLowerCase();
+      valB = String(valB || '').toLowerCase();
+      return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+    }
+
+    if (sortBy === 'createdAt') {
+      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+    }
+
+    if (sortBy === 'radiusMeters') {
+      const numA = Number(a.radiusMeters || 0);
+      const numB = Number(b.radiusMeters || 0);
+      return sortOrder === 'asc' ? numA - numB : numB - numA;
+    }
+
+    return 0;
+  });
+
+  const totalCount = filtered.length;
+  const paginatedData = filtered.slice(offset, offset + limit);
+  const totalPages = Math.ceil(totalCount / limit);
+
+  return res.json({
+    data: paginatedData,
+    pagination: {
+      totalCount,
+      totalPages,
+      page,
+      limit,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
+    },
+  });
 }
 
 export async function getWorksiteById(req: Request, res: Response): Promise<any> {

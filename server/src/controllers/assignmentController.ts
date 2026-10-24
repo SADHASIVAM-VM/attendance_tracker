@@ -9,7 +9,7 @@ import {
   userRoles,
   leaveRequests,
 } from '../database/schema.js';
-import { eq, and, inArray, sql } from 'drizzle-orm';
+import { eq, and, or, inArray, sql, lte } from 'drizzle-orm';
 import { logAuditEvent } from '../utils/audit.js';
 
 const createAssignmentSchema = z.object({
@@ -21,6 +21,8 @@ const createAssignmentSchema = z.object({
   shiftStartTime: z.string().regex(/^\d{2}:\d{2}$/).default('08:00'),
   shiftEndTime: z.string().regex(/^\d{2}:\d{2}$/).default('17:00'),
   workerIds: z.array(z.string().uuid()).default([]),
+  publishImmediately: z.boolean().default(true),
+  carryForward: z.boolean().default(true),
 });
 
 const updateWorkersSchema = z.object({
@@ -34,6 +36,7 @@ const cancelAssignmentSchema = z.object({
 export async function getAssignments(req: Request, res: Response): Promise<any> {
   const db = await getDb();
   const orgId = req.user!.orgId;
+  const todayStr = new Date().toISOString().split('T')[0];
   const { date, month, year, startDate, endDate, worksiteId, supervisorId, status } = req.query;
 
   let query = db
@@ -47,8 +50,10 @@ export async function getAssignments(req: Request, res: Response): Promise<any> 
       shiftName: siteAssignments.shiftName,
       shiftStartTime: siteAssignments.shiftStartTime,
       shiftEndTime: siteAssignments.shiftEndTime,
+      carryForward: siteAssignments.carryForward,
       status: siteAssignments.status,
       cancellationReason: siteAssignments.cancellationReason,
+      cancelledAt: siteAssignments.cancelledAt,
       publishedAt: siteAssignments.publishedAt,
       createdAt: siteAssignments.createdAt,
       worksiteName: worksites.name,
@@ -68,11 +73,74 @@ export async function getAssignments(req: Request, res: Response): Promise<any> 
   const assignmentsList = await query;
 
   let filtered = assignmentsList;
-  if (date) filtered = filtered.filter((a: any) => a.workDate === date);
-  if (month) filtered = filtered.filter((a: any) => String(a.workDate).startsWith(String(month)));
-  if (year) filtered = filtered.filter((a: any) => String(a.workDate).startsWith(String(year)));
+  if (date) {
+    const targetDateStr = String(date).split('T')[0];
+    filtered = filtered.filter((a: any) => {
+      const aDate = String(a.workDate).split('T')[0];
+      if (aDate === targetDateStr) return true;
+      // Do not carry forward to future dates; only current date or past dates
+      if (targetDateStr > todayStr) return false;
+      const isCarry = a.carryForward !== false;
+      if (isCarry && aDate < targetDateStr) {
+        if (a.status === 'CANCELLED') {
+          const cancelDate = a.cancelledAt ? String(a.cancelledAt).split('T')[0] : aDate;
+          return targetDateStr <= cancelDate;
+        }
+        return true;
+      }
+      return false;
+    });
+  }
+  if (month) {
+    const targetMonthStr = String(month).split('T')[0];
+    const monthStart = `${targetMonthStr}-01`;
+    filtered = filtered.filter((a: any) => {
+      const aDate = String(a.workDate).split('T')[0];
+      if (aDate.startsWith(targetMonthStr)) return true;
+      const isCarry = a.carryForward !== false;
+      if (isCarry && aDate < monthStart) {
+        if (a.status === 'CANCELLED') {
+          const cancelDate = a.cancelledAt ? String(a.cancelledAt).split('T')[0] : aDate;
+          return cancelDate >= monthStart;
+        }
+        return true;
+      }
+      return false;
+    });
+  }
+  if (year) {
+    const targetYearStr = String(year).split('T')[0];
+    const yearStart = `${targetYearStr}-01-01`;
+    filtered = filtered.filter((a: any) => {
+      const aDate = String(a.workDate).split('T')[0];
+      if (aDate.startsWith(targetYearStr)) return true;
+      const isCarry = a.carryForward !== false;
+      if (isCarry && aDate < yearStart) {
+        if (a.status === 'CANCELLED') {
+          const cancelDate = a.cancelledAt ? String(a.cancelledAt).split('T')[0] : aDate;
+          return cancelDate >= yearStart;
+        }
+        return true;
+      }
+      return false;
+    });
+  }
   if (startDate && endDate) {
-    filtered = filtered.filter((a: any) => a.workDate >= String(startDate) && a.workDate <= String(endDate));
+    const sDate = String(startDate);
+    const eDate = String(endDate);
+    filtered = filtered.filter((a: any) => {
+      const aDate = String(a.workDate).split('T')[0];
+      if (aDate >= sDate && aDate <= eDate) return true;
+      const isCarry = a.carryForward !== false;
+      if (isCarry && aDate < sDate) {
+        if (a.status === 'CANCELLED') {
+          const cancelDate = a.cancelledAt ? String(a.cancelledAt).split('T')[0] : aDate;
+          return cancelDate >= sDate;
+        }
+        return true;
+      }
+      return false;
+    });
   }
   if (worksiteId) filtered = filtered.filter((a: any) => a.worksiteId === worksiteId);
   if (supervisorId) filtered = filtered.filter((a: any) => a.supervisorId === supervisorId);
@@ -102,11 +170,17 @@ export async function getAssignments(req: Request, res: Response): Promise<any> 
     }
   }
 
-  const result = filtered.map((a: any) => ({
-    ...a,
-    groupName: a.groupName || a.shiftName || 'Standard Group',
-    workers: workerMap[a.id] || [],
-  }));
+  const result = filtered.map((a: any) => {
+    const aDate = String(a.workDate).split('T')[0];
+    const isCarriedForward = date ? (a.carryForward !== false && aDate < String(date).split('T')[0]) : false;
+    return {
+      ...a,
+      carryForward: a.carryForward ?? true,
+      isCarriedForward,
+      groupName: a.groupName || a.shiftName || 'Standard Group',
+      workers: workerMap[a.id] || [],
+    };
+  });
 
   return res.json(result);
 }
@@ -127,8 +201,10 @@ export async function getAssignmentById(req: Request, res: Response): Promise<an
       shiftName: siteAssignments.shiftName,
       shiftStartTime: siteAssignments.shiftStartTime,
       shiftEndTime: siteAssignments.shiftEndTime,
+      carryForward: siteAssignments.carryForward,
       status: siteAssignments.status,
       cancellationReason: siteAssignments.cancellationReason,
+      cancelledAt: siteAssignments.cancelledAt,
       publishedAt: siteAssignments.publishedAt,
       createdAt: siteAssignments.createdAt,
       worksiteName: worksites.name,
@@ -162,6 +238,7 @@ export async function getAssignmentById(req: Request, res: Response): Promise<an
 
   return res.json({
     ...assignment,
+    carryForward: assignment.carryForward ?? true,
     groupName: assignment.groupName || assignment.shiftName || 'Standard Group',
     workers: assignedWorkers,
   });
@@ -200,6 +277,9 @@ export async function createAssignment(req: Request, res: Response): Promise<any
   const groupName = data.groupName?.trim() || data.shiftName?.trim() || 'General Group';
   const shiftName = data.shiftName?.trim() || data.groupName?.trim() || 'Standard Shift';
 
+  const shouldPublish = data.publishImmediately !== false;
+  const carryForward = data.carryForward !== false;
+
   const [newAssignment] = await db
     .insert(siteAssignments)
     .values({
@@ -211,7 +291,9 @@ export async function createAssignment(req: Request, res: Response): Promise<any
       shiftName,
       shiftStartTime: data.shiftStartTime || '08:00',
       shiftEndTime: data.shiftEndTime || '17:00',
-      status: 'DRAFT',
+      carryForward,
+      status: shouldPublish ? 'PUBLISHED' : 'DRAFT',
+      publishedAt: shouldPublish ? new Date() : null,
       createdBy: req.user!.id,
     })
     .returning();
@@ -348,6 +430,7 @@ export async function cancelAssignment(req: Request, res: Response): Promise<any
     .set({
       status: 'CANCELLED',
       cancellationReason: reason,
+      cancelledAt: new Date(),
       updatedAt: new Date(),
     })
     .where(eq(siteAssignments.id as any, id as any))
@@ -370,6 +453,7 @@ export async function getWorkerMyAssignments(req: Request, res: Response): Promi
   const db = await getDb();
   const workerId = req.user!.id;
   const todayStr = new Date().toISOString().split('T')[0];
+  const queryDate = (req.query.date as string) || todayStr;
 
   const assignments = await db
     .select({
@@ -378,7 +462,10 @@ export async function getWorkerMyAssignments(req: Request, res: Response): Promi
       shiftName: siteAssignments.shiftName,
       shiftStartTime: siteAssignments.shiftStartTime,
       shiftEndTime: siteAssignments.shiftEndTime,
+      carryForward: siteAssignments.carryForward,
       status: siteAssignments.status,
+      cancellationReason: siteAssignments.cancellationReason,
+      cancelledAt: siteAssignments.cancelledAt,
       worksiteId: worksites.id,
       worksiteName: worksites.name,
       worksiteCode: worksites.code,
@@ -399,9 +486,26 @@ export async function getWorkerMyAssignments(req: Request, res: Response): Promi
       and(
         eq(siteAssignmentWorkers.workerId as any, workerId as any),
         eq(siteAssignments.status as any, 'PUBLISHED' as any),
-        eq(siteAssignments.workDate as any, todayStr as any)
+        or(
+          eq(siteAssignments.workDate as any, queryDate as any),
+          queryDate <= todayStr
+            ? and(
+                eq(siteAssignments.carryForward as any, true as any),
+                lte(siteAssignments.workDate as any, queryDate as any)
+              )
+            : sql`false`
+        )
       )
     );
 
-  return res.json(assignments);
+  // Filter out any assignment cancelled on or before queryDate
+  const validAssignments = assignments.filter((a) => {
+    if (a.status === 'CANCELLED') {
+      const cancelDate = a.cancelledAt ? String(a.cancelledAt).split('T')[0] : String(a.workDate).split('T')[0];
+      return queryDate <= cancelDate;
+    }
+    return true;
+  });
+
+  return res.json(validAssignments);
 }

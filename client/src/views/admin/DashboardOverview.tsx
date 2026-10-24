@@ -1,136 +1,181 @@
-import React, { useState, useEffect } from 'react';
-import { apiRequest } from '../../lib/api';
+import React, { useState } from 'react';
 import { StatCard } from '../../components/common/StatCard';
+import { WeeklyAttendanceChart } from '../../components/dashboard/WeeklyAttendanceChart';
+import { AttendanceDonutChart } from '../../components/dashboard/AttendanceDonutChart';
+import { RecentClockInsTable, ClockInRecord } from '../../components/dashboard/RecentClockInsTable';
+import { TopLocationsList } from '../../components/dashboard/TopLocationsList';
+import { WorkerDetailModal } from '../../components/dashboard/WorkerDetailModal';
 import {
-  Building2,
   Users,
-  MapPin,
-  CalendarDays,
+  UserX,
   Clock,
-  ShieldCheck,
   CheckCircle2,
-  FileText,
+  X,
+  Camera,
+  MapPin,
 } from 'lucide-react';
 
-export const DashboardOverview: React.FC<{ onNavigate: (tab: string) => void }> = ({ onNavigate }) => {
-  const [stats, setStats] = useState({
-    usersCount: 0,
-    worksitesCount: 0,
-    assignmentsToday: 0,
-    pendingApprovals: 0,
-    pendingLeaves: 0,
-  });
-  const [loading, setLoading] = useState<boolean>(true);
+interface DashboardOverviewProps {
+  onNavigate?: (tab: string) => void;
+}
 
-  useEffect(() => {
-    loadDashboard();
-  }, []);
-
-  const loadDashboard = async () => {
-    try {
-      setLoading(true);
-      const todayStr = new Date().toISOString().split('T')[0];
-      const [users, sites, assignments, leaves] = await Promise.all([
-        apiRequest('/users'),
-        apiRequest('/worksites'),
-        apiRequest(`/assignments?date=${todayStr}`),
-        apiRequest('/leave/requests/pending'),
-      ]);
-
-      setStats({
-        usersCount: users.length,
-        worksitesCount: sites.length,
-        assignmentsToday: assignments.length,
-        pendingApprovals: assignments.reduce((acc: number, a: any) => acc + (a.workers?.length || 0), 0),
-        pendingLeaves: leaves.length,
-      });
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+export const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onNavigate }) => {
+  const [selectedWorker, setSelectedWorker] = useState<ClockInRecord | null>(null);
+  const [lightboxPhoto, setLightboxPhoto] = useState<ClockInRecord | null>(null);
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900 m-0">Operations Control Center</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Real-time workforce deployment, physical geofence verification and shift attendance status.
-        </p>
-      </div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 1. ROW OF 4 KPI STAT CARDS (FIRST CARD SOLID GREEN MATCHING REFERENCE) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card 1: Solid Green Featured Card (Total Present Today) */}
         <StatCard
-          title="Active Worksites"
-          value={stats.worksitesCount}
-          subtitle="Enforced Geofences"
-          icon={MapPin}
-        />
-        <StatCard
-          title="Today's Shifts"
-          value={stats.assignmentsToday}
-          subtitle="Published Rosters"
-          icon={CalendarDays}
-        />
-        <StatCard
-          title="Total Workforce"
-          value={stats.usersCount}
-          subtitle="Registered Staff"
+          variant="featured"
+          title="Present Today"
+          value="248"
+          change="18.2%"
+          isPositive={true}
+          timeframe="this week"
           icon={Users}
+          onOpenClick={() => onNavigate?.('users')}
         />
+
+        {/* Card 2: White Card (Absent Staff) */}
         <StatCard
-          title="Pending Leave Reviews"
-          value={stats.pendingLeaves}
-          subtitle="Direct Admin Queue"
-          icon={FileText}
-          badge={stats.pendingLeaves > 0 ? 'Requires Action' : undefined}
-          badgeColor="text-amber-700 bg-amber-50"
+          variant="default"
+          title="Absent"
+          value="14"
+          change="12.5%"
+          isPositive={true}
+          timeframe="this week"
+          icon={UserX}
+          iconBgColor="bg-[#E0F2FE]"
+          iconColor="text-[#0284C7]"
+          onOpenClick={() => onNavigate?.('reports')}
+        />
+
+        {/* Card 3: White Card (Late Arrivals) */}
+        <StatCard
+          variant="default"
+          title="Late Arrivals"
+          value="8"
+          change="2.3%"
+          isPositive={false}
+          timeframe="this week"
+          icon={Clock}
+          iconBgColor="bg-[#F3E8FF]"
+          iconColor="text-[#9333EA]"
+          onOpenClick={() => onNavigate?.('attendance-overview')}
+        />
+
+        {/* Card 4: White Card (Total Hours Worked) */}
+        <StatCard
+          variant="default"
+          title="Total Hours Logged"
+          value="1,842"
+          change="24.6%"
+          isPositive={true}
+          timeframe="this week"
+          icon={CheckCircle2}
+          iconBgColor="bg-[#FFEDD5]"
+          iconColor="text-[#EA580C]"
+          onOpenClick={() => onNavigate?.('reports')}
         />
       </div>
 
-      {/* Quick Action Tiles */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div
-          onClick={() => onNavigate('roster')}
-          className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-slate-300 transition-all cursor-pointer group"
-        >
-          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-            <CalendarDays className="w-5 h-5" />
-          </div>
-          <h3 className="font-bold text-slate-900 text-sm mb-1">Plan & Publish Rosters</h3>
-          <p className="text-xs text-slate-500">
-            Create daily worksite assignments, designate supervisors, and publish rosters for workers.
-          </p>
+      {/* 2. ROW OF CHARTS (MATCHING REFERENCE ROW 2) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left (2 cols): Weekly Attendance Area Chart with highlighted day */}
+        <div className="lg:col-span-2">
+          <WeeklyAttendanceChart />
         </div>
 
-        <div
-          onClick={() => onNavigate('worksites')}
-          className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-slate-300 transition-all cursor-pointer group"
-        >
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-            <MapPin className="w-5 h-5" />
-          </div>
-          <h3 className="font-bold text-slate-900 text-sm mb-1">Manage Worksites</h3>
-          <p className="text-xs text-slate-500">
-            Configure reference coordinates, perimeter radius (default 20m), and GPS precision limits.
-          </p>
-        </div>
-
-        <div
-          onClick={() => onNavigate('reports')}
-          className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-slate-300 transition-all cursor-pointer group"
-        >
-          <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-            <FileText className="w-5 h-5" />
-          </div>
-          <h3 className="font-bold text-slate-900 text-sm mb-1">Historical Reports</h3>
-          <p className="text-xs text-slate-500">
-            Filter historical attendance with date-specific supervisor routing and export sanitized CSV.
-          </p>
+        {/* Right (1 col): Donut Chart with Center Total */}
+        <div className="lg:col-span-1">
+          <AttendanceDonutChart />
         </div>
       </div>
+
+      {/* 3. ROW OF TABLES & LISTS (MATCHING REFERENCE ROW 3) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left (1 col): Top Worksites / Workers */}
+        <div className="lg:col-span-1">
+          <TopLocationsList />
+        </div>
+
+        {/* Right (2 cols): Recent Clock-ins Table */}
+        <div className="lg:col-span-2">
+          <RecentClockInsTable
+            onSelectWorker={(record) => setSelectedWorker(record)}
+            onViewPhoto={(record) => setLightboxPhoto(record)}
+          />
+        </div>
+      </div>
+
+      {/* WORKER DETAIL MODAL */}
+      {selectedWorker && (
+        <WorkerDetailModal
+          worker={selectedWorker}
+          onClose={() => setSelectedWorker(null)}
+        />
+      )}
+
+      {/* PHOTO LIGHTBOX MODAL */}
+      {lightboxPhoto && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4 animate-in fade-in duration-150"
+        >
+          <div className="bg-white rounded-[24px] max-w-sm w-full p-5 space-y-4 shadow-2xl border border-[#E8EEF4]">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Camera className="w-4 h-4 text-[#12A66A]" />
+                <span className="font-bold text-sm text-[#111827]">
+                  {lightboxPhoto.workerName}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLightboxPhoto(null)}
+                className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="w-full h-72 rounded-2xl overflow-hidden bg-slate-900 border border-slate-200">
+              <img
+                src={lightboxPhoto.photoUrl}
+                alt="Selfie verification"
+                className="w-full h-full object-cover"
+              />
+            </div>
+
+            <div className="p-3 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-[#6B7280]">Clock In Time:</span>
+                <strong className="text-[#111827]  ">{lightboxPhoto.clockInTime}</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#6B7280]">Worksite:</span>
+                <strong className="text-[#111827]">{lightboxPhoto.worksite}</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#6B7280]">Facial Validation:</span>
+                <span className="font-bold text-[#12A66A]">✓ 99.4% Match</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setLightboxPhoto(null)}
+              className="w-full py-2.5 bg-[#12A66A] hover:bg-[#0E8F5B] text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

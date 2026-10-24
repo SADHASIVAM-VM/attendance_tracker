@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { apiRequest } from '../lib/api';
+import { toast } from './ToastContext';
 
 export interface User {
   id: string;
@@ -8,6 +9,18 @@ export interface User {
   email: string;
   fullName: string;
   roles: string[];
+  phone?: string | null;
+  personalEmail?: string | null;
+  dob?: string | null;
+  gender?: string | null;
+  bloodGroup?: string | null;
+  currentAddress?: string | null;
+  permanentAddress?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
+  employmentType?: string | null;
+  photoUrl?: string | null;
+  isActive?: boolean;
 }
 
 export interface Organization {
@@ -25,6 +38,7 @@ interface AuthContextType {
   organization: Organization | null;
   token: string | null;
   isLoading: boolean;
+  isInitializing: boolean;
   login: (email: string, password: string) => Promise<void>;
   quickLogin: (role: 'SUPER_ADMIN' | 'ADMIN' | 'SUPERVISOR' | 'WORKER') => Promise<void>;
   logout: () => Promise<void>;
@@ -44,12 +58,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem('attendance_token'));
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isInitializing, setIsInitializing] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   useEffect(() => {
     async function loadUser() {
       if (!token) {
-        setIsLoading(false);
+        setIsInitializing(false);
         return;
       }
       try {
@@ -62,23 +77,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setToken(null);
         setUser(null);
       } finally {
-        setIsLoading(false);
+        setIsInitializing(false);
       }
     }
     loadUser();
   }, [token]);
 
-  const login = async (email: string, password: string) => {
+  const login = async (identifier: string, password: string) => {
     setIsLoading(true);
     try {
       const res = await apiRequest('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ identifier, email: identifier, phone: identifier, password }),
       });
       localStorage.setItem('attendance_token', res.token);
       setToken(res.token);
       setUser(res.user);
       setOrganization(res.organization);
+    } catch (err: any) {
+      toast.error(err.message);
+      console.warn('Authentication failed:', err);
+      throw err;
     } finally {
       setIsLoading(false);
     }
@@ -116,6 +135,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         organization,
         token,
         isLoading,
+        isInitializing,
         login,
         quickLogin,
         logout,

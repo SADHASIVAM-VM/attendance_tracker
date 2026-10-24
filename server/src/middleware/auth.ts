@@ -13,6 +13,18 @@ export interface AuthenticatedUser {
   email: string;
   fullName: string;
   roles: string[];
+  phone?: string | null;
+  personalEmail?: string | null;
+  dob?: string | null;
+  gender?: string | null;
+  bloodGroup?: string | null;
+  currentAddress?: string | null;
+  permanentAddress?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
+  employmentType?: string | null;
+  photoUrl?: string | null;
+  isActive?: boolean;
 }
 
 declare global {
@@ -78,6 +90,18 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
       email: userRecord.email,
       fullName: userRecord.fullName,
       roles,
+      phone: userRecord.phone,
+      personalEmail: userRecord.personalEmail,
+      dob: userRecord.dob ? String(userRecord.dob) : null,
+      gender: userRecord.gender,
+      bloodGroup: userRecord.bloodGroup,
+      currentAddress: userRecord.currentAddress || userRecord.address,
+      permanentAddress: userRecord.permanentAddress,
+      emergencyContactName: userRecord.emergencyContactName,
+      emergencyContactPhone: userRecord.emergencyContactPhone,
+      employmentType: userRecord.employmentType,
+      photoUrl: userRecord.photoUrl,
+      isActive: userRecord.isActive,
     };
 
     next();

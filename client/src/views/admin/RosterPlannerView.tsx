@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { apiRequest } from '../../lib/api';
+import { toast } from '../../context/ToastContext';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { Modal } from '../../components/common/Modal';
 import {
@@ -25,6 +26,7 @@ import {
   UserCheck,
   Sparkles,
   Info,
+  Repeat,
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -74,7 +76,15 @@ export const RosterPlannerView: React.FC = () => {
   const [shiftEndTime, setShiftEndTime] = useState<string>('17:00');
   const [selectedWorkerIds, setSelectedWorkerIds] = useState<string[]>([]);
   const [workerSearchTerm, setWorkerSearchTerm] = useState<string>('');
+  const [carryForward, setCarryForward] = useState<boolean>(true);
   const [submitting, setSubmitting] = useState<boolean>(false);
+
+  // Manage Workers Modal (for ongoing / carried-forward group)
+  const [editWorkersModalOpen, setEditWorkersModalOpen] = useState<boolean>(false);
+  const [editingAssignment, setEditingAssignment] = useState<any | null>(null);
+  const [editSelectedWorkerIds, setEditSelectedWorkerIds] = useState<string[]>([]);
+  const [editWorkerSearchTerm, setEditWorkerSearchTerm] = useState<string>('');
+  const [savingWorkers, setSavingWorkers] = useState<boolean>(false);
 
   // Cancellation Modal
   const [cancelModalOpen, setCancelModalOpen] = useState<boolean>(false);
@@ -103,11 +113,13 @@ export const RosterPlannerView: React.FC = () => {
         apiRequest('/users'),
       ]);
 
-      const activeSites = sitesRes.filter((s: any) => s.isActive);
+      const sitesList = Array.isArray(sitesRes) ? sitesRes : (sitesRes?.data || []);
+      const activeSites = sitesList.filter((s: any) => s.isActive !== false);
       setWorksites(activeSites);
 
-      const sups = usersRes.filter((u: any) => u.roles.includes('SUPERVISOR') && u.isActive);
-      const wrks = usersRes.filter((u: any) => u.roles.includes('WORKER') && u.isActive);
+      const usersList = Array.isArray(usersRes) ? usersRes : (usersRes?.data || []);
+      const sups = usersList.filter((u: any) => u.roles && u.roles.includes('SUPERVISOR') && u.isActive !== false);
+      const wrks = usersList.filter((u: any) => u.roles && u.roles.includes('WORKER') && u.isActive !== false);
 
       setSupervisors(sups);
       setAllWorkers(wrks);
@@ -158,6 +170,24 @@ export const RosterPlannerView: React.FC = () => {
     const totalDaysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
     const prevMonthDays = new Date(currentYear, currentMonth, 0).getDate();
 
+    const getAssignmentsForDate = (dateStr: string) => {
+      return monthAssignments.filter((a) => {
+        const aDate = String(a.workDate).split('T')[0];
+        if (aDate === dateStr) return true;
+        // Don't carry forward locations to future dates; only the current date is enough
+        if (dateStr > todayStr) return false;
+        const isCarry = a.carryForward !== false;
+        if (isCarry && aDate < dateStr) {
+          if (a.status === 'CANCELLED') {
+            const cancelDate = a.cancelledAt ? String(a.cancelledAt).split('T')[0] : aDate;
+            return dateStr <= cancelDate;
+          }
+          return true;
+        }
+        return false;
+      });
+    };
+
     const days: Array<{
       dateStr: string;
       dayNumber: number;
@@ -179,7 +209,7 @@ export const RosterPlannerView: React.FC = () => {
         isCurrentMonth: false,
         isToday: dateStr === todayStr,
         isSelected: dateStr === selectedDate,
-        assignments: monthAssignments.filter((a) => a.workDate === dateStr),
+        assignments: getAssignmentsForDate(dateStr),
       });
     }
 
@@ -192,7 +222,7 @@ export const RosterPlannerView: React.FC = () => {
         isCurrentMonth: true,
         isToday: dateStr === todayStr,
         isSelected: dateStr === selectedDate,
-        assignments: monthAssignments.filter((a) => a.workDate === dateStr),
+        assignments: getAssignmentsForDate(dateStr),
       });
     }
 
@@ -209,7 +239,7 @@ export const RosterPlannerView: React.FC = () => {
           isCurrentMonth: false,
           isToday: dateStr === todayStr,
           isSelected: dateStr === selectedDate,
-          assignments: monthAssignments.filter((a) => a.workDate === dateStr),
+          assignments: getAssignmentsForDate(dateStr),
         });
       }
     }
@@ -254,6 +284,7 @@ export const RosterPlannerView: React.FC = () => {
     setGroupName(suggestedName || `Group-${dateAssignments.length + 1}`);
     setSelectedWorkerIds([]);
     setWorkerSearchTerm('');
+    setCarryForward(true);
     setCreateModalOpen(true);
   };
 
@@ -287,6 +318,58 @@ export const RosterPlannerView: React.FC = () => {
     );
   }, [allWorkers, workerSearchTerm]);
 
+  // Manage / Edit Workers Handlers (Ongoing carry-forward group)
+  const handleOpenEditWorkers = (assignment: any) => {
+    setEditingAssignment(assignment);
+    const currentWorkerIds = (assignment.workers || []).map((w: any) => w.workerId || w.id);
+    setEditSelectedWorkerIds(currentWorkerIds);
+    setEditWorkerSearchTerm('');
+    setEditWorkersModalOpen(true);
+  };
+
+  const toggleEditWorker = (id: string) => {
+    if (editSelectedWorkerIds.includes(id)) {
+      setEditSelectedWorkerIds(editSelectedWorkerIds.filter((wId) => wId !== id));
+    } else {
+      setEditSelectedWorkerIds([...editSelectedWorkerIds, id]);
+    }
+  };
+
+  const handleSaveEditWorkers = async () => {
+    if (!editingAssignment) return;
+    try {
+      setSavingWorkers(true);
+      await apiRequest(`/assignments/${editingAssignment.id}/workers`, {
+        method: 'PUT',
+        body: JSON.stringify({ workerIds: editSelectedWorkerIds }),
+      });
+      const msg = `Updated workforce for "${editingAssignment.groupName || editingAssignment.shiftName}" (${editSelectedWorkerIds.length} workers). Carry-forward updated seamlessly!`;
+      toast.success(msg);
+      setMessage({ text: msg, type: 'success' });
+      setEditWorkersModalOpen(false);
+      await Promise.all([
+        loadDateAssignments(selectedDate),
+        loadMonthAssignments(currentYear, currentMonth),
+      ]);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update workers');
+      setMessage({ text: err.message || 'Failed to update workers', type: 'error' });
+    } finally {
+      setSavingWorkers(false);
+    }
+  };
+
+  const filteredWorkersForEditModal = useMemo(() => {
+    if (!editWorkerSearchTerm.trim()) return allWorkers;
+    const term = editWorkerSearchTerm.toLowerCase();
+    return allWorkers.filter(
+      (w) =>
+        w.fullName?.toLowerCase().includes(term) ||
+        w.employeeCode?.toLowerCase().includes(term) ||
+        w.email?.toLowerCase().includes(term)
+    );
+  }, [allWorkers, editWorkerSearchTerm]);
+
   // Create Assignment Group
   const handleCreateGroup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -308,13 +391,19 @@ export const RosterPlannerView: React.FC = () => {
           shiftStartTime,
           shiftEndTime,
           workerIds: selectedWorkerIds,
+          publishImmediately: true,
+          carryForward,
         }),
       });
 
+      const successMsg = carryForward
+        ? `Group "${groupName.trim()}" created! Location, supervisor, and workers will carry forward daily until cancelled.`
+        : `Group "${groupName.trim()}" created & assigned successfully for ${selectedDate}!`;
       setMessage({
-        text: `Group "${groupName.trim()}" created successfully for ${selectedDate}!`,
+        text: successMsg,
         type: 'success',
       });
+      toast.success(successMsg);
       setCreateModalOpen(false);
       setSelectedWorkerIds([]);
 
@@ -324,7 +413,9 @@ export const RosterPlannerView: React.FC = () => {
         loadMonthAssignments(currentYear, currentMonth),
       ]);
     } catch (err: any) {
-      setMessage({ text: err.message || 'Failed to create group assignment', type: 'error' });
+      const errorMsg = err.message || 'Failed to create group assignment';
+      setMessage({ text: errorMsg, type: 'error' });
+      toast.error(errorMsg);
     } finally {
       setSubmitting(false);
     }
@@ -334,13 +425,17 @@ export const RosterPlannerView: React.FC = () => {
   const handlePublish = async (id: string, name: string) => {
     try {
       await apiRequest(`/assignments/${id}/publish`, { method: 'POST' });
-      setMessage({ text: `Group "${name}" published! Staff can now clock in.`, type: 'success' });
+      const successMsg = `Group "${name}" published! Staff can now clock in.`;
+      setMessage({ text: successMsg, type: 'success' });
+      toast.success(successMsg);
       await Promise.all([
         loadDateAssignments(selectedDate),
         loadMonthAssignments(currentYear, currentMonth),
       ]);
     } catch (err: any) {
-      setMessage({ text: err.message || 'Failed to publish group assignment', type: 'error' });
+      const errorMsg = err.message || 'Failed to publish group assignment';
+      setMessage({ text: errorMsg, type: 'error' });
+      toast.error(errorMsg);
     }
   };
 
@@ -353,16 +448,20 @@ export const RosterPlannerView: React.FC = () => {
       for (const grp of draftGroups) {
         await apiRequest(`/assignments/${grp.id}/publish`, { method: 'POST' });
       }
+      const successMsg = `Successfully published all ${draftGroups.length} draft groups for ${selectedDate}!`;
       setMessage({
-        text: `Successfully published all ${draftGroups.length} draft groups for ${selectedDate}!`,
+        text: successMsg,
         type: 'success',
       });
+      toast.success(successMsg);
       await Promise.all([
         loadDateAssignments(selectedDate),
         loadMonthAssignments(currentYear, currentMonth),
       ]);
     } catch (err: any) {
-      setMessage({ text: err.message || 'Failed to publish all draft groups', type: 'error' });
+      const errorMsg = err.message || 'Failed to publish all draft groups';
+      setMessage({ text: errorMsg, type: 'error' });
+      toast.error(errorMsg);
     }
   };
 
@@ -414,11 +513,10 @@ export const RosterPlannerView: React.FC = () => {
       {/* Top Banner Alert Message */}
       {message && (
         <div
-          className={`p-4 rounded-2xl text-xs font-medium border flex items-center justify-between shadow-2xs transition-all ${
-            message.type === 'success'
-              ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
-              : 'bg-rose-50 text-rose-900 border-rose-200'
-          }`}
+          className={`p-4 rounded-2xl text-xs font-medium border flex items-center justify-between shadow-2xs transition-all ${message.type === 'success'
+            ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+            : 'bg-rose-50 text-rose-900 border-rose-200'
+            }`}
         >
           <div className="flex items-center gap-2">
             {message.type === 'success' ? (
@@ -587,22 +685,20 @@ export const RosterPlannerView: React.FC = () => {
                   <div
                     key={day.dateStr}
                     onClick={() => handleDateClick(day.dateStr)}
-                    className={`min-h-[110px] sm:min-h-[125px] p-2 sm:p-2.5 transition-all cursor-pointer relative group flex flex-col justify-between ${
-                      day.isCurrentMonth
-                        ? 'bg-white hover:bg-slate-50/90'
-                        : 'bg-slate-50/40 text-slate-300 hover:bg-slate-50'
-                    } ${isSelected ? 'ring-2 ring-inset ring-slate-900 bg-slate-50/60' : ''}`}
+                    className={`min-h-[110px] sm:min-h-[125px] p-2 sm:p-2.5 transition-all cursor-pointer relative group flex flex-col justify-between ${day.isCurrentMonth
+                      ? 'bg-white hover:bg-slate-50/90'
+                      : 'bg-slate-50/40 text-slate-300 hover:bg-slate-50'
+                      } ${isSelected ? 'ring-2 ring-inset ring-slate-900 bg-slate-50/60' : ''}`}
                   >
                     {/* Top Row: Date Number and Badges */}
                     <div className="flex items-center justify-between">
                       <span
-                        className={`text-xs font-bold w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${
-                          isToday
-                            ? 'bg-slate-900 text-white shadow-2xs'
-                            : day.isCurrentMonth
+                        className={`text-xs font-bold w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${isToday
+                          ? 'bg-slate-900 text-white shadow-2xs'
+                          : day.isCurrentMonth
                             ? 'text-slate-800 group-hover:text-slate-900'
                             : 'text-slate-400'
-                        }`}
+                          }`}
                       >
                         {day.dayNumber}
                       </span>
@@ -623,23 +719,28 @@ export const RosterPlannerView: React.FC = () => {
                     {/* Middle: Scheduled Groups List Previews */}
                     <div className="my-1.5 space-y-1 overflow-hidden">
                       {hasGroups ? (
-                        day.assignments.slice(0, 2).map((a) => (
-                          <div
-                            key={a.id}
-                            className={`text-[10px] truncate px-1.5 py-0.5 rounded-md font-medium border flex items-center justify-between gap-1 ${
-                              a.status === 'PUBLISHED'
-                                ? 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
-                                : 'bg-amber-50/80 border-amber-200 text-amber-900'
-                            }`}
-                          >
-                            <span className="truncate font-semibold">
-                              {a.groupName || a.shiftName || 'Group'}
-                            </span>
-                            <span className="text-[9px] opacity-75 shrink-0">
-                              {a.workers?.length || 0}u
-                            </span>
-                          </div>
-                        ))
+                        day.assignments.slice(0, 2).map((a) => {
+                          const isCarried = a.workDate !== day.dateStr;
+                          return (
+                            <div
+                              key={a.id}
+                              className={`text-[10px] truncate px-1.5 py-0.5 rounded-md font-medium border flex items-center justify-between gap-1 ${a.status === 'PUBLISHED'
+                                  ? isCarried
+                                    ? 'bg-blue-50/90 border-blue-200 text-blue-900'
+                                    : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+                                  : 'bg-amber-50/80 border-amber-200 text-amber-900'
+                                }`}
+                            >
+                              <span className="truncate font-semibold flex items-center gap-1">
+                                {isCarried && <Repeat className="w-2.5 h-2.5 shrink-0 text-blue-600" />}
+                                {a.groupName || a.shiftName || 'Group'}
+                              </span>
+                              <span className="text-[9px] opacity-75 shrink-0">
+                                {a.workers?.length || 0}u
+                              </span>
+                            </div>
+                          );
+                        })
                       ) : day.isCurrentMonth ? (
                         <span className="text-[10px] text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity block text-center py-2">
                           + Add Group
@@ -831,12 +932,25 @@ export const RosterPlannerView: React.FC = () => {
                     {/* Header: Group Name & Status */}
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="text-xs font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-0.5 rounded-lg flex items-center gap-1">
                             <Building2 className="w-3.5 h-3.5" />
                             {a.groupName || a.shiftName || 'Group'}
                           </span>
                           <StatusBadge status={a.status} />
+                          {a.carryForward !== false && (
+                            <span
+                              className={`text-[11px] font-semibold px-2 py-0.5 rounded-lg flex items-center gap-1 border ${a.isCarriedForward || a.workDate !== selectedDate
+                                  ? 'bg-blue-50 text-blue-800 border-blue-200'
+                                  : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                }`}
+                            >
+                              <Repeat className="w-3 h-3" />
+                              {a.isCarriedForward || a.workDate !== selectedDate
+                                ? `Carried Forward (${String(a.workDate).split('T')[0]})`
+                                : 'Daily Carry-Forward'}
+                            </span>
+                          )}
                         </div>
                         <h3 className="font-bold text-slate-900 text-lg mt-1.5 mb-0">
                           {a.worksiteName}
@@ -845,6 +959,26 @@ export const RosterPlannerView: React.FC = () => {
                           <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                           {a.worksiteAddress}
                         </span>
+
+                        {/* Carried Forward Info Banner */}
+                        {(a.isCarriedForward || (a.carryForward !== false && a.workDate !== selectedDate)) && a.status !== 'CANCELLED' && (
+                          <div className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-200 text-blue-900 text-xs flex items-center gap-2 mt-2.5">
+                            <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
+                            <span>
+                              Carried forward from <strong>{String(a.workDate).split('T')[0]}</strong>. Location, supervisor, and all <strong>{a.workers?.length || 0}</strong> assigned workers carry forward daily until cancelled.
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Cancelled Banner */}
+                        {a.status === 'CANCELLED' && (
+                          <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs flex items-center gap-2 mt-2.5">
+                            <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                            <span>
+                              Cancelled: {a.cancellationReason || 'No reason provided'}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -886,7 +1020,7 @@ export const RosterPlannerView: React.FC = () => {
                                 {w.fullName?.charAt(0) || 'U'}
                               </span>
                               <span>{w.fullName}</span>
-                              <span className="text-[10px] text-slate-400 font-mono">
+                              <span className="text-[10px] text-slate-400  ">
                                 ({w.employeeCode})
                               </span>
                             </span>
@@ -906,7 +1040,7 @@ export const RosterPlannerView: React.FC = () => {
                         : 'Draft Roster'}
                     </span>
 
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       {a.status === 'DRAFT' && (
                         <button
                           onClick={() => handlePublish(a.id, a.groupName || a.shiftName)}
@@ -917,15 +1051,24 @@ export const RosterPlannerView: React.FC = () => {
                         </button>
                       )}
                       {a.status !== 'CANCELLED' && (
-                        <button
-                          onClick={() => {
-                            setCancelAssignmentId(a.id);
-                            setCancelModalOpen(true);
-                          }}
-                          className="px-3 py-1.5 text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-semibold cursor-pointer"
-                        >
-                          Cancel Group
-                        </button>
+                        <>
+                          <button
+                            onClick={() => handleOpenEditWorkers(a)}
+                            className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
+                          >
+                            <Users className="w-3.5 h-3.5" />
+                            Manage Staff ({a.workers?.length || 0})
+                          </button>
+                          <button
+                            onClick={() => {
+                              setCancelAssignmentId(a.id);
+                              setCancelModalOpen(true);
+                            }}
+                            className="px-3 py-1.5 text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-xl text-xs font-semibold cursor-pointer"
+                          >
+                            Cancel Group (Stop Carry-Forward)
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -986,11 +1129,10 @@ export const RosterPlannerView: React.FC = () => {
                   type="button"
                   key={sug}
                   onClick={() => setGroupName(sug)}
-                  className={`text-[11px] px-2 py-0.5 rounded-lg border transition-colors cursor-pointer ${
-                    groupName === sug
-                      ? 'bg-slate-900 text-white border-slate-900 font-bold'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border-slate-200'
-                  }`}
+                  className={`text-[11px] px-2 py-0.5 rounded-lg border transition-colors cursor-pointer ${groupName === sug
+                    ? 'bg-slate-900 text-white border-slate-900 font-bold'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border-slate-200'
+                    }`}
                 >
                   {sug}
                 </button>
@@ -1104,11 +1246,10 @@ export const RosterPlannerView: React.FC = () => {
                   return (
                     <label
                       key={w.id}
-                      className={`flex items-center justify-between p-2 rounded-lg text-xs cursor-pointer transition-colors ${
-                        isChecked
-                          ? 'bg-white font-semibold text-slate-900 shadow-2xs border border-slate-200'
-                          : 'text-slate-600 hover:bg-slate-100 border border-transparent'
-                      }`}
+                      className={`flex items-center justify-between p-2 rounded-lg text-xs cursor-pointer transition-colors ${isChecked
+                        ? 'bg-white font-semibold text-slate-900 shadow-2xs border border-slate-200'
+                        : 'text-slate-600 hover:bg-slate-100 border border-transparent'
+                        }`}
                     >
                       <div className="flex items-center gap-2.5">
                         <input
@@ -1118,7 +1259,7 @@ export const RosterPlannerView: React.FC = () => {
                           className="rounded text-slate-900 cursor-pointer"
                         />
                         <span>{w.fullName}</span>
-                        <span className="text-[10px] text-slate-400 font-mono">
+                        <span className="text-[10px] text-slate-400  ">
                           ({w.employeeCode})
                         </span>
                       </div>
@@ -1132,6 +1273,26 @@ export const RosterPlannerView: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* FIELD 5: Carry Forward Daily Until Cancelled */}
+            <div className="p-3.5 rounded-xl border border-indigo-200 bg-indigo-50/70 flex items-start gap-3 mt-3">
+              <input
+                type="checkbox"
+                id="carryForwardCheckbox"
+                checked={carryForward}
+                onChange={(e) => setCarryForward(e.target.checked)}
+                className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer h-4 w-4 shrink-0"
+              />
+              <label htmlFor="carryForwardCheckbox" className="cursor-pointer">
+                <span className="text-xs font-semibold text-indigo-950 flex items-center gap-1.5">
+                  <Repeat className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                  Carry Forward Daily Until Cancelled (Recommended)
+                </span>
+                <span className="text-[11px] text-indigo-800/80 block mt-0.5">
+                  Automatically carries forward this location, supervisor, and all assigned workers up to the current date until cancelled. Future dates will not be populated until that day arrives.
+                </span>
+              </label>
+            </div>
           </div>
         </form>
       </Modal>
@@ -1140,22 +1301,22 @@ export const RosterPlannerView: React.FC = () => {
       <Modal
         isOpen={cancelModalOpen}
         onClose={() => setCancelModalOpen(false)}
-        title="Cancel Group Assignment"
-        description="Provide a required reason for cancelling this group assignment."
+        title="Cancel Group Assignment & Stop Carry-Forward"
+        description="Cancelling this group will immediately stop this location, supervisor, and worker assignment from carrying forward to future dates. All past attendance records remain safely preserved."
         footer={
           <>
             <button
               onClick={() => setCancelModalOpen(false)}
               className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
             >
-              Cancel
+              Keep Active
             </button>
             <button
               onClick={handleCancelSubmit}
               disabled={!cancelReason.trim()}
               className="px-5 py-2 text-xs font-bold bg-rose-600 text-white rounded-xl hover:bg-rose-700 disabled:opacity-50 cursor-pointer"
             >
-              Confirm Cancellation
+              Confirm Cancellation & Stop Carry-Forward
             </button>
           </>
         }
@@ -1171,6 +1332,101 @@ export const RosterPlannerView: React.FC = () => {
             rows={3}
             className="w-full text-xs p-3 rounded-xl border border-slate-200 focus:outline-none"
           />
+        </div>
+      </Modal>
+
+      {/* MANAGE STAFF MODAL (FOR ONGOING / CARRIED-FORWARD GROUPS) */}
+      <Modal
+        isOpen={editWorkersModalOpen}
+        onClose={() => setEditWorkersModalOpen(false)}
+        title={`Manage Staff: ${editingAssignment?.groupName || editingAssignment?.shiftName || 'Group'}`}
+        description="Update assigned personnel for this location. Changes will immediately take effect and carry forward daily."
+        maxWidth="lg"
+        footer={
+          <>
+            <button
+              onClick={() => setEditWorkersModalOpen(false)}
+              className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveEditWorkers}
+              disabled={savingWorkers}
+              className="px-5 py-2 text-xs font-bold bg-slate-900 text-white rounded-xl hover:bg-slate-800 disabled:opacity-50 cursor-pointer shadow-xs"
+            >
+              {savingWorkers ? 'Saving...' : `Save Workforce (${editSelectedWorkerIds.length} Staff)`}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold text-slate-700">
+              Selected Staff ({editSelectedWorkerIds.length} of {allWorkers.length})
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setEditSelectedWorkerIds(allWorkers.map((w) => w.id))}
+                className="text-[11px] text-indigo-600 hover:underline font-semibold cursor-pointer"
+              >
+                Select All
+              </button>
+              <span className="text-slate-300">|</span>
+              <button
+                type="button"
+                onClick={() => setEditSelectedWorkerIds([])}
+                className="text-[11px] text-slate-500 hover:underline cursor-pointer"
+              >
+                Clear All
+              </button>
+            </div>
+          </div>
+
+          <div className="relative mb-2">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+            <input
+              type="text"
+              value={editWorkerSearchTerm}
+              onChange={(e) => setEditWorkerSearchTerm(e.target.value)}
+              placeholder="Search staff by name, employee code, or email..."
+              className="w-full text-xs pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 focus:outline-none"
+            />
+          </div>
+
+          <div className="max-h-56 overflow-y-auto border border-slate-200 rounded-xl p-1.5 space-y-1 bg-slate-50/50">
+            {filteredWorkersForEditModal.length > 0 ? (
+              filteredWorkersForEditModal.map((w) => {
+                const isChecked = editSelectedWorkerIds.includes(w.id);
+                return (
+                  <label
+                    key={w.id}
+                    className={`flex items-center justify-between p-2 rounded-lg text-xs cursor-pointer transition-colors ${isChecked
+                        ? 'bg-white font-semibold text-slate-900 shadow-2xs border border-slate-200'
+                        : 'text-slate-600 hover:bg-slate-100 border border-transparent'
+                      }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleEditWorker(w.id)}
+                        className="rounded text-slate-900 cursor-pointer"
+                      />
+                      <span>{w.fullName}</span>
+                      <span className="text-[10px] text-slate-400">({w.employeeCode})</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400">{w.email}</span>
+                  </label>
+                );
+              })
+            ) : (
+              <div className="p-3 text-center text-xs text-slate-400">
+                No active workers found matching search.
+              </div>
+            )}
+          </div>
         </div>
       </Modal>
     </div>

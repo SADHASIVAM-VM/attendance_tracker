@@ -3,12 +3,14 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { getDb } from '../database/db.js';
 import { users, userRoles, organizations } from '../database/schema.js';
-import { eq } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
 import { generateToken } from '../middleware/auth.js';
 import { logAuditEvent } from '../utils/audit.js';
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().optional(),
+  phone: z.string().optional(),
+  identifier: z.string().optional(),
   password: z.string().min(1),
 });
 
@@ -17,24 +19,38 @@ export async function login(req: Request, res: Response): Promise<any> {
   if (!parseResult.success) {
     return res.status(400).json({
       error: 'INVALID_INPUT',
-      message: 'Email and password are required',
+      message: 'Email or Mobile number and password are required',
       details: parseResult.error.issues,
     });
   }
 
-  const { email, password } = parseResult.data;
+  const { email, phone, identifier, password } = parseResult.data;
+  const loginTerm = (identifier || email || phone || '').trim();
+
+  if (!loginTerm) {
+    return res.status(400).json({
+      error: 'INVALID_INPUT',
+      message: 'Please provide your Email address or Mobile phone number.',
+    });
+  }
+
   const db = await getDb();
 
   const [userRecord] = await db
     .select()
     .from(users)
-    .where(eq(users.email, email.toLowerCase().trim()))
+    .where(
+      or(
+        eq(users.email, loginTerm.toLowerCase()),
+        eq(users.phone, loginTerm)
+      )
+    )
     .limit(1);
 
   if (!userRecord || !userRecord.isActive) {
     return res.status(401).json({
       error: 'INVALID_CREDENTIALS',
-      message: 'Invalid email or password',
+      message: 'Invalid mobile number, email, or password',
     });
   }
 
@@ -68,6 +84,18 @@ export async function login(req: Request, res: Response): Promise<any> {
     email: userRecord.email,
     fullName: userRecord.fullName,
     roles,
+    phone: userRecord.phone,
+    personalEmail: userRecord.personalEmail,
+    dob: userRecord.dob ? String(userRecord.dob) : null,
+    gender: userRecord.gender,
+    bloodGroup: userRecord.bloodGroup,
+    currentAddress: userRecord.currentAddress || userRecord.address,
+    permanentAddress: userRecord.permanentAddress,
+    emergencyContactName: userRecord.emergencyContactName,
+    emergencyContactPhone: userRecord.emergencyContactPhone,
+    employmentType: userRecord.employmentType,
+    photoUrl: userRecord.photoUrl,
+    isActive: userRecord.isActive,
   };
 
   const token = generateToken(authUser);
