@@ -18,6 +18,8 @@ import * as adminExCtrl from '../controllers/adminExceptionController.js';
 import * as overtimeCtrl from '../controllers/overtimeController.js';
 import * as exportCtrl from '../controllers/exportController.js';
 import * as payrollCtrl from '../controllers/payrollController.js';
+import * as adminCorrectionCtrl from '../controllers/adminCorrectionController.js';
+import * as supervisorOverrideCtrl from '../controllers/supervisorOverrideController.js';
 import { getPhotoBuffer, verifyStorageToken } from '../services/storage.js';
 
 const upload = multer({
@@ -91,12 +93,21 @@ router.post('/attendance/sessions/:id/clock-out', authenticate, attendanceCtrl.c
 router.get('/attendance/me', authenticate, attendanceCtrl.getWorkerMyAttendance);
 router.get('/attendance/pending-approvals', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), attendanceCtrl.getPendingApprovals);
 router.get('/attendance/supervisor-roster', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), attendanceCtrl.getSupervisorTeamRoster);
+router.get('/attendance/supervisor/history-range', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), attendanceCtrl.getSupervisorAttendanceHistoryRange);
+router.get('/attendance/supervisor/history', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), attendanceCtrl.getSupervisorAttendanceHistoryRange);
 router.post('/attendance/:id/approve', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), attendanceCtrl.approveAttendance);
 router.post('/attendance/:id/reject', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), attendanceCtrl.rejectAttendance);
 router.post('/attendance/:id/transfer', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), attendanceCtrl.transferSupervisor);
 router.post('/attendance/:id/supervisor-clock-out', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), attendanceCtrl.supervisorClockOutWorker);
 router.get('/attendance/missing-clock-ins', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), flagCtrl.getMissingClockIns);
 router.post('/attendance/missing-clock-ins/:id/flag', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), flagCtrl.applyAttendanceFlag);
+router.post('/attendance/missing-clock-ins/create-flag', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), flagCtrl.createMissingAttendanceFlag);
+router.post('/attendance/missing-clock-ins/flag-worker', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), flagCtrl.createMissingAttendanceFlag);
+
+// Supervisor Attendance Overrides & Monthly Summary
+router.post('/attendance/supervisor/override', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), supervisorOverrideCtrl.applySupervisorAttendanceOverride);
+router.get('/attendance/supervisor/overrides', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), supervisorOverrideCtrl.getSupervisorOverrides);
+router.get('/attendance/supervisor/summary', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), supervisorOverrideCtrl.getSupervisorAttendanceSummary);
 
 // =======================
 // Supervisor Approval Queues (Phase 2 Centralized Dashboard)
@@ -119,8 +130,10 @@ router.get('/reports/supervisor-attendance', authenticate, requireRole('SUPER_AD
 // =======================
 // Attendance Regularization
 // =======================
+router.post('/attendance/regularization', authenticate, regCtrl.requestRegularization);
 router.post('/attendance/:id/regularization', authenticate, regCtrl.requestRegularization);
 router.get('/regularization/pending', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), regCtrl.getPendingRegularizations);
+router.get('/regularization/requests', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), regCtrl.getSupervisorRegularizationRequests);
 router.post('/regularization/:id/approve', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), regCtrl.approveRegularization);
 router.post('/regularization/:id/reject', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), regCtrl.rejectRegularization);
 router.post('/regularization/:id/cancel', authenticate, regCtrl.cancelRegularization);
@@ -197,6 +210,20 @@ router.get('/admin/exceptions/:id', authenticate, requireRole('SUPER_ADMIN', 'AD
 router.post('/admin/exceptions/:id/reassign', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminExCtrl.reassignException);
 router.post('/admin/attendance/:id/override', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminExCtrl.administrativeAttendanceOverride);
 router.post('/admin/escalation/run', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminExCtrl.triggerEscalationRun);
+
+// =======================
+// Admin Attendance Control Center & Corrections
+// =======================
+router.get('/admin/corrections/summary', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminCorrectionCtrl.getAdminControlSummary);
+router.get('/admin/corrections', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminCorrectionCtrl.getAdminCorrectionRequests);
+router.get('/admin/corrections/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminCorrectionCtrl.getAdminCorrectionDetail);
+router.post('/admin/corrections/:id/approve', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminCorrectionCtrl.approveAdminCorrection);
+router.post('/admin/corrections/:id/reject', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminCorrectionCtrl.rejectAdminCorrection);
+router.post('/admin/corrections/:id/request-info', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminCorrectionCtrl.requestInfoAdminCorrection);
+router.post('/admin/corrections/create-missing-attendance', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminCorrectionCtrl.createAdminMissingAttendanceCorrection);
+router.get('/admin/overdue-approvals', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminCorrectionCtrl.getAdminOverdueApprovals);
+router.post('/admin/overdue-approvals/:id/remind', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminCorrectionCtrl.sendOverdueReminder);
+router.post('/admin/overdue-approvals/:id/escalate', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminCorrectionCtrl.escalateOverdueApproval);
 
 // =======================
 // Private Storage Download Stream

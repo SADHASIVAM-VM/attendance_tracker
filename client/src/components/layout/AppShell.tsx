@@ -49,7 +49,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   const mainNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'attendance-overview', label: 'Attendance', icon: Clock },
-    { id: 'exceptions', label: 'Exceptions & Escalations', icon: AlertTriangle },
+    { id: 'exceptions', label: 'Attendance Control Center', icon: ShieldCheck },
     { id: 'roster', label: 'Site Assignments', icon: CalendarDays },
     { id: 'users', label: 'Workers', icon: Users },
     { id: 'worksites', label: 'Locations', icon: MapPin },

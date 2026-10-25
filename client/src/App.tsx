@@ -15,6 +15,7 @@ import { ReportsView } from './views/admin/ReportsView';
 import { AuditLogsView } from './views/admin/AuditLogsView';
 import { OrgSettingsView } from './views/admin/OrgSettingsView';
 import { AdminExceptionDashboardView } from './views/admin/AdminExceptionDashboardView';
+import { AdminAttendanceControlCenterView } from './views/admin/AdminAttendanceControlCenterView';
 import { FieldWorkerApp } from './views/worker/FieldWorkerApp';
 import { SupervisorApp } from './views/supervisor/SupervisorApp';
 import { RefreshCw } from 'lucide-react';
@@ -78,8 +79,9 @@ const MainApplication: React.FC = () => {
         return <UsersView />;
       case 'leave-approvals':
         return <AdminLeaveApprovalsView />;
+      case 'attendance-control':
       case 'exceptions':
-        return <AdminExceptionDashboardView />;
+        return <AdminAttendanceControlCenterView />;
       case 'reports':
       case 'attendance-overview':
         return <ReportsView />;

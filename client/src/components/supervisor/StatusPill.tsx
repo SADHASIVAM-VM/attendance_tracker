@@ -33,8 +33,13 @@ export const StatusPill: React.FC<StatusPillProps> = ({
           icon: XCircle,
           label: 'Rejected',
         };
-      case 'ABSENT':
       case 'ON_LEAVE':
+        return {
+          bg: 'bg-indigo-50 text-indigo-700 border border-indigo-200',
+          icon: CalendarDays,
+          label: 'On Leave',
+        };
+      case 'ABSENT':
         return {
           bg: 'bg-[#FEE2E2] text-[#DC2626] border border-[#DC2626]/20',
           icon: UserX,

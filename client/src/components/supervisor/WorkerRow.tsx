@@ -81,13 +81,23 @@ export const WorkerRow: React.FC<WorkerRowProps> = ({
 
       {/* Worker Details */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <h4 className="text-sm font-bold text-[#111827] truncate leading-snug">
             {worker.name}
           </h4>
+          {worker.employeeCode && (
+            <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-semibold bg-slate-100 text-slate-600 border border-slate-200/60">
+              {worker.employeeCode}
+            </span>
+          )}
           <span className="text-[11px] text-[#6B7280] font-medium hidden sm:inline">
             • {worker.role}
           </span>
+          {worker.worksiteName && (
+            <span className="text-[10px] text-slate-400 font-medium hidden md:inline truncate max-w-[120px]">
+              • {worker.worksiteName}
+            </span>
+          )}
         </div>
 
         {/* Times & Distance */}
@@ -106,6 +116,13 @@ export const WorkerRow: React.FC<WorkerRowProps> = ({
             >
               <MapPin className="w-2.5 h-2.5" />
               {worker.distanceMeters}m {worker.isWithinRadius ? 'on site' : 'outside'}
+            </span>
+          )}
+
+          {/* Supervisor Remarks / Reason */}
+          {(worker.rejectionReason || worker.flagReason || (worker.note && worker.note !== 'Not yet clocked in' && worker.note !== 'Not yet in' && worker.note !== 'Scheduled on shift roster')) && (
+            <span className="w-full text-[11px] text-slate-500 truncate block mt-0.5">
+              {worker.rejectionReason ? `Reason: ${worker.rejectionReason}` : (worker.flagReason || worker.note)}
             </span>
           )}
         </div>

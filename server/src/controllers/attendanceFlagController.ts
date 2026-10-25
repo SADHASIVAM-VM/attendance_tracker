@@ -421,13 +421,16 @@ export async function applyAttendanceFlag(req: Request, res: Response): Promise<
 
   const now = new Date();
 
+  // Validate mandatory meaningful reason if provided
+  const finalReason = reason && reason.trim().length >= 3 ? reason.trim() : flagRecord.reason || 'Missing attendance reviewed by supervisor';
+
   // 3. Update flag record
   const [updated] = await db
     .update(attendanceFlags)
     .set({
       flagStatus: finalStatus,
-      reason: reason || null,
-      note: note || null,
+      reason: finalReason,
+      note: note ? note.trim() : null,
       reviewedBy: user.id,
       reviewedAt: now,
       updatedAt: now,
@@ -439,20 +442,24 @@ export async function applyAttendanceFlag(req: Request, res: Response): Promise<
   await logAuditEvent({
     orgId,
     actorId: user.id,
+    actorNameSnapshot: user.fullName,
+    actorRole: user.roles[0],
     action: 'ATTENDANCE_FLAG_APPLIED',
     entityType: 'ATTENDANCE_FLAG',
     entityId: id,
+    reason: finalReason,
     beforeValues,
-    afterValues: { flagStatus, reason, note },
+    afterValues: { flagStatus: finalStatus, reason: finalReason, note },
     ipAddress: req.ip as any,
     userAgent: req.headers['user-agent'] as any,
+    req,
   });
 
   // 5. Notify worker
   await db.insert(notifications).values({
     userId: flagRecord.workerId,
     title: 'Attendance Flag Decision',
-    message: `Supervisor ${user.fullName} updated your missing clock-in follow-up for shift ${flagRecord.shiftName}: Decision is ${finalStatus}.`,
+    message: `Supervisor ${user.fullName} updated your missing clock-in follow-up for shift ${flagRecord.shiftName}: Decision is ${finalStatus}. Reason: ${finalReason}`,
     type: 'ATTENDANCE_FLAG',
     entityType: 'ATTENDANCE_FLAG',
     entityId: id as any,
@@ -464,3 +471,181 @@ export async function applyAttendanceFlag(req: Request, res: Response): Promise<
     flag: updated,
   });
 }
+
+/**
+ * POST /attendance/missing-clock-ins/flag-worker
+ * Section 3: Supervisor submits missing-attendance flag for an assigned worker/date
+ * Requires mandatory, meaningful reason; prevents duplicate active flags.
+ */
+const createFlagSchema = z.object({
+  workerId: z.string().uuid(),
+  workDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be formatted as YYYY-MM-DD'),
+  reason: z
+    .string()
+    .trim()
+    .min(5, 'A meaningful, mandatory reason of at least 5 characters is required'),
+  note: z.string().trim().optional(),
+  flagStatus: z.enum(['PENDING_REVIEW', 'APPROVED', 'REJECTED']).default('PENDING_REVIEW'),
+});
+
+export async function createMissingAttendanceFlag(req: Request, res: Response): Promise<any> {
+  const parseResult = createFlagSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({
+      error: 'INVALID_INPUT',
+      message: parseResult.error.issues[0]?.message || 'Invalid flag data',
+      details: parseResult.error.issues,
+    });
+  }
+
+  const { workerId, workDate, reason, note, flagStatus } = parseResult.data;
+  const db = await getDb();
+  const user = req.user!;
+  const orgId = user.orgId;
+  const isSuperOrAdmin = user.roles.includes('SUPER_ADMIN') || user.roles.includes('ADMIN');
+
+  // 1. Check if worker has approved leave on this date
+  const [approvedLeave] = await db
+    .select({ id: leaveRequests.id, leaveTypeName: leaveTypes.name })
+    .from(leaveRequests)
+    .leftJoin(leaveTypes, eq(leaveRequests.leaveTypeId, leaveTypes.id))
+    .where(
+      and(
+        eq(leaveRequests.orgId, orgId),
+        eq(leaveRequests.userId, workerId),
+        eq(leaveRequests.status, 'APPROVED'),
+        sql`${leaveRequests.startDate} <= ${workDate}::date AND ${leaveRequests.endDate} >= ${workDate}::date`
+      )
+    )
+    .limit(1);
+
+  if (approvedLeave) {
+    return res.status(400).json({
+      error: 'APPROVED_LEAVE_EXISTS',
+      message: `Worker is on approved leave (${approvedLeave.leaveTypeName || 'Approved Leave'}) for ${workDate} and cannot be flagged as missing.`,
+    });
+  }
+
+  // 2. Check if worker already clocked in
+  const [existingSession] = await db
+    .select({ id: attendanceSessions.id, clockInTime: attendanceSessions.clockInTime })
+    .from(attendanceSessions)
+    .where(
+      and(
+        eq(attendanceSessions.orgId, orgId),
+        eq(attendanceSessions.workerId, workerId),
+        sql`${attendanceSessions.workDate} = ${workDate}::date`
+      )
+    )
+    .limit(1);
+
+  if (existingSession?.clockInTime) {
+    return res.status(400).json({
+      error: 'WORKER_ALREADY_CLOCKED_IN',
+      message: `Worker has an existing clock-in record on ${workDate}.`,
+    });
+  }
+
+  // 3. Check for existing active flag for this worker and date (prevent duplicates)
+  const [existingFlag] = await db
+    .select({ id: attendanceFlags.id, flagStatus: attendanceFlags.flagStatus })
+    .from(attendanceFlags)
+    .where(
+      and(
+        eq(attendanceFlags.orgId, orgId),
+        eq(attendanceFlags.workerId, workerId),
+        eq(attendanceFlags.workDate, workDate)
+      )
+    )
+    .limit(1);
+
+  if (existingFlag) {
+    return res.status(409).json({
+      error: 'DUPLICATE_FLAG_NOT_ALLOWED',
+      message: `An active missing-attendance flag already exists for this worker on ${workDate}. You can update the existing flag instead.`,
+      flagId: existingFlag.id,
+    });
+  }
+
+  // 4. Resolve assignment for this worker and date
+  const [assignment] = await db
+    .select({
+      id: siteAssignments.id,
+      shiftName: siteAssignments.shiftName,
+      shiftStartTime: siteAssignments.shiftStartTime,
+      supervisorId: siteAssignments.supervisorId,
+    })
+    .from(siteAssignmentWorkers)
+    .innerJoin(siteAssignments, eq(siteAssignmentWorkers.assignmentId, siteAssignments.id))
+    .where(
+      and(
+        eq(siteAssignmentWorkers.workerId, workerId),
+        sql`${siteAssignments.workDate} = ${workDate}::date`,
+        ne(siteAssignments.status, 'CANCELLED')
+      )
+    )
+    .limit(1);
+
+  // If supervisor is not admin, ensure supervisor scope
+  if (!isSuperOrAdmin && assignment && assignment.supervisorId !== user.id) {
+    return res.status(403).json({
+      error: 'UNAUTHORIZED_SCOPE',
+      message: 'You are not authorized to flag missing attendance for workers outside your assigned sites.',
+    });
+  }
+
+  const now = new Date();
+  const shiftStartTime = assignment?.shiftStartTime || '08:00';
+  const shiftParts = shiftStartTime.split(':');
+  const shiftStartDate = new Date(`${workDate}T00:00:00`);
+  shiftStartDate.setHours(parseInt(shiftParts[0] || '8', 10), parseInt(shiftParts[1] || '0', 10), 0, 0);
+
+  const [createdFlag] = await db
+    .insert(attendanceFlags)
+    .values({
+      orgId,
+      assignmentId: assignment?.id || '00000000-0000-0000-0000-000000000000',
+      workerId,
+      supervisorId: assignment?.supervisorId || user.id,
+      workDate,
+      shiftName: assignment?.shiftName || 'Scheduled Shift',
+      shiftStartTime,
+      gracePeriodMinutes: 15,
+      gracePeriodExpiresAt: new Date(shiftStartDate.getTime() + 15 * 60 * 1000),
+      flagStatus,
+      reason,
+      note: note || undefined,
+      reviewedBy: user.id,
+      reviewedAt: now,
+    })
+    .returning();
+
+  await logAuditEvent({
+    orgId,
+    actorId: user.id,
+    actorNameSnapshot: user.fullName,
+    actorRole: user.roles[0],
+    action: 'CREATE_MISSING_ATTENDANCE_FLAG',
+    entityType: 'ATTENDANCE_FLAG',
+    entityId: createdFlag.id,
+    reason,
+    afterValues: { workerId, workDate, flagStatus, reason, note },
+    req,
+  });
+
+  await db.insert(notifications).values({
+    userId: workerId,
+    title: 'Missing Attendance Flagged',
+    message: `Supervisor ${user.fullName} logged a missing-attendance follow-up for ${workDate}. Reason: ${reason}. Awaiting regularization or review.`,
+    type: 'ATTENDANCE_FLAG',
+    entityType: 'ATTENDANCE_FLAG',
+    entityId: createdFlag.id as any,
+  });
+
+  return res.status(201).json({
+    success: true,
+    message: 'Missing attendance flag recorded successfully',
+    flag: createdFlag,
+  });
+}
+

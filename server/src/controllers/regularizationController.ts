@@ -11,11 +11,17 @@ import {
   siteAssignmentWorkers,
   payrollAdjustments,
   attendanceExceptions,
+  organizations,
 } from '../database/schema.js';
-import { eq, and, desc, sql, or, ne } from 'drizzle-orm';
+import { eq, and, desc, sql, or, ne, inArray } from 'drizzle-orm';
 import { logAuditEvent } from '../utils/audit.js';
 import { isSupervisorAuthorizedForSession } from './attendanceController.js';
 import { calculateSessionOvertime } from '../services/overtimeService.js';
+import {
+  getOrgCurrentMonth,
+  isPreviousCalendarMonth,
+  isFutureDate,
+} from '../utils/dateUtils.js';
 
 const requestSchema = z.object({
   correctionType: z.enum([
@@ -27,41 +33,75 @@ const requestSchema = z.object({
     'INCORRECT_HOURS',
     'OTHER',
   ]).default('INCORRECT_HOURS'),
-  reason: z.string().min(5, 'Reason must be at least 5 characters'),
+  workDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  reason: z
+    .string()
+    .trim()
+    .min(5, 'A meaningful reason of at least 5 characters is required explaining what happened'),
   proposedClockInTime: z.string().datetime().optional(),
   proposedClockOutTime: z.string().datetime().optional(),
   supportingEvidenceUrl: z.string().url().optional(),
 });
 
 const decisionSchema = z.object({
-  reason: z.string().min(3, 'Decision reason is mandatory').optional(),
-  reviewNote: z.string().min(3, 'Review note is mandatory').optional(),
-}).refine((data) => data.reason !== undefined || data.reviewNote !== undefined, {
-  message: 'Mandatory decision reason/reviewNote is required',
+  reason: z.string().trim().min(3, 'Decision reason is mandatory').optional(),
+  reviewNote: z.string().trim().min(3, 'Review note is mandatory').optional(),
+}).refine((data) => (data.reason && data.reason.trim().length >= 3) || (data.reviewNote && data.reviewNote.trim().length >= 3), {
+  message: 'Mandatory decision reason/reviewNote of at least 3 characters is required',
 });
 
 /**
+ * Helper to fetch org timezone
+ */
+async function getOrgTimezone(db: any, orgId: string): Promise<string> {
+  const [org] = await db
+    .select({ timezone: organizations.timezone })
+    .from(organizations)
+    .where(eq(organizations.id, orgId))
+    .limit(1);
+  return org?.timezone || 'Asia/Kolkata';
+}
+
+/**
  * POST /attendance/:id/regularization
- * Worker submits a correction request
+ * Worker submits an attendance regularization request
+ * Section 4 & 7: Current-month validation, duplicate prevention, routing to site supervisor
  */
 export async function requestRegularization(req: Request, res: Response): Promise<any> {
-  const { id } = req.params; // attendance session ID
+  const { id } = req.params; // attendance session ID, date, or 'new'
   const parseResult = requestSchema.safeParse(req.body);
   if (!parseResult.success) {
-    return res.status(400).json({ error: 'INVALID_INPUT', details: parseResult.error.issues });
+    return res.status(400).json({
+      error: 'INVALID_INPUT',
+      message: parseResult.error.issues[0]?.message || 'Invalid regularization data',
+      details: parseResult.error.issues,
+    });
   }
 
   const {
     correctionType,
+    workDate: bodyWorkDate,
     reason,
     proposedClockInTime,
     proposedClockOutTime,
     supportingEvidenceUrl,
   } = parseResult.data;
 
+  // Reject empty or whitespace-only reasons
+  if (!reason || reason.trim().length < 5) {
+    return res.status(400).json({
+      error: 'REASON_REQUIRED',
+      message: 'A meaningful explanation of at least 5 characters is required explaining why attendance requires regularization',
+    });
+  }
+
   const db = await getDb();
   const userId = req.user!.id;
   const orgId = req.user!.orgId;
+
+  // 1. Resolve organization timezone & validate current calendar month
+  const orgTz = await getOrgTimezone(db, orgId);
+  const { monthStr } = getOrgCurrentMonth(orgTz);
 
   let session: any = null;
 
@@ -75,7 +115,11 @@ export async function requestRegularization(req: Request, res: Response): Promis
 
     if (ex) {
       if (ex.sessionId) {
-        const [existing] = await db.select().from(attendanceSessions).where(eq(attendanceSessions.id as any, ex.sessionId as any)).limit(1);
+        const [existing] = await db
+          .select()
+          .from(attendanceSessions)
+          .where(eq(attendanceSessions.id as any, ex.sessionId as any))
+          .limit(1);
         session = existing;
       }
       if (!session) {
@@ -90,6 +134,7 @@ export async function requestRegularization(req: Request, res: Response): Promis
             currentApproverId: ex.currentApproverId || ex.primarySupervisorId || userId,
             workDate: ex.workDate,
             status: 'PENDING',
+            idempotencyKey: `reg_${ex.workerId}_${ex.workDate}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
             exceptionStatus: 'REGULARIZATION_PENDING',
             clockInTime: proposedClockInTime ? new Date(proposedClockInTime) : null,
             clockOutTime: proposedClockOutTime ? new Date(proposedClockOutTime) : null,
@@ -98,55 +143,75 @@ export async function requestRegularization(req: Request, res: Response): Promis
             calculatedOtMinutes: 0,
             approvedOtMinutes: 0,
             otStatus: 'NONE',
-            isLocationBypassed: true,
           })
           .returning();
         session = created;
-        await db.update(attendanceExceptions).set({ sessionId: created.id, status: 'INVESTIGATING' }).where(eq(attendanceExceptions.id as any, ex.id as any));
+        await db
+          .update(attendanceExceptions)
+          .set({ sessionId: created.id, status: 'INVESTIGATING' })
+          .where(eq(attendanceExceptions.id as any, ex.id as any));
       }
     }
-  } else if (typeof id === 'string' && id.startsWith('scheduled_absent_')) {
-    const targetDate = id.replace('scheduled_absent_', '');
-    const [asg] = await db
-      .select({
-        assignmentId: siteAssignments.id,
-        worksiteId: siteAssignments.worksiteId,
-        supervisorId: siteAssignments.supervisorId,
-      })
-      .from(siteAssignmentWorkers)
-      .innerJoin(siteAssignments, eq(siteAssignmentWorkers.assignmentId, siteAssignments.id))
+  } else if (typeof id === 'string' && (id.startsWith('scheduled_absent_') || id.startsWith('flag_') || id === 'new' || /^\d{4}-\d{2}-\d{2}$/.test(id))) {
+    const targetDate = bodyWorkDate || id.replace('scheduled_absent_', '').replace('flag_', '');
+    
+    // Check if session already exists for this date
+    const [existingSession] = await db
+      .select()
+      .from(attendanceSessions)
       .where(
         and(
-          eq(siteAssignmentWorkers.workerId, userId),
-          sql`${siteAssignments.workDate} = ${targetDate}::date`,
-          ne(siteAssignments.status, 'CANCELLED')
+          eq(attendanceSessions.workerId, userId),
+          sql`${attendanceSessions.workDate} = ${targetDate}::date`,
+          eq(attendanceSessions.orgId, orgId)
         )
       )
       .limit(1);
 
-    const [created] = await db
-      .insert(attendanceSessions)
-      .values({
-        orgId,
-        workerId: userId,
-        assignmentId: asg?.assignmentId || null,
-        worksiteSnapshotId: asg?.worksiteId || null,
-        supervisorSnapshotId: asg?.supervisorId || userId,
-        currentApproverId: asg?.supervisorId || userId,
-        workDate: targetDate,
-        status: 'PENDING',
-        exceptionStatus: 'REGULARIZATION_PENDING',
-        clockInTime: proposedClockInTime ? new Date(proposedClockInTime) : null,
-        clockOutTime: proposedClockOutTime ? new Date(proposedClockOutTime) : null,
-        standardHoursMinutes: 540,
-        breakDurationMinutes: 0,
-        calculatedOtMinutes: 0,
-        approvedOtMinutes: 0,
-        otStatus: 'NONE',
-        isLocationBypassed: true,
-      })
-      .returning();
-    session = created;
+    if (existingSession) {
+      session = existingSession;
+    } else {
+      const [asg] = await db
+        .select({
+          assignmentId: siteAssignments.id,
+          worksiteId: siteAssignments.worksiteId,
+          supervisorId: siteAssignments.supervisorId,
+        })
+        .from(siteAssignmentWorkers)
+        .innerJoin(siteAssignments, eq(siteAssignmentWorkers.assignmentId, siteAssignments.id))
+        .where(
+          and(
+            eq(siteAssignmentWorkers.workerId, userId),
+            sql`${siteAssignments.workDate} = ${targetDate}::date`,
+            ne(siteAssignments.status, 'CANCELLED')
+          )
+        )
+        .limit(1);
+
+      const [created] = await db
+        .insert(attendanceSessions)
+        .values({
+          orgId,
+          workerId: userId,
+          assignmentId: asg?.assignmentId || '00000000-0000-0000-0000-000000000000',
+          worksiteSnapshotId: asg?.worksiteId || '00000000-0000-0000-0000-000000000000',
+          supervisorSnapshotId: asg?.supervisorId || userId,
+          currentApproverId: asg?.supervisorId || userId,
+          workDate: targetDate,
+          status: 'PENDING',
+          idempotencyKey: `reg_${userId}_${targetDate}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          exceptionStatus: 'REGULARIZATION_PENDING',
+          clockInTime: proposedClockInTime ? new Date(proposedClockInTime) : null,
+          clockOutTime: proposedClockOutTime ? new Date(proposedClockOutTime) : null,
+          standardHoursMinutes: 540,
+          breakDurationMinutes: 0,
+          calculatedOtMinutes: 0,
+          approvedOtMinutes: 0,
+          otStatus: 'NONE',
+        })
+        .returning();
+      session = created;
+    }
   } else {
     const [found] = await db
       .select()
@@ -160,19 +225,39 @@ export async function requestRegularization(req: Request, res: Response): Promis
     return res.status(404).json({ error: 'SESSION_NOT_FOUND', message: 'Attendance record not found' });
   }
 
+  const effectiveWorkDate = String(session.workDate).split('T')[0];
+
+  // Requirement: Workers can submit regularization requests only for dates within the current calendar month.
+  // Reject requests for previous months on backend.
+  if (isPreviousCalendarMonth(effectiveWorkDate, orgTz)) {
+    return res.status(400).json({
+      error: 'PREVIOUS_MONTH_RESTRICTION',
+      message: `Attendance regularization can only be requested for dates within the current calendar month (${monthStr}). For previous months, please contact an authorized administrator to process an Admin Attendance Correction.`,
+    });
+  }
+
+  // Requirement: Reject future attendance dates.
+  if (isFutureDate(effectiveWorkDate, orgTz)) {
+    return res.status(400).json({
+      error: 'FUTURE_DATE_NOT_ALLOWED',
+      message: `Regularization cannot be submitted for future attendance dates (${effectiveWorkDate}).`,
+    });
+  }
+
   // Requester must be the worker or authorized supervisor
   if (session.workerId !== userId && session.supervisorSnapshotId !== userId) {
     return res.status(403).json({ error: 'FORBIDDEN', message: 'Not authorized to request correction for this session' });
   }
 
-  // Prevent duplicate pending regularization for the same session
+  // Requirement: Prevent duplicate active requests for the same worker, date, and correction type where appropriate.
   const [existingPending] = await db
     .select({ id: attendanceAdjustmentRequests.id })
     .from(attendanceAdjustmentRequests)
     .where(
       and(
         eq(attendanceAdjustmentRequests.sessionId as any, session.id as any),
-        eq(attendanceAdjustmentRequests.status as any, 'PENDING' as any)
+        eq(attendanceAdjustmentRequests.status as any, 'PENDING' as any),
+        eq(attendanceAdjustmentRequests.correctionType, correctionType)
       )
     )
     .limit(1);
@@ -180,14 +265,14 @@ export async function requestRegularization(req: Request, res: Response): Promis
   if (existingPending) {
     return res.status(409).json({
       error: 'CORRECTION_ALREADY_PENDING',
-      message: 'A correction request for this attendance session is already pending review',
+      message: `A ${correctionType.replace(/_/g, ' ')} regularization request for this attendance session (${effectiveWorkDate}) is already pending review`,
     });
   }
 
   // Resolve assigned supervisor based on effective site/worker assignment for the session's workDate and site
   let effectiveSupervisorId = session.currentApproverId || session.supervisorSnapshotId;
 
-  if (session.assignmentId) {
+  if (session.assignmentId && session.assignmentId !== '00000000-0000-0000-0000-000000000000') {
     const [assignment] = await db
       .select({
         supervisorId: siteAssignments.supervisorId,
@@ -220,13 +305,15 @@ export async function requestRegularization(req: Request, res: Response): Promis
     }
   }
 
+  // Requirement: Store request separately from original attendance record.
+  // Do NOT update actual attendance record on submission! Status = PENDING.
   const [adjustment] = await db
     .insert(attendanceAdjustmentRequests)
     .values({
       sessionId: session.id,
       requestingUserId: userId,
       correctionType,
-      workDate: session.workDate,
+      workDate: effectiveWorkDate,
       reason,
       proposedClockInTime: proposedClockInTime ? new Date(proposedClockInTime) : null,
       proposedClockOutTime: proposedClockOutTime ? new Date(proposedClockOutTime) : null,
@@ -236,11 +323,11 @@ export async function requestRegularization(req: Request, res: Response): Promis
     })
     .returning();
 
-  // Notify assigned supervisor
+  // Route notification to assigned supervisor
   await db.insert(notifications).values({
     userId: effectiveSupervisorId,
     title: 'Attendance Regularization Request',
-    message: `${req.user!.fullName} requested ${correctionType.replace(/_/g, ' ')} for ${session.workDate}.`,
+    message: `${req.user!.fullName} requested ${correctionType.replace(/_/g, ' ')} for ${effectiveWorkDate}.`,
     type: 'REGULARIZATION_PENDING',
     entityType: 'ATTENDANCE_ADJUSTMENT',
     entityId: adjustment.id,
@@ -265,6 +352,87 @@ export async function requestRegularization(req: Request, res: Response): Promis
   });
 
   return res.status(201).json(adjustment);
+}
+
+/**
+ * GET /regularization/requests
+ * Filterable list of regularization requests for supervisors and workers
+ */
+export async function getSupervisorRegularizationRequests(req: Request, res: Response): Promise<any> {
+  const db = await getDb();
+  const user = req.user!;
+  const isSuperOrAdmin = user.roles.includes('SUPER_ADMIN') || user.roles.includes('ADMIN');
+
+  const { status, date, workerId, search } = req.query as Record<string, string>;
+
+  const conditions = [eq(attendanceSessions.orgId, user.orgId)];
+
+  if (status && status !== 'ALL') {
+    conditions.push(eq(attendanceAdjustmentRequests.status, status));
+  }
+  if (date) {
+    conditions.push(sql`${attendanceAdjustmentRequests.workDate} = ${date}::date`);
+  }
+  if (workerId) {
+    conditions.push(eq(attendanceAdjustmentRequests.requestingUserId, workerId));
+  }
+
+  const rows = await db
+    .select({
+      id: attendanceAdjustmentRequests.id,
+      sessionId: attendanceAdjustmentRequests.sessionId,
+      requestingUserId: attendanceAdjustmentRequests.requestingUserId,
+      correctionType: attendanceAdjustmentRequests.correctionType,
+      workDate: attendanceAdjustmentRequests.workDate,
+      reason: attendanceAdjustmentRequests.reason,
+      proposedClockInTime: attendanceAdjustmentRequests.proposedClockInTime,
+      proposedClockOutTime: attendanceAdjustmentRequests.proposedClockOutTime,
+      supportingEvidenceUrl: attendanceAdjustmentRequests.supportingEvidenceUrl,
+      status: attendanceAdjustmentRequests.status,
+      reviewNote: attendanceAdjustmentRequests.reviewNote,
+      reviewedAt: attendanceAdjustmentRequests.reviewedAt,
+      reviewerId: attendanceAdjustmentRequests.reviewerId,
+      currentApproverId: attendanceAdjustmentRequests.currentApproverId,
+      createdAt: attendanceAdjustmentRequests.createdAt,
+      workerId: users.id,
+      workerName: users.fullName,
+      employeeCode: users.employeeCode,
+      workerAvatar: users.photoUrl,
+      originalClockInTime: attendanceSessions.clockInTime,
+      originalClockOutTime: attendanceSessions.clockOutTime,
+      originalStatus: attendanceSessions.status,
+      supervisorSnapshotId: attendanceSessions.supervisorSnapshotId,
+      worksiteId: worksites.id,
+      worksiteName: worksites.name,
+    })
+    .from(attendanceAdjustmentRequests)
+    .innerJoin(attendanceSessions, eq(attendanceAdjustmentRequests.sessionId, attendanceSessions.id))
+    .innerJoin(users, eq(attendanceAdjustmentRequests.requestingUserId, users.id))
+    .innerJoin(worksites, eq(attendanceSessions.worksiteSnapshotId, worksites.id))
+    .where(and(...conditions))
+    .orderBy(desc(attendanceAdjustmentRequests.createdAt));
+
+  let filtered = isSuperOrAdmin
+    ? rows
+    : rows.filter(
+        (r) =>
+          r.supervisorSnapshotId === user.id ||
+          r.currentApproverId === user.id ||
+          r.requestingUserId === user.id
+      );
+
+  if (search && search.trim()) {
+    const q = search.toLowerCase().trim();
+    filtered = filtered.filter(
+      (r) =>
+        r.workerName.toLowerCase().includes(q) ||
+        (r.employeeCode && r.employeeCode.toLowerCase().includes(q)) ||
+        r.worksiteName.toLowerCase().includes(q) ||
+        r.reason.toLowerCase().includes(q)
+    );
+  }
+
+  return res.json({ requests: filtered });
 }
 
 /**
@@ -324,8 +492,9 @@ export async function getPendingRegularizations(req: Request, res: Response): Pr
 
 /**
  * POST /regularization/:id/approve
- * Approves correction, safely applies new clockIn/clockOut to attendanceSessions,
- * updates net working duration, and logs audit record.
+ * Section 5: Supervisor approves regularization request
+ * Validates current-month restriction, supervisor scope, applies change atomically,
+ * recalculates overtime, logs audit, and resolves matching exceptions.
  */
 export async function approveRegularization(req: Request, res: Response): Promise<any> {
   const { id } = req.params;
@@ -336,6 +505,7 @@ export async function approveRegularization(req: Request, res: Response): Promis
 
   const db = await getDb();
   const reviewer = req.user!;
+  const orgId = reviewer.orgId;
 
   const [adjustment] = await db
     .select()
@@ -359,6 +529,18 @@ export async function approveRegularization(req: Request, res: Response): Promis
     return res.status(403).json({
       error: 'CANNOT_APPROVE_OWN_CORRECTION',
       message: 'You cannot approve your own attendance correction request',
+    });
+  }
+
+  // Requirement: Validate current-month restriction again on the backend!
+  const orgTz = await getOrgTimezone(db, orgId);
+  const { monthStr } = getOrgCurrentMonth(orgTz);
+  const effectiveWorkDate = String(adjustment.workDate).split('T')[0];
+
+  if (isPreviousCalendarMonth(effectiveWorkDate, orgTz)) {
+    return res.status(400).json({
+      error: 'PREVIOUS_MONTH_RESTRICTION',
+      message: `Supervisors cannot approve regularization for previous calendar months (${effectiveWorkDate}). For previous months, please direct this request to the authorized Admin Attendance Correction process.`,
     });
   }
 
@@ -435,6 +617,8 @@ export async function approveRegularization(req: Request, res: Response): Promis
 
   const sessionUpdates: any = {
     status: 'APPROVED',
+    approvedAt: now,
+    approvalSource: 'SUPERVISOR_REGULARIZATION',
     updatedAt: now,
     exceptionStatus: 'CORRECTION_APPLIED',
   };
@@ -444,9 +628,9 @@ export async function approveRegularization(req: Request, res: Response): Promis
     sessionUpdates.totalDurationSeconds = totalDurationSeconds;
     sessionUpdates.netWorkingSeconds = otCalc.netWorkingMinutes * 60;
   }
-  // If not locked in payroll, update calculated OT and preserve/re-evaluate OT status
   if (!session.isPayrollLocked) {
     sessionUpdates.calculatedOtMinutes = otCalc.calculatedOtMinutes;
+    sessionUpdates.approvedOtMinutes = otCalc.calculatedOtMinutes;
     sessionUpdates.otStatus = otCalc.otStatus;
   }
 
@@ -514,7 +698,7 @@ export async function approveRegularization(req: Request, res: Response): Promis
 
 /**
  * POST /regularization/:id/reject
- * Rejects correction request with mandatory reason, preserving original records.
+ * Section 5: Rejects correction request with mandatory reason, preserving original records.
  */
 export async function rejectRegularization(req: Request, res: Response): Promise<any> {
   const { id } = req.params;
@@ -522,11 +706,18 @@ export async function rejectRegularization(req: Request, res: Response): Promise
   if (!parseResult.success) {
     return res.status(400).json({
       error: 'REJECTION_REASON_REQUIRED',
-      message: 'A mandatory reason is required to reject a regularization request',
+      message: 'A mandatory non-empty explanation is required to reject a regularization request',
     });
   }
 
   const decisionReason = parseResult.data.reason || parseResult.data.reviewNote!;
+  if (!decisionReason || decisionReason.trim().length < 3) {
+    return res.status(400).json({
+      error: 'REJECTION_REASON_REQUIRED',
+      message: 'A mandatory non-empty explanation of at least 3 characters is required to reject a regularization request',
+    });
+  }
+
   const db = await getDb();
   const reviewer = req.user!;
 
@@ -572,6 +763,7 @@ export async function rejectRegularization(req: Request, res: Response): Promise
   }
 
   const now = new Date();
+  // Requirement: Rejecting leaves original attendance record unchanged
   await db
     .update(attendanceAdjustmentRequests)
     .set({
@@ -606,7 +798,7 @@ export async function rejectRegularization(req: Request, res: Response): Promise
     req,
   });
 
-  return res.json({ success: true, message: 'Regularization request rejected' });
+  return res.json({ success: true, message: 'Regularization request rejected. Original attendance record preserved unchanged.' });
 }
 
 /**

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { apiRequest } from '../../lib/api';
 import { StatCard } from '../../components/common/StatCard';
 import { WeeklyAttendanceChart } from '../../components/dashboard/WeeklyAttendanceChart';
 import { AttendanceDonutChart } from '../../components/dashboard/AttendanceDonutChart';
@@ -10,9 +11,15 @@ import {
   UserX,
   Clock,
   CheckCircle2,
+  XCircle,
   X,
   Camera,
   MapPin,
+  ShieldCheck,
+  AlertTriangle,
+  Lock,
+  ChevronRight,
+  AlertCircle,
 } from 'lucide-react';
 
 interface DashboardOverviewProps {
@@ -22,9 +29,114 @@ interface DashboardOverviewProps {
 export const DashboardOverview: React.FC<DashboardOverviewProps> = ({ onNavigate }) => {
   const [selectedWorker, setSelectedWorker] = useState<ClockInRecord | null>(null);
   const [lightboxPhoto, setLightboxPhoto] = useState<ClockInRecord | null>(null);
+  const [controlSummary, setControlSummary] = useState({
+    pendingCorrections: 0,
+    overdueApprovals: 0,
+    missingAttendanceExceptions: 0,
+    approvedCorrections: 0,
+    rejectedCorrections: 0,
+    payrollLockedPeriods: 0,
+  });
+
+  useEffect(() => {
+    apiRequest<any>('/admin/corrections/summary')
+      .then((data) => {
+        if (data) setControlSummary(data);
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="space-y-6">
+      {/* ── SECTION A: ATTENDANCE CONTROL CENTER SUMMARY CARDS (REAL BACKEND COUNTS) ── */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-indigo-600" />
+            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider m-0">
+              Attendance Control & Exception Summary
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate?.('exceptions')}
+            className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 cursor-pointer"
+          >
+            <span>Open Control Center</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {/* 1. Pending Corrections */}
+          <div
+            onClick={() => onNavigate?.('exceptions')}
+            className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl cursor-pointer hover:bg-amber-100/60 transition-colors"
+          >
+            <div className="flex items-center justify-between text-amber-700 mb-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider">Pending Corrections</span>
+              <Clock className="w-3.5 h-3.5" />
+            </div>
+            <div className="text-xl font-black text-amber-900 tabular-nums">{controlSummary.pendingCorrections}</div>
+            <span className="text-[10px] text-amber-600 font-medium">Awaiting decision</span>
+          </div>
+
+          {/* 2. Overdue Supervisor Approvals */}
+          <div
+            onClick={() => onNavigate?.('exceptions')}
+            className="p-3 bg-rose-50/70 border border-rose-200 rounded-xl cursor-pointer hover:bg-rose-100/60 transition-colors"
+          >
+            <div className="flex items-center justify-between text-rose-700 mb-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider">Overdue Approvals</span>
+              <AlertCircle className="w-3.5 h-3.5" />
+            </div>
+            <div className="text-xl font-black text-rose-900 tabular-nums">{controlSummary.overdueApprovals}</div>
+            <span className="text-[10px] text-rose-600 font-medium">&gt; 24h past deadline</span>
+          </div>
+
+          {/* 3. Missing Attendance Exceptions */}
+          <div
+            onClick={() => onNavigate?.('exceptions')}
+            className="p-3 bg-orange-50/70 border border-orange-200 rounded-xl cursor-pointer hover:bg-orange-100/60 transition-colors"
+          >
+            <div className="flex items-center justify-between text-orange-700 mb-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider">Missing Exceptions</span>
+              <AlertTriangle className="w-3.5 h-3.5" />
+            </div>
+            <div className="text-xl font-black text-orange-900 tabular-nums">{controlSummary.missingAttendanceExceptions}</div>
+            <span className="text-[10px] text-orange-600 font-medium">Unresolved missing punches</span>
+          </div>
+
+          {/* 4. Approved & Rejected Corrections */}
+          <div
+            onClick={() => onNavigate?.('exceptions')}
+            className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl cursor-pointer hover:bg-emerald-100/60 transition-colors"
+          >
+            <div className="flex items-center justify-between text-emerald-700 mb-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider">Approved / Rejected</span>
+              <CheckCircle2 className="w-3.5 h-3.5" />
+            </div>
+            <div className="text-xl font-black text-emerald-900 tabular-nums">
+              {controlSummary.approvedCorrections} <span className="text-xs text-slate-400 font-normal">/ {controlSummary.rejectedCorrections}</span>
+            </div>
+            <span className="text-[10px] text-emerald-600 font-medium">Historical decisions</span>
+          </div>
+
+          {/* 5. Payroll-Locked Periods */}
+          <div
+            onClick={() => onNavigate?.('exceptions')}
+            className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl cursor-pointer hover:bg-indigo-100/60 transition-colors"
+          >
+            <div className="flex items-center justify-between text-indigo-700 mb-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider">Locked Payroll</span>
+              <Lock className="w-3.5 h-3.5" />
+            </div>
+            <div className="text-xl font-black text-indigo-900 tabular-nums">{controlSummary.payrollLockedPeriods}</div>
+            <span className="text-[10px] text-indigo-600 font-medium">Periods under audit lock</span>
+          </div>
+        </div>
+      </div>
+
       {/* 1. ROW OF 4 KPI STAT CARDS (FIRST CARD SOLID GREEN MATCHING REFERENCE) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Solid Green Featured Card (Total Present Today) */}

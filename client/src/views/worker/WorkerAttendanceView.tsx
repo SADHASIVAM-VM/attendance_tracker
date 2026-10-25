@@ -84,6 +84,11 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
   const [dateModalOpen, setDateModalOpen] = useState<boolean>(false);
   const [modalDateStr, setModalDateStr] = useState<string>(todayStr);
 
+  const currentMonthStr = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }, []);
+
   // Regularization Modal State
   const [regModalOpen, setRegModalOpen] = useState<boolean>(false);
   const [selectedSessionForReg, setSelectedSessionForReg] = useState<any | null>(null);
@@ -91,6 +96,7 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
   const [regReason, setRegReason] = useState<string>('');
   const [proposedClockIn, setProposedClockIn] = useState<string>('');
   const [proposedClockOut, setProposedClockOut] = useState<string>('');
+  const [supportingEvidenceUrl, setSupportingEvidenceUrl] = useState<string>('');
   const [submittingReg, setSubmittingReg] = useState<boolean>(false);
 
   // Apply Leave Modal State (Quick Apply for Date)
@@ -439,6 +445,7 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
   const openRegularizationModal = (session: any) => {
     setSelectedSessionForReg(session);
     setRegReason('');
+    setSupportingEvidenceUrl('');
     const dStr = session.workDate || session.date || (session.clockInTime ? new Date(session.clockInTime).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
     setProposedClockIn(session.clockInTime ? new Date(session.clockInTime).toISOString().slice(0, 16) : `${dStr}T09:00`);
     setProposedClockOut(session.clockOutTime ? new Date(session.clockOutTime).toISOString().slice(0, 16) : `${dStr}T18:00`);
@@ -451,21 +458,51 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
 
   // Submit Regularization
   const handleRegularizationSubmit = async () => {
-    if (!selectedSessionForReg || !regReason.trim()) return;
+    if (!selectedSessionForReg) return;
+    const trimmedReason = regReason.trim();
+    if (!trimmedReason || trimmedReason.length < 5) {
+      setMessage({
+        text: 'A meaningful explanation of at least 5 characters is required explaining why attendance requires regularization.',
+        type: 'error',
+      });
+      return;
+    }
+
+    const regTargetDate = selectedSessionForReg.workDate || selectedSessionForReg.date || modalDateStr;
+    const targetMonth = regTargetDate.substring(0, 7);
+
+    // Front-end enforcement: Current calendar month only
+    if (targetMonth < currentMonthStr) {
+      setMessage({
+        text: `Attendance regularization is restricted to the current calendar month (${currentMonthStr}). For previous months (${targetMonth}), please use the authorized Admin Attendance Correction process.`,
+        type: 'error',
+      });
+      return;
+    }
+
+    if (regTargetDate > todayStr) {
+      setMessage({
+        text: 'Regularization cannot be submitted for future attendance dates. Please apply for planned leave if you anticipate absence.',
+        type: 'error',
+      });
+      return;
+    }
 
     try {
       setSubmittingReg(true);
       await apiRequest(`/attendance/${selectedSessionForReg.id}/regularization`, {
         method: 'POST',
         body: JSON.stringify({
+          workDate: regTargetDate,
           correctionType: regCorrectionType,
-          reason: regReason,
+          reason: trimmedReason,
           proposedClockInTime: proposedClockIn ? new Date(proposedClockIn).toISOString() : undefined,
           proposedClockOutTime: proposedClockOut ? new Date(proposedClockOut).toISOString() : undefined,
+          supportingEvidenceUrl: supportingEvidenceUrl.trim() || undefined,
         }),
       });
 
-      setMessage({ text: 'Regularization request submitted for supervisor review.', type: 'success' });
+      setMessage({ text: 'Regularization request submitted successfully for supervisor review.', type: 'success' });
       setRegModalOpen(false);
       await loadAllWorkerData();
     } catch (err: any) {
@@ -649,6 +686,18 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
                 <div className="flex items-center gap-1.5">
                   <span className="w-3.5 h-3.5 rounded-md bg-amber-100 border border-amber-300 inline-block"></span>
                   <span className="text-slate-600 font-medium">Pending Approval</span>
+                </div>
+
+                {/* Purple for Flagged Attendance */}
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3.5 h-3.5 rounded-md bg-purple-100 border border-purple-300 inline-block"></span>
+                  <span className="text-purple-700 font-medium">Flagged Attendance</span>
+                </div>
+
+                {/* Indigo for Regularization */}
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3.5 h-3.5 rounded-md bg-indigo-100 border border-indigo-300 inline-block"></span>
+                  <span className="text-indigo-700 font-medium">Regularization</span>
                 </div>
 
                 {/* Today */}
@@ -1020,6 +1069,43 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
                         </div>
                       )}
 
+                      {/* Regularization Status Pill if request exists */}
+                      {day.attendance?.regularization && (
+                        <div
+                          className={`p-1 rounded-md text-[10px] font-bold flex items-center justify-between border shadow-2xs ${
+                            day.attendance.regularization.status === 'PENDING'
+                              ? 'bg-indigo-50 border-indigo-200 text-indigo-900'
+                              : day.attendance.regularization.status === 'APPROVED'
+                              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                              : 'bg-rose-50 border-rose-200 text-rose-900'
+                          }`}
+                        >
+                          <span className="flex items-center gap-1 truncate">
+                            {day.attendance.regularization.status === 'PENDING' ? (
+                              <Clock className="w-3 h-3 text-indigo-600 animate-pulse shrink-0" />
+                            ) : day.attendance.regularization.status === 'APPROVED' ? (
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                            ) : (
+                              <XCircle className="w-3 h-3 text-rose-600 shrink-0" />
+                            )}
+                            <span>Reg: {day.attendance.regularization.status}</span>
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Flagged Attendance Indicator if flagged by supervisor */}
+                      {!day.attendance?.regularization && day.attendance?.flagStatus && day.attendance.flagStatus !== 'NONE' && (
+                        <div className="bg-purple-50 border border-purple-300 p-1 rounded-md text-[10px] font-bold text-purple-900 flex items-center justify-between shadow-2xs">
+                          <span className="flex items-center gap-1 truncate">
+                            <AlertTriangle className="w-3 h-3 text-purple-600 shrink-0" />
+                            Flagged
+                          </span>
+                          <span className="text-[8px] bg-purple-200 text-purple-950 px-1 py-0.2 rounded font-black tracking-wider uppercase">
+                            {day.attendance.flagStatus.replace('_', ' ')}
+                          </span>
+                        </div>
+                      )}
+
                       {/* Compact Overtime Badge (Section C) */}
                       {day.attendance && day.attendance.calculatedOtMinutes > 0 && (() => {
                         const calcOt = day.attendance.calculatedOtMinutes;
@@ -1253,6 +1339,93 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
           {/* 2. PAST DATE OR TODAY SECTION */}
           {!modalDayData.isFuture && (
             <div className="space-y-4">
+              {/* SUPERVISOR ATTENDANCE FLAG CARD (Section 3 & 6) */}
+              {modalDayData.attendance?.flagStatus && modalDayData.attendance.flagStatus !== 'NONE' && (
+                <div className="p-4 rounded-xl bg-purple-50/90 border-2 border-purple-300 space-y-2.5 shadow-2xs">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-purple-100 text-purple-700">
+                        <AlertTriangle className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-purple-800 block">
+                          Supervisor Attendance Flag
+                        </span>
+                        <h4 className="text-sm font-bold text-purple-950 m-0">
+                          Missing Attendance Flagged
+                        </h4>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-purple-200 text-purple-900 border border-purple-300">
+                      {modalDayData.attendance.flagStatus.replace('_', ' ')}
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-white/90 rounded-lg border border-purple-200 text-xs space-y-1.5">
+                    <div>
+                      <span className="text-slate-500 text-[11px] block font-medium">Flag Reason:</span>
+                      <span className="font-bold text-slate-800">
+                        {modalDayData.attendance.flagReason || 'Missing clock-in flagged for review'}
+                      </span>
+                    </div>
+                    {modalDayData.attendance.flagNote && (
+                      <div>
+                        <span className="text-slate-500 text-[11px] block font-medium">Supervisor Context / Note:</span>
+                        <span className="italic text-slate-700">"{modalDayData.attendance.flagNote}"</span>
+                      </div>
+                    )}
+                    <div className="text-[11px] text-slate-500 pt-1 border-t border-purple-100 flex items-center justify-between">
+                      <span>Flagged by: <strong>{modalDayData.attendance.supervisorName || 'Site Supervisor'}</strong></span>
+                      <span>Date: {modalDateStr}</span>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 bg-purple-100/60 rounded-lg text-[11px] text-purple-900 leading-relaxed border border-purple-200">
+                    ℹ️ <strong>Exception Notice:</strong> A missing attendance flag is an exception record under supervisor review, not a confirmed absence or final penalty. If you were on duty, submit an Attendance Regularization request below.
+                  </div>
+                </div>
+              )}
+
+              {/* WORKER REGULARIZATION STATUS CARD (Section 4 & 5 & 6) */}
+              {modalDayData.attendance?.regularization && (
+                <div className="p-4 rounded-xl bg-indigo-50/90 border-2 border-indigo-300 space-y-2.5 shadow-2xs">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-indigo-100 text-indigo-700">
+                        <FileText className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-800 block">
+                          Attendance Regularization Request
+                        </span>
+                        <h4 className="text-sm font-bold text-indigo-950 m-0">
+                          {modalDayData.attendance.regularization.correctionType?.replace(/_/g, ' ')}
+                        </h4>
+                      </div>
+                    </div>
+                    <StatusBadge status={modalDayData.attendance.regularization.status} />
+                  </div>
+
+                  <div className="p-3 bg-white/90 rounded-lg border border-indigo-200 text-xs space-y-1.5">
+                    <div>
+                      <span className="text-slate-500 text-[11px] block font-medium">My Explanation:</span>
+                      <span className="italic text-slate-800 font-medium">"{modalDayData.attendance.regularization.reason}"</span>
+                    </div>
+                    {modalDayData.attendance.regularization.reviewNote && (
+                      <div className="pt-1.5 border-t border-indigo-100">
+                        <span className="text-slate-500 text-[11px] block font-medium">Supervisor Review Remarks:</span>
+                        <span className="font-semibold text-slate-900">"{modalDayData.attendance.regularization.reviewNote}"</span>
+                      </div>
+                    )}
+                    <div className="text-[10px] text-slate-400 pt-1 flex items-center justify-between">
+                      <span>Submitted: {new Date(modalDayData.attendance.regularization.createdAt || Date.now()).toLocaleDateString()}</span>
+                      {modalDayData.attendance.regularization.reviewedAt && (
+                        <span>Reviewed: {new Date(modalDayData.attendance.regularization.reviewedAt).toLocaleDateString()}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
               {/* If leave was taken on this date: Gray color filled */}
               {modalDayData.leave && (
                 <div className="p-4 rounded-xl bg-slate-200 border-2 border-slate-300 space-y-3">
@@ -1747,100 +1920,192 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
       </Modal>
 
       {/* REGULARIZATION MODAL */}
-      <Modal
-        isOpen={regModalOpen}
-        onClose={() => setRegModalOpen(false)}
-        title="Request Attendance Regularization"
-        description="Submit a timestamp correction request to your designated supervisor."
-        maxWidth="md"
-        footer={
-          <>
-            <button
-              onClick={() => setRegModalOpen(false)}
-              className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleRegularizationSubmit}
-              disabled={submittingReg || !regReason.trim()}
-              className="px-5 py-2 text-xs font-bold bg-slate-900 text-white rounded-xl hover:bg-slate-800 disabled:opacity-50 cursor-pointer shadow-xs"
-            >
-              {submittingReg ? 'Submitting...' : 'Submit Request'}
-            </button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="text-xs font-semibold text-slate-700 block mb-1">
-              Work Date & Location
-            </label>
-            <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-700 border border-slate-200">
-              {selectedSessionForReg?.workDate} — {selectedSessionForReg?.worksiteName}
+      {(() => {
+        const targetRegDate = selectedSessionForReg?.workDate || selectedSessionForReg?.date || modalDateStr;
+        const targetRegMonth = targetRegDate ? targetRegDate.substring(0, 7) : currentMonthStr;
+        const isRegPrevMonth = targetRegMonth < currentMonthStr;
+        const isRegFuture = targetRegDate > todayStr;
+        const isRegAlreadyPending = selectedSessionForReg?.regularization?.status === 'PENDING';
+        const isSubmitDisabled = submittingReg || isRegPrevMonth || isRegFuture || isRegAlreadyPending || regReason.trim().length < 5;
+
+        return (
+          <Modal
+            isOpen={regModalOpen}
+            onClose={() => setRegModalOpen(false)}
+            title="Request Attendance Regularization"
+            description="Submit a timestamp correction request to your designated site supervisor."
+            maxWidth="md"
+            footer={
+              <div className="flex items-center justify-between w-full">
+                <span className="text-[11px] text-slate-400">
+                  {isRegPrevMonth
+                    ? '⚠️ Previous month restricted'
+                    : isRegAlreadyPending
+                    ? '⏳ Request already pending'
+                    : 'Current month attendance correction'}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setRegModalOpen(false)}
+                    className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleRegularizationSubmit}
+                    disabled={isSubmitDisabled}
+                    className="px-5 py-2 text-xs font-bold bg-slate-900 text-white rounded-xl hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-xs"
+                    title={
+                      isRegPrevMonth
+                        ? 'Regularization is blocked for previous calendar months'
+                        : isRegAlreadyPending
+                        ? 'Request already pending'
+                        : regReason.trim().length < 5
+                        ? 'Reason must be at least 5 characters'
+                        : undefined
+                    }
+                  >
+                    {submittingReg ? 'Submitting...' : 'Submit Request'}
+                  </button>
+                </div>
+              </div>
+            }
+          >
+            <div className="space-y-4">
+              {/* Previous Month Restriction Alert */}
+              {isRegPrevMonth && (
+                <div className="p-3.5 rounded-xl bg-amber-50 border-2 border-amber-300 text-amber-950 text-xs flex items-start gap-2.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold block">Previous Month Restriction</span>
+                    <span className="text-amber-800 leading-relaxed block mt-0.5">
+                      Attendance regularization is restricted to the current calendar month ({currentMonthStr}).
+                      For previous months ({targetRegMonth}), records are locked to protect payroll finalization.
+                      Please contact your site administrator to initiate an authorized <strong>Admin Attendance Correction</strong>.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Already Pending Alert */}
+              {isRegAlreadyPending && (
+                <div className="p-3.5 rounded-xl bg-indigo-50 border-2 border-indigo-300 text-indigo-950 text-xs flex items-start gap-2.5">
+                  <Clock className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5 animate-pulse" />
+                  <div>
+                    <span className="font-bold block">Active Request Already Pending</span>
+                    <span className="text-indigo-800 leading-relaxed block mt-0.5">
+                      An attendance regularization request for {targetRegDate} has already been submitted and is awaiting your supervisor's review. Duplicate active requests are prevented.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Future Date Alert */}
+              {isRegFuture && (
+                <div className="p-3.5 rounded-xl bg-rose-50 border-2 border-rose-300 text-rose-950 text-xs flex items-start gap-2.5">
+                  <XCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold block">Future Date Not Allowed</span>
+                    <span className="text-rose-800 leading-relaxed block mt-0.5">
+                      Regularization cannot be submitted for future attendance dates. Please apply for planned leave if you anticipate absence.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Work Date & Location
+                </label>
+                <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-700 border border-slate-200 flex items-center justify-between">
+                  <span>{targetRegDate} — {selectedSessionForReg?.worksiteName || 'Assigned Worksite'}</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">
+                    {targetRegMonth === currentMonthStr ? 'Current Month' : 'Previous Month'}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Correction Type <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={regCorrectionType}
+                  onChange={(e) => setRegCorrectionType(e.target.value)}
+                  disabled={isRegPrevMonth || isRegAlreadyPending}
+                  className="w-full text-xs p-2.5 rounded-xl border border-slate-200 bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                >
+                  <option value="INCORRECT_HOURS">Incorrect Working Hours</option>
+                  <option value="MISSING_CLOCK_IN">Missing Clock-In</option>
+                  <option value="MISSING_CLOCK_OUT">Missing Clock-Out</option>
+                  <option value="INCORRECT_CLOCK_IN">Incorrect Clock-In Timestamp</option>
+                  <option value="INCORRECT_CLOCK_OUT">Incorrect Clock-Out Timestamp</option>
+                  <option value="INCORRECT_SITE">Incorrect Site Assignment</option>
+                  <option value="OTHER">Other Discrepancy</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Proposed Clock-In
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={proposedClockIn}
+                    onChange={(e) => setProposedClockIn(e.target.value)}
+                    disabled={isRegPrevMonth || isRegAlreadyPending}
+                    className="w-full text-xs p-2 rounded-xl border border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Proposed Clock-Out
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={proposedClockOut}
+                    onChange={(e) => setProposedClockOut(e.target.value)}
+                    disabled={isRegPrevMonth || isRegAlreadyPending}
+                    className="w-full text-xs p-2 rounded-xl border border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Correction Reason <span className="text-rose-500">*</span>
+                  <span className="text-slate-400 font-normal ml-1">(min 5 characters, non-whitespace)</span>
+                </label>
+                <textarea
+                  value={regReason}
+                  onChange={(e) => setRegReason(e.target.value)}
+                  disabled={isRegPrevMonth || isRegAlreadyPending}
+                  placeholder="Explain why this correction is required (e.g. GPS error, network downtime, forgotten clock-out)..."
+                  rows={3}
+                  className="w-full text-xs p-3 rounded-xl border border-slate-200 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Supporting Evidence URL <span className="text-slate-400 font-normal">(Optional)</span>
+                </label>
+                <input
+                  type="url"
+                  value={supportingEvidenceUrl}
+                  onChange={(e) => setSupportingEvidenceUrl(e.target.value)}
+                  disabled={isRegPrevMonth || isRegAlreadyPending}
+                  placeholder="https://... (e.g. link to photo proof, badge slip, supervisor permission message)"
+                  className="w-full text-xs p-2.5 rounded-xl border border-slate-200 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400"
+                />
+              </div>
             </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-slate-700 block mb-1">
-              Correction Type <span className="text-rose-500">*</span>
-            </label>
-            <select
-              value={regCorrectionType}
-              onChange={(e) => setRegCorrectionType(e.target.value)}
-              className="w-full text-xs p-2.5 rounded-xl border border-slate-200 bg-white"
-            >
-              <option value="INCORRECT_HOURS">Incorrect Working Hours</option>
-              <option value="MISSING_CLOCK_IN">Missing Clock-In</option>
-              <option value="MISSING_CLOCK_OUT">Missing Clock-Out</option>
-              <option value="INCORRECT_CLOCK_IN">Incorrect Clock-In Timestamp</option>
-              <option value="INCORRECT_CLOCK_OUT">Incorrect Clock-Out Timestamp</option>
-              <option value="INCORRECT_SITE">Incorrect Site Assignment</option>
-              <option value="OTHER">Other Reason</option>
-            </select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1">
-                Proposed Clock-In
-              </label>
-              <input
-                type="datetime-local"
-                value={proposedClockIn}
-                onChange={(e) => setProposedClockIn(e.target.value)}
-                className="w-full text-xs p-2 rounded-xl border border-slate-200"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1">
-                Proposed Clock-Out
-              </label>
-              <input
-                type="datetime-local"
-                value={proposedClockOut}
-                onChange={(e) => setProposedClockOut(e.target.value)}
-                className="w-full text-xs p-2 rounded-xl border border-slate-200"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-slate-700 block mb-1">
-              Correction Reason <span className="text-rose-500">*</span>
-            </label>
-            <textarea
-              value={regReason}
-              onChange={(e) => setRegReason(e.target.value)}
-              placeholder="Explain reason for discrepancy (e.g. GPS error, network downtime, forgotten clock-out)..."
-              rows={3}
-              className="w-full text-xs p-3 rounded-xl border border-slate-200 focus:outline-none"
-              required
-            />
-          </div>
-        </div>
-      </Modal>
+          </Modal>
+        );
+      })()}
     </div>
   );
 };

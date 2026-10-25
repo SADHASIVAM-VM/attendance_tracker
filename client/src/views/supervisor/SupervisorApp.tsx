@@ -4,6 +4,7 @@ import { apiRequest } from '../../lib/api';
 import {
   SupervisorWorksite,
   SupervisorWorkerAttendance,
+  SupervisorAttendanceStatistics,
   WorkerLeaveItem,
   SpendEntry,
   SpendDaySummary,
@@ -48,15 +49,32 @@ const DEFAULT_FALLBACK_WORKSITE: SupervisorWorksite = {
   radiusMeters: 50,
 };
 
+const getLocalTodayDateString = (): string => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dt = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dt}`;
+};
+
 export const SupervisorApp: React.FC = () => {
   const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<SupervisorTabId>('home');
   const [worksitesList, setWorksitesList] = useState<SupervisorWorksite[]>([]);
   const [selectedWorksite, setSelectedWorksite] = useState<SupervisorWorksite>(DEFAULT_FALLBACK_WORKSITE);
-  const [attendanceDate, setAttendanceDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  );
+  const [attendanceDate, setAttendanceDate] = useState<string>(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const qDate = urlParams.get('date');
+      if (qDate && /^\d{4}-\d{2}-\d{2}$/.test(qDate)) {
+        return qDate;
+      }
+    } catch {}
+    return getLocalTodayDateString();
+  });
+  const [rosterStats, setRosterStats] = useState<SupervisorAttendanceStatistics | null>(null);
   const [isLoadingRoster, setIsLoadingRoster] = useState<boolean>(false);
+  const [isRosterError, setIsRosterError] = useState<boolean>(false);
 
   // Core Data States - live from backend
   const [workers, setWorkers] = useState<SupervisorWorkerAttendance[]>([]);
@@ -168,10 +186,25 @@ export const SupervisorApp: React.FC = () => {
     return weekDays;
   }, [spendEntries, selectedWorksite?.id]);
 
+  // Date selector handler with URL sync to preserve selected date across refreshes
+  const handleSelectAttendanceDate = useCallback((newDate: string) => {
+    setAttendanceDate(newDate);
+    try {
+      const url = new URL(window.location.href);
+      if (newDate === getLocalTodayDateString()) {
+        url.searchParams.delete('date');
+      } else {
+        url.searchParams.set('date', newDate);
+      }
+      window.history.replaceState({}, '', url.toString());
+    } catch {}
+  }, []);
+
   // Fetch live team roster & attendance for supervisor
   const loadRosterAndAttendance = useCallback(
     async (siteId?: string, date?: string, isBackground = false) => {
       if (!isBackground) setIsLoadingRoster(true);
+      setIsRosterError(false);
       try {
         const targetDate = date || attendanceDate;
         const targetWs = siteId !== undefined ? siteId : (selectedWorksite?.id || '');
@@ -181,8 +214,20 @@ export const SupervisorApp: React.FC = () => {
         );
         const list = Array.isArray(data) ? data : data?.workers || [];
         setWorkers(list);
+        if (data) {
+          setRosterStats({
+            totalWorkers: data.totalWorkers ?? data.statistics?.totalWorkers ?? list.length,
+            approved: data.approved ?? data.statistics?.approved ?? 0,
+            rejected: data.rejected ?? data.statistics?.rejected ?? 0,
+            pending: data.pending ?? data.statistics?.pending ?? 0,
+            missingClockIns: data.missingClockIns ?? data.statistics?.missingClockIns ?? 0,
+            pendingRegularization: data.pendingRegularization ?? data.statistics?.pendingRegularization ?? 0,
+            flaggedDatesCount: data.flaggedDatesCount ?? data.statistics?.flaggedDatesCount ?? 0,
+          });
+        }
       } catch (err) {
         console.error('Error loading supervisor team roster:', err);
+        if (!isBackground) setIsRosterError(true);
       } finally {
         if (!isBackground) setIsLoadingRoster(false);
       }
@@ -309,15 +354,19 @@ export const SupervisorApp: React.FC = () => {
     }
   }, [selectedWorksite?.id]);
 
-  // Reload roster & expenses when attendance date or selected worksite changes + live auto-poll every 6 seconds
+  // Reload roster & expenses when attendance date or selected worksite changes + live auto-poll every 6 seconds (today only)
   useEffect(() => {
     if (selectedWorksite?.id) {
       loadRosterAndAttendance(selectedWorksite.id, attendanceDate);
       loadExpenses(selectedWorksite.id);
-      const pollTimer = setInterval(() => {
-        loadRosterAndAttendance(selectedWorksite.id, attendanceDate, true);
-      }, 6000);
-      return () => clearInterval(pollTimer);
+
+      const todayStr = getLocalTodayDateString();
+      if (attendanceDate === todayStr) {
+        const pollTimer = setInterval(() => {
+          loadRosterAndAttendance(selectedWorksite.id, attendanceDate, true);
+        }, 6000);
+        return () => clearInterval(pollTimer);
+      }
     }
   }, [attendanceDate, selectedWorksite?.id, loadRosterAndAttendance, loadExpenses]);
 
@@ -871,29 +920,28 @@ export const SupervisorApp: React.FC = () => {
         {activeTab === 'attendance' && (
           <SupervisorAttendanceTab
             workers={
-              workers.filter(
-                (w) => !w.worksiteId || !selectedWorksite?.id || w.worksiteId === selectedWorksite.id
-              ).length > 0
-                ? workers.filter(
-                    (w) => !w.worksiteId || !selectedWorksite?.id || w.worksiteId === selectedWorksite.id
-                  )
+              selectedWorksite?.id
+                ? workers.filter((w) => !w.worksiteId || w.worksiteId === selectedWorksite.id)
                 : workers
             }
             selectedDate={attendanceDate}
-            onSelectDate={setAttendanceDate}
+            onSelectDate={handleSelectAttendanceDate}
+            statistics={rosterStats || undefined}
+            isLoading={isLoadingRoster}
+            isError={isRosterError}
+            onRetry={() => loadRosterAndAttendance(selectedWorksite?.id, attendanceDate)}
             onApproveWorker={handleApproveWorker}
             onRejectWorker={handleRejectWorker}
             onClockOutWorker={handleClockOutWorker}
             onBulkApprove={handleBulkApprove}
             onUndoLastAction={handleUndoLastAction}
             undoAvailable={undoStack}
-            isLoading={isLoadingRoster}
             currentWorksite={selectedWorksite}
           />
         )}
 
         {activeTab === 'regularization' && (
-          <SupervisorRegularizationView />
+          <SupervisorRegularizationView currentWorksite={selectedWorksite} />
         )}
 
         {activeTab === 'leaves' && (

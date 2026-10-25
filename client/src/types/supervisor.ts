@@ -10,6 +10,17 @@ export interface SupervisorWorksite {
   longitude?: number;
 }
 
+export interface SupervisorAttendanceStatistics {
+  totalWorkers: number;
+  approved: number;
+  rejected: number;
+  missingClockIns: number;
+  pending?: number;
+  onLeave?: number;
+  pendingRegularization?: number;
+  flaggedDatesCount?: number;
+}
+
 export interface SupervisorWorkerAttendance {
   id: string;
   workerId: string;
@@ -27,9 +38,16 @@ export interface SupervisorWorkerAttendance {
   hasAppliedLeave?: boolean;
   note?: string;
   decisionNote?: string;
+  rejectionReason?: string;
+  flagStatus?: string;
+  flagReason?: string;
   worksiteId: string;
   worksiteName: string;
   date: string;
+  employeeCode?: string;
+  email?: string;
+  phone?: string;
+  shiftName?: string;
 }
 
 export type LeaveFilter = 'Today' | 'Pending' | 'Approved' | 'Rejected';

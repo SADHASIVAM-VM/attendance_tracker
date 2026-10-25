@@ -61,7 +61,12 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
 
     setIsSubmitting(true);
     try {
-      const finalReason = flagReason === 'Other' && customReason.trim() ? customReason.trim() : flagReason;
+      const finalReason = flagReason === 'Other' ? customReason.trim() : flagReason.trim();
+      if (!finalReason || finalReason.length < 3) {
+        alert('A meaningful non-empty reason is mandatory before applying an attendance flag.');
+        setIsSubmitting(false);
+        return;
+      }
       await apiRequest(`/attendance/missing-clock-ins/${selectedCaseForReview.id}/flag`, {
         method: 'POST',
         body: JSON.stringify({
