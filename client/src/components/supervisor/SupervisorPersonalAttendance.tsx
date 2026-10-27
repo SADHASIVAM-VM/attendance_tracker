@@ -2,15 +2,15 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { SupervisorWorksite } from '../../types/supervisor';
 import { apiRequest } from '../../lib/api';
 import {
-  CheckCircle2,
-  AlertTriangle,
-  Check,
-  Building2,
-  Loader2,
-  ArrowRightLeft,
-  History,
-  X,
-} from 'lucide-react';
+  CheckCircleIcon,
+  ErrorProfileIcon,
+  CheckIcon,
+  Building1Icon,
+  RotateCwIcon,
+  ArrowExchangeIcon,
+  TransactionHistoryIcon,
+  CloseIcon,
+} from '@astraicons/react/linear';
 import { WorkerAttendanceView } from '@/views/worker/WorkerAttendanceView';
 
 interface LocationVisit {
@@ -220,9 +220,9 @@ export const SupervisorPersonalAttendance: React.FC<SupervisorPersonalAttendance
           }`}
         >
           {alertBanner.type === 'success' ? (
-            <CheckCircle2 className="w-5 h-5 text-[#12A66A] shrink-0 mt-0.5" />
+            <CheckCircleIcon className="w-5 h-5 text-[#12A66A] shrink-0 mt-0.5" />
           ) : (
-            <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <ErrorProfileIcon className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
           )}
           <div className="flex-1">
             <span className="font-extrabold text-sm block">
@@ -237,7 +237,7 @@ export const SupervisorPersonalAttendance: React.FC<SupervisorPersonalAttendance
             onClick={() => setAlertBanner(null)}
             className="text-slate-400 hover:text-slate-600 p-1"
           >
-            <X className="w-4 h-4" />
+            <CloseIcon className="w-4 h-4" />
           </button>
         </div>
       )}
@@ -245,7 +245,7 @@ export const SupervisorPersonalAttendance: React.FC<SupervisorPersonalAttendance
       {/* Loading state indicator */}
       {isLoadingSession && locationTotals.length === 0 && (
         <div className="py-12 text-center flex flex-col items-center justify-center gap-2.5 text-slate-400">
-          <Loader2 className="w-6 h-6 text-[#12A66A] animate-spin" />
+          <RotateCwIcon className="w-6 h-6 text-[#12A66A] animate-spin" />
           <span className="text-xs font-semibold">Loading location sessions...</span>
         </div>
       )}
@@ -257,7 +257,7 @@ export const SupervisorPersonalAttendance: React.FC<SupervisorPersonalAttendance
           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
             <div>
               <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-[#12A66A]" />
+                <Building1Icon className="w-4 h-4 text-[#12A66A]" />
                 <span>Aggregated Time Per Location</span>
               </h4>
               <p className="text-[11px] text-slate-500 mt-0.5">
@@ -275,7 +275,7 @@ export const SupervisorPersonalAttendance: React.FC<SupervisorPersonalAttendance
                   disabled={isSubmitting}
                   className="px-3 py-1.5 bg-[#E6F7EF] hover:bg-[#12A66A] text-[#0E8F5B] hover:text-white border border-[#12A66A]/30 rounded-xl font-bold text-xs shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
                 >
-                  <ArrowRightLeft className="w-3.5 h-3.5" />
+                  <ArrowExchangeIcon className="w-3.5 h-3.5" />
                   <span>Switch Location</span>
                 </button>
               )}
@@ -287,7 +287,7 @@ export const SupervisorPersonalAttendance: React.FC<SupervisorPersonalAttendance
 
           {locationTotals.length === 0 ? (
             <div className="py-12 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-2">
-              <Building2 className="w-8 h-8 text-slate-300 stroke-1" />
+              <Building1Icon className="w-8 h-8 text-slate-300 stroke-1" />
               <span>No location sessions recorded yet today.</span>
               {shiftStatus === 'WORKING' && assignedLocations.length > 0 && (
                 <button
@@ -298,7 +298,7 @@ export const SupervisorPersonalAttendance: React.FC<SupervisorPersonalAttendance
                   }}
                   className="mt-2 px-3.5 py-2 bg-[#12A66A] text-white rounded-xl text-xs font-bold hover:bg-[#0E8F5B] transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
                 >
-                  <ArrowRightLeft className="w-3.5 h-3.5" />
+                  <ArrowExchangeIcon className="w-3.5 h-3.5" />
                   <span>Select Working Location</span>
                 </button>
               )}
@@ -322,7 +322,7 @@ export const SupervisorPersonalAttendance: React.FC<SupervisorPersonalAttendance
                           : 'bg-slate-200 text-slate-700'
                       }`}
                     >
-                      <Building2 className="w-4 h-4" />
+                      <Building1Icon className="w-4 h-4" />
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
@@ -360,7 +360,7 @@ export const SupervisorPersonalAttendance: React.FC<SupervisorPersonalAttendance
           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
             <div>
               <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                <History className="w-4 h-4 text-[#12A66A]" />
+                <TransactionHistoryIcon className="w-4 h-4 text-[#12A66A]" />
                 <span>Visit Sessions Timeline</span>
               </h4>
               <p className="text-[11px] text-slate-500 mt-0.5">
@@ -374,7 +374,7 @@ export const SupervisorPersonalAttendance: React.FC<SupervisorPersonalAttendance
 
           {locationVisits.length === 0 ? (
             <div className="py-12 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-2">
-              <History className="w-8 h-8 text-slate-300 stroke-1" />
+              <TransactionHistoryIcon className="w-8 h-8 text-slate-300 stroke-1" />
               <span>No visits recorded yet.</span>
             </div>
           ) : (
@@ -441,7 +441,7 @@ export const SupervisorPersonalAttendance: React.FC<SupervisorPersonalAttendance
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-2xl bg-[#E6F7EF] text-[#12A66A] flex items-center justify-center shrink-0">
-                  <ArrowRightLeft className="w-5 h-5" />
+                  <ArrowExchangeIcon className="w-5 h-5" />
                 </div>
                 <div>
                   <h3 className="text-base font-extrabold text-slate-900">Switch Working Location</h3>
@@ -455,7 +455,7 @@ export const SupervisorPersonalAttendance: React.FC<SupervisorPersonalAttendance
                 onClick={() => setIsSwitchModalOpen(false)}
                 className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100"
               >
-                <X className="w-5 h-5" />
+                <CloseIcon className="w-5 h-5" />
               </button>
             </div>
 
@@ -494,7 +494,7 @@ export const SupervisorPersonalAttendance: React.FC<SupervisorPersonalAttendance
                       }`}
                     >
                       <div className="flex items-center gap-2.5">
-                        <Building2
+                        <Building1Icon
                           className={`w-4 h-4 ${isSelected ? 'text-[#12A66A]' : 'text-slate-400'}`}
                         />
                         <div>
@@ -511,7 +511,7 @@ export const SupervisorPersonalAttendance: React.FC<SupervisorPersonalAttendance
                           Current
                         </span>
                       ) : isSelected ? (
-                        <Check className="w-4 h-4 text-[#12A66A]" />
+                        <CheckIcon className="w-4 h-4 text-[#12A66A]" />
                       ) : null}
                     </button>
                   );
@@ -534,7 +534,7 @@ export const SupervisorPersonalAttendance: React.FC<SupervisorPersonalAttendance
                 disabled={isSubmitting || !selectedDestinationId}
                 className="flex-1 py-3 bg-[#12A66A] hover:bg-[#0E8F5B] disabled:opacity-50 text-white rounded-xl font-extrabold text-xs shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2"
               >
-                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRightLeft className="w-4 h-4" />}
+                {isSubmitting ? <RotateCwIcon className="w-4 h-4 animate-spin" /> : <ArrowExchangeIcon className="w-4 h-4" />}
                 <span>Confirm Switch</span>
               </button>
             </div>

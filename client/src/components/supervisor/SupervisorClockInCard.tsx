@@ -2,18 +2,18 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { SupervisorWorksite } from '../../types/supervisor';
 import { apiRequest } from '../../lib/api';
 import {
-  Clock,
-  MapPin,
-  CheckCircle2,
-  AlertTriangle,
-  ChevronDown,
-  Loader2,
-  LogOut,
-  PlayCircle,
-  ShieldCheck,
-  ArrowRightLeft,
-  X,
-} from 'lucide-react';
+  ClockIcon,
+  LocationIcon,
+  CheckCircleIcon,
+  ErrorProfileIcon,
+  ChevronDownIcon,
+  RotateCwIcon,
+  Logout2Icon,
+  PlayIcon,
+  SecuritySafeIcon,
+  ArrowExchangeIcon,
+  CloseIcon,
+} from '@astraicons/react/linear';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -353,9 +353,9 @@ export const SupervisorClockInCard: React.FC<SupervisorClockInCardProps> = ({
         >
           <div className="flex items-center gap-2">
             {alertBanner.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 text-[#12A66A] shrink-0" />
+              <CheckCircleIcon className="w-4 h-4 text-[#12A66A] shrink-0" />
             ) : (
-              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              <ErrorProfileIcon className="w-4 h-4 text-rose-600 shrink-0" />
             )}
             <span>{alertBanner.message}</span>
           </div>
@@ -364,7 +364,7 @@ export const SupervisorClockInCard: React.FC<SupervisorClockInCardProps> = ({
             onClick={() => setAlertBanner(null)}
             className="text-slate-400 hover:text-slate-600 p-1"
           >
-            <X className="w-3.5 h-3.5" />
+            <CloseIcon className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
@@ -388,11 +388,11 @@ export const SupervisorClockInCard: React.FC<SupervisorClockInCardProps> = ({
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-white backdrop-blur-xs">
               {isWorking ? (
-                <PlayCircle className="w-5 h-5 text-white" />
+                <PlayIcon className="w-5 h-5 text-white" />
               ) : isShiftDone ? (
-                <ShieldCheck className="w-5 h-5 text-white" />
+                <SecuritySafeIcon className="w-5 h-5 text-white" />
               ) : (
-                <Clock className="w-5 h-5 text-white" />
+                <ClockIcon className="w-5 h-5 text-white" />
               )}
             </div>
             <div>
@@ -455,9 +455,9 @@ export const SupervisorClockInCard: React.FC<SupervisorClockInCardProps> = ({
                 className="px-6 py-3 bg-white hover:bg-emerald-50 text-[#0E8F5B] rounded-2xl font-black text-sm shadow-[0_4px_16px_rgba(0,0,0,0.12)] transition-all active:scale-[0.98] cursor-pointer flex items-center gap-2"
               >
                 {isSubmitting ? (
-                  <Loader2 className="w-4 h-4 animate-spin text-[#0E8F5B]" />
+                  <RotateCwIcon className="w-4 h-4 animate-spin text-[#0E8F5B]" />
                 ) : (
-                  <Clock className="w-4 h-4 stroke-[2.5] text-[#0E8F5B]" />
+                  <ClockIcon className="w-4 h-4 stroke-[2.5] text-[#0E8F5B]" />
                 )}
                 <span>Clock In Now</span>
               </button>
@@ -471,9 +471,9 @@ export const SupervisorClockInCard: React.FC<SupervisorClockInCardProps> = ({
                 className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl font-bold text-xs sm:text-sm shadow-[0_4px_16px_rgba(225,29,72,0.35)] transition-all active:scale-[0.98] cursor-pointer flex items-center gap-2 border border-rose-500"
               >
                 {isSubmitting ? (
-                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                  <RotateCwIcon className="w-4 h-4 animate-spin text-white" />
                 ) : (
-                  <LogOut className="w-4 h-4 text-white" />
+                  <Logout2Icon className="w-4 h-4 text-white" />
                 )}
                 <span>Clock Out</span>
               </button>
@@ -481,7 +481,7 @@ export const SupervisorClockInCard: React.FC<SupervisorClockInCardProps> = ({
 
             {shiftStatus === 'SHIFT_DONE' && (
               <div className="px-4 py-2 bg-white/20 backdrop-blur-xs text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 border border-white/20">
-                <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                <CheckCircleIcon className="w-4 h-4 text-emerald-200" />
                 <span>Shift Done</span>
               </div>
             )}
@@ -491,7 +491,7 @@ export const SupervisorClockInCard: React.FC<SupervisorClockInCardProps> = ({
         {/* ── Bottom: Location strip (with inline location changer) ── */}
         <div className="pt-3 border-t border-white/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs relative z-10">
           <div className="flex items-start gap-2">
-            <MapPin className="w-4 h-4 text-white/80 shrink-0 mt-0.5" />
+            <LocationIcon className="w-4 h-4 text-white/80 shrink-0 mt-0.5" />
             <div>
               <span className="font-bold uppercase text-white block tracking-wide">
                 {selectedWorksite ? selectedWorksite.name : 'NO LOCATION ASSIGNED'}
@@ -509,9 +509,9 @@ export const SupervisorClockInCard: React.FC<SupervisorClockInCardProps> = ({
               onClick={() => setShowLocationPicker(!showLocationPicker)}
               className="px-3.5 py-1.5 bg-white/15 hover:bg-white/25 active:bg-white/30 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 border border-white/20 transition-all cursor-pointer backdrop-blur-xs"
             >
-              <ArrowRightLeft className="w-3.5 h-3.5 text-white/90" />
+              <ArrowExchangeIcon className="w-3.5 h-3.5 text-white/90" />
               <span>Change Location</span>
-              <ChevronDown className="w-3 h-3 text-white/80" />
+              <ChevronDownIcon className="w-3 h-3 text-white/80" />
             </button>
 
             {/* Dropdown Menu - positioned visibly above button with high z-index and elevation */}
@@ -568,7 +568,7 @@ export const SupervisorClockInCard: React.FC<SupervisorClockInCardProps> = ({
                               )}
                             </div>
                             {isCurrent && (
-                              <CheckCircle2 className="w-4 h-4 text-[#12A66A] shrink-0 mt-0.5" />
+                              <CheckCircleIcon className="w-4 h-4 text-[#12A66A] shrink-0 mt-0.5" />
                             )}
                           </button>
                         );
@@ -587,7 +587,7 @@ export const SupervisorClockInCard: React.FC<SupervisorClockInCardProps> = ({
         <AlertDialogContent className="sm:max-w-md bg-white rounded-2xl p-6 shadow-2xl border border-slate-200">
           <AlertDialogHeader className="text-left">
             <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mb-2">
-              <LogOut className="w-6 h-6 stroke-[2.2]" />
+              <Logout2Icon className="w-6 h-6 stroke-[2.2]" />
             </div>
             <AlertDialogTitle className="text-lg font-black text-slate-900 tracking-tight">
               End Shift & Clock Out?
@@ -611,12 +611,12 @@ export const SupervisorClockInCard: React.FC<SupervisorClockInCardProps> = ({
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                  <RotateCwIcon className="w-4 h-4 animate-spin text-white" />
                   <span>Clocking Out...</span>
                 </>
               ) : (
                 <>
-                  <LogOut className="w-4 h-4 text-white" />
+                  <Logout2Icon className="w-4 h-4 text-white" />
                   <span>Clock Out</span>
                 </>
               )}

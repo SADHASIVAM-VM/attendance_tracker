@@ -1,19 +1,19 @@
 import React, { useState } from 'react';
 import { SpendEntry, SpendCategory } from '../../types/supervisor';
 import {
-  Package,
-  Utensils,
-  Truck,
-  Banknote,
-  Receipt,
-  Lock,
-  MoreVertical,
-  Trash2,
-  Edit2,
-  Eye,
-  X,
-  WifiOff,
-} from 'lucide-react';
+  BoxIcon,
+  CoffeeIcon,
+  TruckIcon,
+  MoneyIcon,
+  NoteTextIcon,
+  LockIcon,
+  MoreVerticalIcon,
+  TrashIcon,
+  EditIcon,
+  EyeIcon,
+  CloseIcon,
+} from '@astraicons/react/linear';
+import { WifiOff } from 'lucide-react';
 
 interface SpendEntryRowProps {
   entry: SpendEntry;
@@ -25,16 +25,16 @@ interface SpendEntryRowProps {
 export const getCategoryIcon = (category: SpendCategory) => {
   switch (category) {
     case 'Materials':
-      return { icon: Package, bg: 'bg-[#EFF6FF] text-[#2563EB]' };
+      return { icon: BoxIcon, bg: 'bg-[#EFF6FF] text-[#2563EB]' };
     case 'Food':
-      return { icon: Utensils, bg: 'bg-[#FEF3C7] text-[#D97706]' };
+      return { icon: CoffeeIcon, bg: 'bg-[#FEF3C7] text-[#D97706]' };
     case 'Transport':
-      return { icon: Truck, bg: 'bg-[#F3E8FF] text-[#9333EA]' };
+      return { icon: TruckIcon, bg: 'bg-[#F3E8FF] text-[#9333EA]' };
     case 'Worker payment':
-      return { icon: Banknote, bg: 'bg-[#E6F7EF] text-[#0E8F5B]' };
+      return { icon: MoneyIcon, bg: 'bg-[#E6F7EF] text-[#0E8F5B]' };
     case 'Other':
     default:
-      return { icon: Receipt, bg: 'bg-[#F1F5F9] text-[#475569]' };
+      return { icon: NoteTextIcon, bg: 'bg-[#F1F5F9] text-[#475569]' };
   }
 };
 
@@ -67,7 +67,7 @@ export const SpendEntryRow: React.FC<SpendEntryRowProps> = ({
             </h4>
             {entry.isLocked && (
               <span title="Locked by finance team" className="text-slate-400">
-                <Lock className="w-3.5 h-3.5 text-slate-400" />
+                <LockIcon className="w-3.5 h-3.5 text-slate-400" />
               </span>
             )}
             {entry.isOffline && (
@@ -103,7 +103,7 @@ export const SpendEntryRow: React.FC<SpendEntryRowProps> = ({
               className="w-full h-full object-cover group-hover/img:scale-110 transition-transform"
             />
             <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover/img:opacity-100 text-white">
-              <Eye className="w-3.5 h-3.5" />
+              <EyeIcon className="w-3.5 h-3.5" />
             </div>
           </div>
         )}
@@ -131,7 +131,7 @@ export const SpendEntryRow: React.FC<SpendEntryRowProps> = ({
               onClick={() => setShowMenu(!showMenu)}
               className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
             >
-              <MoreVertical className="w-4 h-4" />
+              <MoreVerticalIcon className="w-4 h-4" />
             </button>
 
             {showMenu && (
@@ -150,7 +150,7 @@ export const SpendEntryRow: React.FC<SpendEntryRowProps> = ({
                       }}
                       className="w-full px-3 py-2 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2"
                     >
-                      <Edit2 className="w-3.5 h-3.5 text-slate-500" />
+                      <EditIcon className="w-3.5 h-3.5 text-slate-500" />
                       Edit entry
                     </button>
                   )}
@@ -163,7 +163,7 @@ export const SpendEntryRow: React.FC<SpendEntryRowProps> = ({
                       }}
                       className="w-full px-3 py-2 text-left text-rose-600 hover:bg-rose-50 flex items-center gap-2"
                     >
-                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                      <TrashIcon className="w-3.5 h-3.5 text-rose-600" />
                       Delete
                     </button>
                   )}
@@ -191,7 +191,7 @@ export const SpendEntryRow: React.FC<SpendEntryRowProps> = ({
                 onClick={() => setShowReceiptModal(false)}
                 className="p-1 text-slate-400 hover:text-slate-600"
               >
-                <X className="w-5 h-5" />
+                <CloseIcon className="w-5 h-5" />
               </button>
             </div>
             <div className="py-3">

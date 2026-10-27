@@ -11,6 +11,7 @@ import {
   UserCheck,
   Search,
   Filter,
+  SlidersHorizontal,
   Phone,
   Mail,
   MapPin,
@@ -32,6 +33,8 @@ import {
   Pencil,
   ArrowUpDown,
 } from 'lucide-react';
+import { SearchIcon } from '@astraicons/react/linear';
+import { StatCard } from '../../components/common/StatCard';
 
 export interface DirectoryUser {
   id: string;
@@ -101,8 +104,27 @@ export const UsersView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<'ALL' | EmploymentType>('ALL');
   const [roleFilter, setRoleFilter] = useState<string>('ALL');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('table');
+  const [filterOpen, setFilterOpen] = useState<boolean>(false);
+
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (roleFilter !== 'ALL') count++;
+    if (typeFilter !== 'ALL') count++;
+    if (statusFilter !== 'ALL') count++;
+    if (sortFilter !== 'createdAt_desc') count++;
+    return count;
+  }, [roleFilter, typeFilter, statusFilter, sortFilter]);
+
+  const handleClearFilters = () => {
+    setRoleFilter('ALL');
+    setTypeFilter('ALL');
+    setStatusFilter('ALL');
+    setSortFilter('createdAt_desc');
+    setSearchQuery('');
+    setPage(1);
+  };
 
   useEffect(() => {
     loadRoles();
@@ -356,25 +378,25 @@ export const UsersView: React.FC = () => {
       setSelectedUserDetail((prev) =>
         prev
           ? {
-              ...prev,
-              fullName: data.fullName,
-              employeeCode: data.employeeCode,
-              email: data.email,
-              phone: data.phone,
-              personalEmail: data.personalEmail,
-              dob: data.dob,
-              age: data.age !== '' ? Number(data.age) : prev.age,
-              gender: data.gender,
-              bloodGroup: data.bloodGroup,
-              currentAddress: data.currentAddress || data.address,
-              permanentAddress: data.permanentAddress,
-              address: data.currentAddress || data.address,
-              emergencyContactName: data.emergencyContactName,
-              emergencyContactPhone: data.emergencyContactPhone,
-              photoUrl: data.photoUrl || prev.photoUrl,
-              employmentType: data.employmentType,
-              roles: [data.role],
-            }
+            ...prev,
+            fullName: data.fullName,
+            employeeCode: data.employeeCode,
+            email: data.email,
+            phone: data.phone,
+            personalEmail: data.personalEmail,
+            dob: data.dob,
+            age: data.age !== '' ? Number(data.age) : prev.age,
+            gender: data.gender,
+            bloodGroup: data.bloodGroup,
+            currentAddress: data.currentAddress || data.address,
+            permanentAddress: data.permanentAddress,
+            address: data.currentAddress || data.address,
+            emergencyContactName: data.emergencyContactName,
+            emergencyContactPhone: data.emergencyContactPhone,
+            photoUrl: data.photoUrl || prev.photoUrl,
+            employmentType: data.employmentType,
+            roles: [data.role],
+          }
           : null
       );
     }
@@ -390,12 +412,12 @@ export const UsersView: React.FC = () => {
 
     try {
       if (!nextStatus) {
-        await apiRequest(`/users/${user.id}/deactivate`, { method: 'POST' }).catch(() => {});
+        await apiRequest(`/users/${user.id}/deactivate`, { method: 'POST' }).catch(() => { });
       } else {
         await apiRequest(`/users/${user.id}`, {
           method: 'PATCH',
           body: JSON.stringify({ isActive: true }),
-        }).catch(() => {});
+        }).catch(() => { });
       }
     } catch (err) {
       // ignore
@@ -447,122 +469,307 @@ export const UsersView: React.FC = () => {
   }, [usersList, searchQuery, typeFilter, roleFilter, statusFilter]);
 
   // Aggregate Stats
-  const totalCount = usersList.length;
-  const fullTimeCount = usersList.filter(
-    (u) => (u.employmentType || 'full-time').toLowerCase() === 'full-time'
-  ).length;
-  const partTimeCount = usersList.filter(
-    (u) => (u.employmentType || '').toLowerCase() === 'part-time'
-  ).length;
-  const contractCount = usersList.filter(
-    (u) => (u.employmentType || '').toLowerCase() === 'contract'
-  ).length;
+  const totalCount = pagination.total || usersList.length;
+  const activeCount = usersList.filter((u) => u.isActive).length;
+  const inactiveCount = usersList.filter((u) => !u.isActive).length;
+  const activePercent = totalCount > 0 ? Math.round((activeCount / totalCount) * 100) : 100;
+  const inactivePercent = totalCount > 0 ? Math.round((inactiveCount / totalCount) * 100) : 0;
 
   return (
     <div className="space-y-6">
-      {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-[#E8EEF4] p-5 sm:p-6 rounded-[22px] shadow-xs">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#E6F7EF] text-[#12A66A]">
-              HR & Personnel Directory
-            </span>
-            <span className="text-xs text-[#94A3B8] font-medium">• {totalCount} total personnel</span>
-          </div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-[#111827]">
-            Workforce User Management
+      {/* Standard Stat Cards: Total Employee, Active, Inactive */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatCard
+          title="Total Employee"
+          value={totalCount}
+          change={`+${totalCount > 0 ? 100 : 0}%`}
+          isPositive={true}
+          helpText="Total registered workforce"
+          icon={Users}
+          visualType="sparkline"
+          sparklineColor="#01B075"
+          iconBgColor="bg-[#E6F7EF]"
+          iconColor="text-[#01B075]"
+        />
+        <StatCard
+          title="Active"
+          value={activeCount}
+          change={`${activePercent}%`}
+          isPositive={true}
+          helpText="Active personnel on record"
+          icon={UserCheck}
+          visualType="ring"
+          progressPercent={activePercent}
+          barColor="#01B075"
+          iconBgColor="bg-[#E6F7EF]"
+          iconColor="text-[#01B075]"
+        />
+        <StatCard
+          title="Inactive"
+          value={inactiveCount}
+          change={`${inactivePercent}%`}
+          isPositive={false}
+          helpText="Deactivated or off-boarded"
+          icon={XCircle}
+          visualType="bars"
+          sparklineColor="#EF4444"
+          iconBgColor="bg-rose-50"
+          iconColor="text-rose-600"
+        />
+      </div>
+
+      {/* Reference Image Header & Controls Toolbar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        {/* View Title */}
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl sm:text-2xl font-bold text-[#1E1F24] tracking-tight">
+            Employees
           </h1>
-          <p className="text-xs sm:text-sm text-[#6B7280] mt-1 max-w-2xl">
-            Register personnel with full profile records: name, age, phone number, address, verified photo, and work type (full-time, part-time, contract).
-          </p>
+          <span className="text-xs text-[#94A3B8] font-semibold bg-white border border-[#E8EEF4] px-2.5 py-1 rounded-full shadow-2xs">
+            {totalCount} total
+          </span>
         </div>
 
-        <div className="flex items-center gap-2.5 shrink-0">
+        {/* Right Controls: Search, Filter, Add Employee */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Rounded Pill Search */}
+          <div className="relative">
+            <SearchIcon className="w-4 h-4 text-[#94A3B8] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Search employee..."
+              className="w-56 sm:w-64 bg-white border border-[#E8EEF4] rounded-full pl-9.5 pr-8 py-2 text-xs font-medium text-[#1E1F24] placeholder-[#94A3B8] shadow-2xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#01B075] focus:ring-1 focus:ring-[#01B075] transition-all"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setPage(1);
+                }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#1E1F24] cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Rounded Pill Filter Button */}
           <button
-            onClick={() => setModalOpen(true)}
-            className="px-4 sm:px-5 py-2.5 bg-[#12A66A] hover:bg-[#0E8F5B] text-white rounded-[14px] text-xs font-bold transition-all shadow-[0_4px_12px_rgba(18,166,106,0.35)] flex items-center gap-2 cursor-pointer active:scale-98"
+            type="button"
+            onClick={() => setFilterOpen((prev) => !prev)}
+            className={`bg-white border rounded-full px-4 py-2 text-xs font-semibold flex items-center gap-1.5 shadow-2xs hover:bg-[#F8FAFC] transition-all cursor-pointer ${
+              filterOpen || activeFilterCount > 0
+                ? 'border-[#01B075] text-[#01B075] bg-[#E6F7EF]/30'
+                : 'border-[#E8EEF4] text-[#1E1F24]'
+            }`}
           >
-            <UserPlus className="w-4 h-4 stroke-[2.2]" />
-            <span>Create User</span>
+            <SlidersHorizontal className="w-3.5 h-3.5 text-current" />
+            <span>Filter</span>
+            {activeFilterCount > 0 && (
+              <span className="w-4 h-4 rounded-full bg-[#01B075] text-white text-[10px] font-bold flex items-center justify-center">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+
+          {/* Rounded Pill Action Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setUserToEdit(null);
+              setModalOpen(true);
+            }}
+            className="bg-[#01B075] hover:bg-[#018F5B] text-white rounded-full px-5 py-2 text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer active:scale-98 shrink-0"
+          >
+            <div className="w-4 h-4 rounded-full border border-white flex items-center justify-center text-white text-[11px] font-black leading-none">
+              +
+            </div>
+            <span>Add Employee</span>
           </button>
         </div>
       </div>
 
-      {/* Stats Cards (4-pack) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
-        {/* Total Workforce */}
-        <div className="bg-white border border-[#E8EEF4] rounded-[20px] p-4.5 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-[#94A3B8] block">
-              Total Personnel
-            </span>
-            <span className="text-2xl font-black text-[#111827] mt-1 block">
-              {totalCount}
-            </span>
-            <span className="text-[11px] font-semibold text-[#12A66A] flex items-center gap-1 mt-0.5">
-              <CheckCircle2 className="w-3 h-3" />
-              All departments
-            </span>
+      {/* Expandable Filter Panel */}
+      {filterOpen && (
+        <div className="bg-white border border-[#E8EEF4] rounded-[22px] p-4 sm:p-5 shadow-xs space-y-3 animate-in fade-in slide-in-from-top-2 duration-150">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#F1F5F9]">
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal className="w-4 h-4 text-[#01B075]" />
+              <span className="text-xs font-bold text-[#1E1F24]">Directory Filter Controls</span>
+              {activeFilterCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#E6F7EF] text-[#01B075]">
+                  {activeFilterCount} active
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {activeFilterCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearFilters}
+                  className="text-xs font-bold text-[#01B075] hover:underline cursor-pointer"
+                >
+                  Clear all filters
+                </button>
+              )}
+              <div className="flex items-center p-1 bg-[#F1F5F9] rounded-xl border border-[#E2E8F0]">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('table')}
+                  className={`p-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    viewMode === 'table'
+                      ? 'bg-white text-[#111827] shadow-xs'
+                      : 'text-[#64748B] hover:text-[#111827]'
+                  }`}
+                  title="Dense Table View"
+                >
+                  <List className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('cards')}
+                  className={`p-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    viewMode === 'cards'
+                      ? 'bg-white text-[#111827] shadow-xs'
+                      : 'text-[#64748B] hover:text-[#111827]'
+                  }`}
+                  title="Grid Cards View"
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={loadUsers}
+                className="p-2 bg-white border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B] rounded-xl text-xs font-semibold cursor-pointer transition-colors"
+                title="Reload users"
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-[#01B075]' : ''}`} />
+              </button>
+            </div>
           </div>
-          <div className="w-11 h-11 rounded-2xl bg-[#F1F6FC] text-[#3B82F6] flex items-center justify-center">
-            <Users className="w-5 h-5 stroke-[2.2]" />
-          </div>
-        </div>
 
-        {/* Full-Time */}
-        <div className="bg-white border border-[#E8EEF4] rounded-[20px] p-4.5 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-[#94A3B8] block">
-              Full-Time
-            </span>
-            <span className="text-2xl font-black text-[#12A66A] mt-1 block">
-              {fullTimeCount}
-            </span>
-            <span className="text-[11px] font-semibold text-[#64748B] block mt-0.5">
-              40 hrs regular
-            </span>
-          </div>
-          <div className="w-11 h-11 rounded-2xl bg-[#E6F7EF] text-[#12A66A] flex items-center justify-center">
-            <Briefcase className="w-5 h-5 stroke-[2.2]" />
-          </div>
-        </div>
+          {/* Filter Pills */}
+          <div className="space-y-2.5">
+            {/* Employment Type */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-bold text-[#64748B] w-20">Type:</span>
+              {(['ALL', 'full-time', 'part-time', 'contract'] as const).map((t) => {
+                const isActive = typeFilter === t;
+                const label =
+                  t === 'ALL'
+                    ? 'All Types'
+                    : t === 'full-time'
+                    ? 'Full-Time'
+                    : t === 'part-time'
+                    ? 'Part-Time'
+                    : 'Contract';
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => {
+                      setTypeFilter(t);
+                      setPage(1);
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
+                      isActive
+                        ? 'bg-[#01B075] text-white shadow-xs'
+                        : 'bg-[#F1F5F9] text-[#475569] hover:bg-[#E2E8F0]'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
 
-        {/* Part-Time */}
-        <div className="bg-white border border-[#E8EEF4] rounded-[20px] p-4.5 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-[#94A3B8] block">
-              Part-Time
-            </span>
-            <span className="text-2xl font-black text-sky-600 mt-1 block">
-              {partTimeCount}
-            </span>
-            <span className="text-[11px] font-semibold text-[#64748B] block mt-0.5">
-              Split / flexible shifts
-            </span>
-          </div>
-          <div className="w-11 h-11 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center">
-            <Clock className="w-5 h-5 stroke-[2.2]" />
-          </div>
-        </div>
+            {/* Role Filter */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-bold text-[#64748B] w-20">Role:</span>
+              {['ALL', ...(rolesList.length > 0 ? rolesList.map((r) => r.name) : ['ADMIN', 'SUPERVISOR', 'ENGINEER', 'ACCOUNTANT', 'WORKER'])].map((r) => {
+                const isActive = roleFilter === r;
+                const roleLabels: Record<string, string> = {
+                  ALL: 'All Roles',
+                  ADMIN: 'Admins',
+                  SUPERVISOR: 'Supervisors',
+                  ENGINEER: 'Engineers',
+                  ACCOUNTANT: 'Accountants',
+                  WORKER: 'Workers',
+                };
+                const label = roleLabels[r] || r;
+                return (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => {
+                      setRoleFilter(r);
+                      setPage(1);
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
+                      isActive
+                        ? 'bg-[#1E1F24] text-white shadow-xs'
+                        : 'bg-[#F1F5F9] text-[#475569] hover:bg-[#E2E8F0]'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
 
-        {/* Contract */}
-        <div className="bg-white border border-[#E8EEF4] rounded-[20px] p-4.5 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-[#94A3B8] block">
-              Contract
-            </span>
-            <span className="text-2xl font-black text-amber-600 mt-1 block">
-              {contractCount}
-            </span>
-            <span className="text-[11px] font-semibold text-[#64748B] block mt-0.5">
-              Milestone / project based
-            </span>
-          </div>
-          <div className="w-11 h-11 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center">
-            <Award className="w-5 h-5 stroke-[2.2]" />
+            {/* Status & Sort */}
+            <div className="flex flex-wrap items-center gap-4 pt-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold text-[#64748B] w-20">Status:</span>
+                {(['ALL', 'ACTIVE', 'INACTIVE'] as const).map((s) => {
+                  const isActive = statusFilter === s;
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => {
+                        setStatusFilter(s);
+                        setPage(1);
+                      }}
+                      className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
+                        isActive
+                          ? 'bg-[#1E1F24] text-white shadow-xs'
+                          : 'bg-[#F1F5F9] text-[#475569] hover:bg-[#E2E8F0]'
+                      }`}
+                    >
+                      {s === 'ALL' ? 'All' : s === 'ACTIVE' ? 'Active Only' : 'Inactive'}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center gap-2 sm:ml-auto">
+                <span className="text-[11px] font-bold text-[#64748B]">Sort:</span>
+                <select
+                  value={sortFilter}
+                  onChange={(e) => {
+                    setSortFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  className="text-xs font-semibold py-1.5 px-3 rounded-full border border-[#CBD5E1] bg-white text-[#1E1F24] focus:outline-none focus:border-[#01B075] cursor-pointer"
+                >
+                  <option value="createdAt_desc">Newest First</option>
+                  <option value="createdAt_asc">Oldest First</option>
+                  <option value="name_asc">Name (A → Z)</option>
+                  <option value="name_desc">Name (Z → A)</option>
+                </select>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Alert Message Toast */}
       {message && (
@@ -586,213 +793,28 @@ export const UsersView: React.FC = () => {
         </div>
       )}
 
-      {/* Search, Filter Bar & View Toggle */}
-      <div className="bg-white border border-[#E8EEF4] rounded-[22px] p-4 sm:p-5 shadow-xs space-y-3.5">
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-          {/* Search Input */}
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-[#94A3B8] absolute left-3.5 top-3" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setPage(1);
-              }}
-              placeholder="Search by name, employee code, phone, address, email..."
-              className="w-full text-xs font-medium pl-10 pr-9 py-2.5 rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#12A66A]/20 focus:border-[#12A66A]"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => {
-                  setSearchQuery('');
-                  setPage(1);
-                }}
-                className="absolute right-3 top-2.5 text-[#94A3B8] hover:text-[#111827] cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
-          {/* Right Controls: View Mode & Refresh */}
-          <div className="flex items-center gap-2 self-end md:self-auto">
-            <div className="flex items-center p-1 bg-[#F1F5F9] rounded-xl border border-[#E2E8F0]">
-              <button
-                type="button"
-                onClick={() => setViewMode('table')}
-                className={`p-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  viewMode === 'table'
-                    ? 'bg-white text-[#111827] shadow-xs'
-                    : 'text-[#64748B] hover:text-[#111827]'
-                }`}
-                title="Dense Table View"
-              >
-                <List className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('cards')}
-                className={`p-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  viewMode === 'cards'
-                    ? 'bg-white text-[#111827] shadow-xs'
-                    : 'text-[#64748B] hover:text-[#111827]'
-                }`}
-                title="Grid Cards View"
-              >
-                <LayoutGrid className="w-4 h-4" />
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={loadUsers}
-              className="p-2.5 bg-white border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B] rounded-xl text-xs font-semibold cursor-pointer transition-colors"
-              title="Reload users"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-[#12A66A]' : ''}`} />
-            </button>
-          </div>
-        </div>
-
-        {/* Filter Pills & Sort Selector */}
-        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#F1F5F9]">
-          <span className="text-[11px] font-bold text-[#64748B] flex items-center gap-1 mr-1">
-            <Filter className="w-3 h-3 text-[#12A66A]" />
-            Type:
-          </span>
-
-          {(['ALL', 'full-time', 'part-time', 'contract'] as const).map((t) => {
-            const isActive = typeFilter === t;
-            const label =
-              t === 'ALL'
-                ? 'All Types'
-                : t === 'full-time'
-                ? 'Full-Time'
-                : t === 'part-time'
-                ? 'Part-Time'
-                : 'Contract';
-            return (
-              <button
-                key={t}
-                type="button"
-                onClick={() => {
-                  setTypeFilter(t);
-                  setPage(1);
-                }}
-                className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
-                  isActive
-                    ? 'bg-[#12A66A] text-white shadow-xs'
-                    : 'bg-[#F1F5F9] text-[#475569] hover:bg-[#E2E8F0]'
-                }`}
-              >
-                {label}
-              </button>
-            );
-          })}
-
-          <div className="h-4 w-[1px] bg-slate-200 mx-1 hidden sm:block" />
-
-          <span className="text-[11px] font-bold text-[#64748B] ml-1">Role:</span>
-          {['ALL', ...(rolesList.length > 0 ? rolesList.map((r) => r.name) : ['ADMIN', 'SUPERVISOR', 'ENGINEER', 'ACCOUNTANT', 'WORKER'])].map((r) => {
-            const isActive = roleFilter === r;
-            const roleLabels: Record<string, string> = {
-              ALL: 'All Roles',
-              ADMIN: 'Admins',
-              SUPERVISOR: 'Supervisors',
-              ENGINEER: 'Engineers',
-              ACCOUNTANT: 'Accountants',
-              WORKER: 'Workers',
-            };
-            const label = roleLabels[r] || r;
-            return (
-              <button
-                key={r}
-                type="button"
-                onClick={() => {
-                  setRoleFilter(r);
-                  setPage(1);
-                }}
-                className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
-                  isActive
-                    ? 'bg-[#0F172A] text-white shadow-xs'
-                    : 'bg-[#F1F5F9] text-[#475569] hover:bg-[#E2E8F0]'
-                }`}
-              >
-                {label}
-              </button>
-            );
-          })}
-
-          <div className="h-4 w-[1px] bg-slate-200 mx-1 hidden sm:block" />
-
-          <span className="text-[11px] font-bold text-[#64748B] ml-1">Status:</span>
-          {(['ALL', 'ACTIVE', 'INACTIVE'] as const).map((s) => {
-            const isActive = statusFilter === s;
-            return (
-              <button
-                key={s}
-                type="button"
-                onClick={() => {
-                  setStatusFilter(s);
-                  setPage(1);
-                }}
-                className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
-                  isActive
-                    ? 'bg-slate-700 text-white shadow-xs'
-                    : 'bg-[#F1F5F9] text-[#475569] hover:bg-[#E2E8F0]'
-                }`}
-              >
-                {s === 'ALL' ? 'All' : s === 'ACTIVE' ? 'Active Only' : 'Inactive'}
-              </button>
-            );
-          })}
-
-          <div className="h-4 w-[1px] bg-slate-200 mx-1 hidden sm:block" />
-
-          {/* Sort Filter: Name (asc, desc), Newest first (createdAt) */}
-          <div className="flex items-center gap-1.5 ml-auto">
-            <ArrowUpDown className="w-3.5 h-3.5 text-[#12A66A]" />
-            <span className="text-[11px] font-bold text-[#64748B]">Sort:</span>
-            <select
-              value={sortFilter}
-              onChange={(e) => {
-                setSortFilter(e.target.value);
-                setPage(1);
-              }}
-              className="text-[11px] font-bold px-2 py-1 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] text-[#0F172A] focus:outline-none focus:ring-1 focus:ring-[#12A66A] cursor-pointer"
-            >
-              <option value="createdAt_desc">Newest First (Created Date)</option>
-              <option value="createdAt_asc">Oldest First (Created Date)</option>
-              <option value="name_asc">Name (A to Z)</option>
-              <option value="name_desc">Name (Z to A)</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* USER LISTING: TABLE VIEW */}
+      {/* USER LISTING: TABLE VIEW (Reference Image Style) */}
       {viewMode === 'table' ? (
         <div className="bg-white rounded-[22px] border border-[#E8EEF4] shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-[#F8FAFC] border-b border-[#E8EEF4] text-[#64748B] font-extrabold uppercase tracking-wider text-[11px]">
+              <thead className="bg-[#F8FAFC] border-b border-[#E8EEF4] text-[#94A3B8] font-bold uppercase tracking-wider text-[11px]">
                 <tr>
-                  <th className="py-3.5 px-4">Employee & Photo</th>
-                  <th className="py-3.5 px-3">Age</th>
-                  <th className="py-3.5 px-3">Type</th>
-                  <th className="py-3.5 px-3">Role</th>
-                  <th className="py-3.5 px-3">Phone</th>
-                  <th className="py-3.5 px-3">Address</th>
-                  <th className="py-3.5 px-3">Status</th>
-                  <th className="py-3.5 px-4 text-right">Actions</th>
+                  <th className="py-4 px-4 w-16">SL.</th>
+                  <th className="py-4 px-3 w-16">Image</th>
+                  <th className="py-4 px-4">Name</th>
+                  <th className="py-4 px-3">Department / Role</th>
+                  <th className="py-4 px-3">Type</th>
+                  <th className="py-4 px-3">Contact</th>
+                  <th className="py-4 px-3">Status</th>
+                  <th className="py-4 px-4 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F1F5F9] text-[#334155]">
                 {loading ? (
                   <tr>
                     <td colSpan={8} className="py-12 text-center text-[#94A3B8]">
-                      <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-[#12A66A]" />
+                      <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-[#01B075]" />
                       Loading workforce directory...
                     </td>
                   </tr>
@@ -803,83 +825,58 @@ export const UsersView: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  filteredUsers.map((u) => {
+                  filteredUsers.map((u, index) => {
                     const empType = (u.employmentType || 'full-time').toLowerCase();
+                    const slNo = String((pagination.offset || 0) + index + 1).padStart(2, '0');
                     return (
                       <tr
                         key={u.id}
                         className="hover:bg-[#F8FAFC] transition-colors cursor-pointer group"
                         onClick={() => setSelectedUserDetail(u)}
                       >
-                        {/* Employee & Photo */}
-                        <td className="py-3.5 px-4">
-                          <div className="flex items-center gap-3">
-                            <div className="relative shrink-0">
-                              <img
-                                src={
-                                  u.photoUrl ||
-                                  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'
-                                }
-                                alt={u.fullName}
-                                className="w-10 h-10 rounded-xl object-cover border border-[#E2E8F0] shadow-2xs"
-                              />
-                              <span
-                                className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
-                                  u.isActive ? 'bg-[#12A66A]' : 'bg-slate-300'
-                                }`}
-                              />
-                            </div>
-                            <div>
-                              <span className="font-extrabold text-[#111827] text-xs block group-hover:text-[#12A66A] transition-colors">
-                                {u.fullName}
-                              </span>
-                              <div className="flex items-center gap-2 text-[10px] text-[#64748B]">
-                                <span className="font-mono font-bold text-[#0F172A]">
-                                  {u.employeeCode}
-                                </span>
-                                <span>•</span>
-                                <span className="truncate max-w-[140px]">{u.email}</span>
-                              </div>
-                            </div>
+                        {/* SL. */}
+                        <td className="py-3.5 px-4 font-mono font-medium text-xs text-[#94A3B8]">
+                          {slNo}
+                        </td>
+
+                        {/* Image */}
+                        <td className="py-3.5 px-3">
+                          <div className="relative w-10 h-10 shrink-0">
+                            <img
+                              src={
+                                u.photoUrl ||
+                                'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'
+                              }
+                              alt={u.fullName}
+                              className="w-10 h-10 rounded-full object-cover border border-[#E2E8F0] shadow-2xs"
+                            />
+                            <span
+                              className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
+                                u.isActive ? 'bg-[#01B075]' : 'bg-slate-300'
+                              }`}
+                            />
                           </div>
                         </td>
 
-                        {/* Age */}
-                        <td className="py-3.5 px-3">
-                          <span className="font-bold text-[#111827] bg-[#F1F5F9] px-2 py-0.5 rounded-md">
-                            {u.age ? `${u.age} yrs` : '28 yrs'}
-                          </span>
+                        {/* Name */}
+                        <td className="py-3.5 px-4">
+                          <div>
+                            <span className="font-bold text-[#1E1F24] text-xs block group-hover:text-[#01B075] transition-colors">
+                              {u.fullName}
+                            </span>
+                            <span className="font-mono text-[11px] text-[#94A3B8]">
+                              {u.employeeCode}
+                            </span>
+                          </div>
                         </td>
 
-                        {/* Type (full-time, part-time, contract) */}
-                        <td className="py-3.5 px-3">
-                          {empType === 'full-time' && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-extrabold bg-[#E6F7EF] text-[#12A66A] px-2.5 py-1 rounded-full border border-[#A7F3D0]">
-                              <Briefcase className="w-3 h-3" />
-                              Full-Time
-                            </span>
-                          )}
-                          {empType === 'part-time' && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-extrabold bg-sky-50 text-sky-700 px-2.5 py-1 rounded-full border border-sky-200">
-                              <Clock className="w-3 h-3" />
-                              Part-Time
-                            </span>
-                          )}
-                          {empType === 'contract' && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-extrabold bg-amber-50 text-amber-800 px-2.5 py-1 rounded-full border border-amber-200">
-                              <Award className="w-3 h-3" />
-                              Contract
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Role */}
+                        {/* Department / Role */}
                         <td className="py-3.5 px-3">
                           <div className="flex gap-1 flex-wrap">
                             {u.roles.map((r) => (
                               <span
                                 key={r}
-                                className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${getRoleBadgeClasses(r)}`}
+                                className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${getRoleBadgeClasses(r)}`}
                               >
                                 {r.replace('_', ' ')}
                               </span>
@@ -887,25 +884,33 @@ export const UsersView: React.FC = () => {
                           </div>
                         </td>
 
-                        {/* Phone */}
-                        <td className="py-3.5 px-3 text-[#475569] font-medium">
-                          <a
-                            href={`tel:${u.phone}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="flex items-center gap-1.5 hover:text-[#12A66A] transition-colors"
-                          >
-                            <Phone className="w-3 h-3 text-[#94A3B8]" />
-                            <span>{u.phone || '—'}</span>
-                          </a>
+                        {/* Type */}
+                        <td className="py-3.5 px-3">
+                          {empType === 'full-time' && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-[#E6F7EF] text-[#01B075] px-2.5 py-1 rounded-full border border-[#A7F3D0]">
+                              <Briefcase className="w-3 h-3" />
+                              Full-Time
+                            </span>
+                          )}
+                          {empType === 'part-time' && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-sky-50 text-sky-700 px-2.5 py-1 rounded-full border border-sky-200">
+                              <Clock className="w-3 h-3" />
+                              Part-Time
+                            </span>
+                          )}
+                          {empType === 'contract' && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-amber-50 text-amber-800 px-2.5 py-1 rounded-full border border-amber-200">
+                              <Award className="w-3 h-3" />
+                              Contract
+                            </span>
+                          )}
                         </td>
 
-                        {/* Address */}
-                        <td className="py-3.5 px-3 text-[#475569] max-w-[200px]">
-                          <div className="flex items-start gap-1.5 text-[11px]">
-                            <MapPin className="w-3.5 h-3.5 text-[#94A3B8] shrink-0 mt-0.5" />
-                            <span className="truncate" title={u.address}>
-                              {u.address || 'Bengaluru Project Worksite'}
-                            </span>
+                        {/* Contact */}
+                        <td className="py-3.5 px-3 text-[#475569]">
+                          <div className="text-xs">
+                            <span className="font-semibold text-[#1E1F24] block">{u.phone || '—'}</span>
+                            <span className="text-[11px] text-[#94A3B8] block truncate max-w-[140px]">{u.email}</span>
                           </div>
                         </td>
 
@@ -914,13 +919,13 @@ export const UsersView: React.FC = () => {
                           <StatusBadge status={u.isActive ? 'ACTIVE' : 'INACTIVE'} />
                         </td>
 
-                        {/* Actions */}
+                        {/* Action */}
                         <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
                               onClick={() => setUserToEdit(u)}
-                              className="p-1.5 rounded-lg text-[#64748B] hover:text-[#12A66A] hover:bg-[#E6F7EF] transition-colors cursor-pointer"
+                              className="p-1.5 rounded-lg text-[#64748B] hover:text-[#01B075] hover:bg-[#E6F7EF] transition-colors cursor-pointer"
                               title="Edit User Details"
                             >
                               <Pencil className="w-4 h-4" />
@@ -928,7 +933,7 @@ export const UsersView: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => setSelectedUserDetail(u)}
-                              className="p-1.5 rounded-lg text-[#64748B] hover:text-[#12A66A] hover:bg-[#E6F7EF] transition-colors cursor-pointer"
+                              className="p-1.5 rounded-lg text-[#64748B] hover:text-[#01B075] hover:bg-[#E6F7EF] transition-colors cursor-pointer"
                               title="View Full Profile"
                             >
                               <Eye className="w-4 h-4" />
@@ -936,10 +941,10 @@ export const UsersView: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => handleToggleActive(u)}
-                              className={`text-[11px] font-bold px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                              className={`text-[11px] font-bold px-2.5 py-1 rounded-full transition-colors cursor-pointer ${
                                 u.isActive
-                                  ? 'text-rose-600 hover:bg-rose-50'
-                                  : 'text-[#12A66A] hover:bg-[#E6F7EF]'
+                                  ? 'text-rose-600 hover:bg-rose-50 border border-rose-200'
+                                  : 'text-[#01B075] hover:bg-[#E6F7EF] border border-[#A7F3D0]'
                               }`}
                             >
                               {u.isActive ? 'Deactivate' : 'Activate'}
@@ -970,151 +975,149 @@ export const UsersView: React.FC = () => {
         /* USER LISTING: GRID CARDS VIEW */
         <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredUsers.map((u) => {
-            const empType = (u.employmentType || 'full-time').toLowerCase();
-            return (
-              <div
-                key={u.id}
-                onClick={() => setSelectedUserDetail(u)}
-                className="bg-white border border-[#E8EEF4] rounded-[22px] p-5 shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group space-y-4"
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="relative shrink-0">
-                        <img
-                          src={
-                            u.photoUrl ||
-                            'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'
-                          }
-                          alt={u.fullName}
-                          className="w-13 h-13 rounded-2xl object-cover border-2 border-[#E8EEF4] group-hover:border-[#12A66A] transition-colors shadow-xs"
-                        />
-                        <span
-                          className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-white ${
-                            u.isActive ? 'bg-[#12A66A]' : 'bg-slate-300'
-                          }`}
-                        />
-                      </div>
+            {filteredUsers.map((u) => {
+              const empType = (u.employmentType || 'full-time').toLowerCase();
+              return (
+                <div
+                  key={u.id}
+                  onClick={() => setSelectedUserDetail(u)}
+                  className="bg-white border border-[#E8EEF4] rounded-[22px] p-5 shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group space-y-4"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="relative shrink-0">
+                          <img
+                            src={
+                              u.photoUrl ||
+                              'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'
+                            }
+                            alt={u.fullName}
+                            className="w-13 h-13 rounded-2xl object-cover border-2 border-[#E8EEF4] group-hover:border-[#12A66A] transition-colors shadow-xs"
+                          />
+                          <span
+                            className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-white ${u.isActive ? 'bg-[#12A66A]' : 'bg-slate-300'
+                              }`}
+                          />
+                        </div>
 
-                      <div>
-                        <h3 className="font-extrabold text-sm text-[#111827] group-hover:text-[#12A66A] transition-colors">
-                          {u.fullName}
-                        </h3>
-                        <div className="flex items-center gap-2 text-[11px] text-[#64748B] mt-0.5">
-                          <span className="font-mono font-bold text-[#0F172A]">{u.employeeCode}</span>
-                          <span>•</span>
-                          <span className="font-semibold text-[#111827] bg-[#F1F5F9] px-1.5 py-0.2 rounded">
-                            {u.age ? `${u.age} yrs` : '28 yrs'}
-                          </span>
+                        <div>
+                          <h3 className="font-extrabold text-sm text-[#111827] group-hover:text-[#12A66A] transition-colors">
+                            {u.fullName}
+                          </h3>
+                          <div className="flex items-center gap-2 text-[11px] text-[#64748B] mt-0.5">
+                            <span className="font-mono font-bold text-[#0F172A]">{u.employeeCode}</span>
+                            <span>•</span>
+                            <span className="font-semibold text-[#111827] bg-[#F1F5F9] px-1.5 py-0.2 rounded">
+                              {u.age ? `${u.age} yrs` : '28 yrs'}
+                            </span>
+                          </div>
                         </div>
                       </div>
+
+                      <StatusBadge status={u.isActive ? 'ACTIVE' : 'INACTIVE'} />
                     </div>
 
-                    <StatusBadge status={u.isActive ? 'ACTIVE' : 'INACTIVE'} />
-                  </div>
+                    {/* Badges: Employment Type & Roles */}
+                    <div className="flex items-center gap-1.5 flex-wrap mb-3.5">
+                      {empType === 'full-time' && (
+                        <span className="text-[10px] font-extrabold bg-[#E6F7EF] text-[#12A66A] px-2.5 py-1 rounded-full border border-[#A7F3D0] flex items-center gap-1">
+                          <Briefcase className="w-3 h-3" />
+                          Full-Time
+                        </span>
+                      )}
+                      {empType === 'part-time' && (
+                        <span className="text-[10px] font-extrabold bg-sky-50 text-sky-700 px-2.5 py-1 rounded-full border border-sky-200 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          Part-Time
+                        </span>
+                      )}
+                      {empType === 'contract' && (
+                        <span className="text-[10px] font-extrabold bg-amber-50 text-amber-800 px-2.5 py-1 rounded-full border border-amber-200 flex items-center gap-1">
+                          <Award className="w-3 h-3" />
+                          Contract
+                        </span>
+                      )}
 
-                  {/* Badges: Employment Type & Roles */}
-                  <div className="flex items-center gap-1.5 flex-wrap mb-3.5">
-                    {empType === 'full-time' && (
-                      <span className="text-[10px] font-extrabold bg-[#E6F7EF] text-[#12A66A] px-2.5 py-1 rounded-full border border-[#A7F3D0] flex items-center gap-1">
-                        <Briefcase className="w-3 h-3" />
-                        Full-Time
-                      </span>
-                    )}
-                    {empType === 'part-time' && (
-                      <span className="text-[10px] font-extrabold bg-sky-50 text-sky-700 px-2.5 py-1 rounded-full border border-sky-200 flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        Part-Time
-                      </span>
-                    )}
-                    {empType === 'contract' && (
-                      <span className="text-[10px] font-extrabold bg-amber-50 text-amber-800 px-2.5 py-1 rounded-full border border-amber-200 flex items-center gap-1">
-                        <Award className="w-3 h-3" />
-                        Contract
-                      </span>
-                    )}
-
-                    {u.roles.map((r) => (
-                      <span
-                        key={r}
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${getRoleBadgeClasses(r)}`}
-                      >
-                        {r.replace('_', ' ')}
-                      </span>
-                    ))}
-                  </div>
-
-                  {/* Contact & Address Rows */}
-                  <div className="space-y-1.5 text-xs text-[#475569] bg-[#F8FAFC] p-3 rounded-xl border border-[#F1F5F9]">
-                    <div className="flex items-center gap-2">
-                      <Phone className="w-3.5 h-3.5 text-[#12A66A] shrink-0" />
-                      <span className="font-semibold text-[#111827]">{u.phone || '—'}</span>
+                      {u.roles.map((r) => (
+                        <span
+                          key={r}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${getRoleBadgeClasses(r)}`}
+                        >
+                          {r.replace('_', ' ')}
+                        </span>
+                      ))}
                     </div>
-                    <div className="flex items-start gap-2">
-                      <MapPin className="w-3.5 h-3.5 text-[#94A3B8] shrink-0 mt-0.5" />
-                      <span className="text-[11px] leading-tight line-clamp-2">
-                        {u.address || 'Bengaluru Project Worksite'}
-                      </span>
+
+                    {/* Contact & Address Rows */}
+                    <div className="space-y-1.5 text-xs text-[#475569] bg-[#F8FAFC] p-3 rounded-xl border border-[#F1F5F9]">
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-3.5 h-3.5 text-[#12A66A] shrink-0" />
+                        <span className="font-semibold text-[#111827]">{u.phone || '—'}</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <MapPin className="w-3.5 h-3.5 text-[#94A3B8] shrink-0 mt-0.5" />
+                        <span className="text-[11px] leading-tight line-clamp-2">
+                          {u.address || 'Bengaluru Project Worksite'}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div
-                  className="pt-3 border-t border-[#F1F5F9] flex items-center justify-between"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedUserDetail(u)}
-                      className="text-xs font-bold text-[#12A66A] hover:underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      View Details
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setUserToEdit(u)}
-                      className="text-xs font-bold text-slate-500 hover:text-[#12A66A] flex items-center gap-1 cursor-pointer transition-colors"
-                      title="Edit User Details"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                      Edit
-                    </button>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => handleToggleActive(u)}
-                    className={`text-[11px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer ${
-                      u.isActive
-                        ? 'text-rose-600 hover:bg-rose-50'
-                        : 'text-[#12A66A] hover:bg-[#E6F7EF]'
-                    }`}
+                  <div
+                    className="pt-3 border-t border-[#F1F5F9] flex items-center justify-between"
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    {u.isActive ? 'Deactivate' : 'Activate'}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedUserDetail(u)}
+                        className="text-xs font-bold text-[#12A66A] hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        View Details
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setUserToEdit(u)}
+                        className="text-xs font-bold text-slate-500 hover:text-[#12A66A] flex items-center gap-1 cursor-pointer transition-colors"
+                        title="Edit User Details"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        Edit
+                      </button>
+                    </div>
 
-        {/* Shadcn Table Pagination with { 10, 25, 50 } and Metadata */}
-        <div className="bg-white rounded-[22px] border border-[#E8EEF4] shadow-xs overflow-hidden mt-4">
-          <DataTablePagination
-            metadata={pagination}
-            onPageChange={(newPage) => setPage(newPage)}
-            onLimitChange={(newLimit) => {
-              setLimit(newLimit);
-              setPage(1);
-            }}
-            pageSizeOptions={[10, 25, 50]}
-            isLoading={loading}
-          />
+                    <button
+                      type="button"
+                      onClick={() => handleToggleActive(u)}
+                      className={`text-[11px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer ${u.isActive
+                          ? 'text-rose-600 hover:bg-rose-50'
+                          : 'text-[#12A66A] hover:bg-[#E6F7EF]'
+                        }`}
+                    >
+                      {u.isActive ? 'Deactivate' : 'Activate'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Shadcn Table Pagination with { 10, 25, 50 } and Metadata */}
+          <div className="bg-white rounded-[22px] border border-[#E8EEF4] shadow-xs overflow-hidden mt-4">
+            <DataTablePagination
+              metadata={pagination}
+              onPageChange={(newPage) => setPage(newPage)}
+              onLimitChange={(newLimit) => {
+                setLimit(newLimit);
+                setPage(1);
+              }}
+              pageSizeOptions={[10, 25, 50]}
+              isLoading={loading}
+            />
+          </div>
         </div>
-      </div>
       )}
 
       {/* CREATE USER MODAL */}
@@ -1218,9 +1221,8 @@ export const UsersView: React.FC = () => {
                       Account Status
                     </span>
                     <span
-                      className={`text-xs font-extrabold mt-0.5 block ${
-                        selectedUserDetail.isActive ? 'text-[#12A66A]' : 'text-rose-600'
-                      }`}
+                      className={`text-xs font-extrabold mt-0.5 block ${selectedUserDetail.isActive ? 'text-[#12A66A]' : 'text-rose-600'
+                        }`}
                     >
                       {selectedUserDetail.isActive ? 'Active Member' : 'Deactivated'}
                     </span>
@@ -1396,11 +1398,10 @@ export const UsersView: React.FC = () => {
                       handleToggleActive(selectedUserDetail);
                       setSelectedUserDetail(null);
                     }}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold cursor-pointer transition-colors ${
-                      selectedUserDetail.isActive
+                    className={`px-4 py-2 rounded-xl text-xs font-bold cursor-pointer transition-colors ${selectedUserDetail.isActive
                         ? 'bg-rose-50 text-rose-600 hover:bg-rose-100'
                         : 'bg-[#E6F7EF] text-[#12A66A] hover:bg-[#A7F3D0]'
-                    }`}
+                      }`}
                   >
                     {selectedUserDetail.isActive ? 'Deactivate Account' : 'Reactivate Account'}
                   </button>

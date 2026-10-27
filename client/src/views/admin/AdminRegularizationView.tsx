@@ -325,22 +325,24 @@ export const AdminRegularizationView: React.FC = () => {
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
         {/* Status Tabs */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
-          <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => {
                 setActiveTab('pending');
                 setPage(1);
               }}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-5 py-2.5 rounded-full text-xs transition-all cursor-pointer flex items-center gap-2 ${
                 activeTab === 'pending'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-[#1E1F24] text-white font-bold shadow-xs'
+                  : 'bg-white text-[#464853] border border-[#E8EEF4] hover:bg-[#F8FAFC] font-semibold shadow-2xs'
               }`}
             >
               <Clock className="w-3.5 h-3.5 text-amber-500" />
               <span>Pending Review</span>
               {statCounts.pending > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-amber-100 text-amber-800">
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                  activeTab === 'pending' ? 'bg-amber-400/20 text-amber-300' : 'bg-amber-100 text-amber-800'
+                }`}>
                   {statCounts.pending}
                 </span>
               )}
@@ -351,15 +353,17 @@ export const AdminRegularizationView: React.FC = () => {
                 setActiveTab('approved');
                 setPage(1);
               }}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-5 py-2.5 rounded-full text-xs transition-all cursor-pointer flex items-center gap-2 ${
                 activeTab === 'approved'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-[#1E1F24] text-white font-bold shadow-xs'
+                  : 'bg-white text-[#464853] border border-[#E8EEF4] hover:bg-[#F8FAFC] font-semibold shadow-2xs'
               }`}
             >
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+              <CheckCircle2 className="w-3.5 h-3.5 text-[#01B075]" />
               <span>Approved</span>
-              <span className="text-[10px] text-slate-400 font-semibold">({statCounts.approved})</span>
+              <span className={`text-[10px] font-semibold ${activeTab === 'approved' ? 'text-white/70' : 'text-[#94A3B8]'}`}>
+                ({statCounts.approved})
+              </span>
             </button>
 
             <button
@@ -367,15 +371,17 @@ export const AdminRegularizationView: React.FC = () => {
                 setActiveTab('rejected');
                 setPage(1);
               }}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-5 py-2.5 rounded-full text-xs transition-all cursor-pointer flex items-center gap-2 ${
                 activeTab === 'rejected'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-[#1E1F24] text-white font-bold shadow-xs'
+                  : 'bg-white text-[#464853] border border-[#E8EEF4] hover:bg-[#F8FAFC] font-semibold shadow-2xs'
               }`}
             >
               <XCircle className="w-3.5 h-3.5 text-rose-500" />
               <span>Rejected</span>
-              <span className="text-[10px] text-slate-400 font-semibold">({statCounts.rejected})</span>
+              <span className={`text-[10px] font-semibold ${activeTab === 'rejected' ? 'text-white/70' : 'text-[#94A3B8]'}`}>
+                ({statCounts.rejected})
+              </span>
             </button>
 
             <button
@@ -383,13 +389,13 @@ export const AdminRegularizationView: React.FC = () => {
                 setActiveTab('all');
                 setPage(1);
               }}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-5 py-2.5 rounded-full text-xs transition-all cursor-pointer flex items-center gap-2 ${
                 activeTab === 'all'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-[#1E1F24] text-white font-bold shadow-xs'
+                  : 'bg-white text-[#464853] border border-[#E8EEF4] hover:bg-[#F8FAFC] font-semibold shadow-2xs'
               }`}
             >
-              <Users className="w-3.5 h-3.5 text-slate-400" />
+              <Users className="w-3.5 h-3.5 text-[#94A3B8]" />
               <span>All Requests</span>
             </button>
           </div>
@@ -446,8 +452,8 @@ export const AdminRegularizationView: React.FC = () => {
           </select>
 
           {/* Search Box */}
-          <div className="relative flex-1 min-w-[220px]">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <div className="relative flex-1 min-w-[240px]">
+            <Search className="w-4 h-4 text-[#94A3B8] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
@@ -456,7 +462,7 @@ export const AdminRegularizationView: React.FC = () => {
                 setPage(1);
               }}
               placeholder="Search worker name, code, worksite, reason..."
-              className="w-full text-xs pl-8 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-purple-500"
+              className="w-full text-xs pl-9 pr-3 py-2 rounded-full border border-[#E8EEF4] bg-white text-[#1E1F24] placeholder-[#94A3B8] shadow-2xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#01B075] focus:ring-1 focus:ring-[#01B075] transition-all"
             />
           </div>
 

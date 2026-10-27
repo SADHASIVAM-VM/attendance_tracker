@@ -6,32 +6,26 @@ import {
     SupervisorTabId,
 } from '../../types/supervisor';
 import { apiRequest } from '../../lib/api';
-import { StatCard } from '../../components/supervisor/StatCard';
+import { StatCard } from '../../components/common/StatCard';
 import { WorkerRow } from '../../components/supervisor/WorkerRow';
 import { ReviewSheet } from '../../components/supervisor/ReviewSheet';
 import { SpendBarChart } from '../../components/supervisor/SpendBarChart';
 import { StatusPill } from '../../components/supervisor/StatusPill';
 import { SupervisorClockInCard } from '../../components/supervisor/SupervisorClockInCard';
 import { AttendanceExceptionsSection } from '../../components/supervisor/AttendanceExceptionsSection';
-
 import {
-    Clock,
-    UserCheck,
-    Users,
-    AlertTriangle,
-    CheckCircle2,
-    Building2,
-    CalendarDays,
-    Receipt,
-    ArrowRight,
-    ShieldCheck,
-    ChevronRight,
-    Sparkles,
-    MapPin,
-    ExternalLink,
-    ChevronDown,
-    FileEdit,
-} from 'lucide-react';
+    ClockIcon,
+    CheckCircleIcon,
+    GroupIcon,
+    CalenderIcon,
+    ChevronRightIcon,
+    Building1Icon,
+    ArrowDownIcon,
+    SecuritySafeIcon,
+    Profile2Icon,
+    NoteTextIcon,
+    Building2Icon,
+} from '@astraicons/react/linear';
 
 interface SupervisorHomeTabProps {
     workers: SupervisorWorkerAttendance[];
@@ -79,7 +73,7 @@ export const SupervisorHomeTab: React.FC<SupervisorHomeTabProps> = ({
                     setExtraWorksites(mapped);
                 }
             })
-            .catch(() => {});
+            .catch(() => { });
     }, []);
 
     // Combine worksites to guarantee options are fully visible
@@ -183,7 +177,7 @@ export const SupervisorHomeTab: React.FC<SupervisorHomeTabProps> = ({
                         >
                             <div className="flex items-center gap-2.5 min-w-0">
                                 <div className="w-8 h-8 rounded-xl bg-[#E6F7EF] text-[#12A66A] flex items-center justify-center shrink-0">
-                                    <Building2 className="w-4 h-4" />
+                                    <Building2Icon className="w-4 h-4" />
                                 </div>
                                 <div className="min-w-0">
                                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
@@ -194,7 +188,7 @@ export const SupervisorHomeTab: React.FC<SupervisorHomeTabProps> = ({
                                     </span>
                                 </div>
                             </div>
-                            <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                            <ArrowDownIcon className="w-4 h-4 text-slate-400 shrink-0" />
                         </button>
 
                         {/* Dropdown Menu */}
@@ -220,8 +214,8 @@ export const SupervisorHomeTab: React.FC<SupervisorHomeTabProps> = ({
                                                     setShowWorksiteDropdown(false);
                                                 }}
                                                 className={`w-full p-2.5 rounded-xl text-left text-xs transition-colors flex items-center justify-between cursor-pointer ${ws.id === selectedWorksite?.id
-                                                        ? 'bg-[#E6F7EF] text-[#0E8F5B] font-bold'
-                                                        : 'hover:bg-slate-50 text-slate-700'
+                                                    ? 'bg-[#E6F7EF] text-[#0E8F5B] font-bold'
+                                                    : 'hover:bg-slate-50 text-slate-700'
                                                     }`}
                                             >
                                                 <div className="min-w-0">
@@ -233,7 +227,7 @@ export const SupervisorHomeTab: React.FC<SupervisorHomeTabProps> = ({
                                                     )}
                                                 </div>
                                                 {ws.id === selectedWorksite?.id && (
-                                                    <CheckCircle2 className="w-4 h-4 text-[#12A66A] shrink-0 ml-2" />
+                                                    <CheckCircleIcon className="w-4 h-4 text-[#01B075] shrink-0 ml-2" />
                                                 )}
                                             </button>
                                         ))
@@ -254,41 +248,66 @@ export const SupervisorHomeTab: React.FC<SupervisorHomeTabProps> = ({
             />
 
             {/* ─── 3. KEY METRICS STAT STRIP ───────────────────────────────── */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 <StatCard
-                    label="Pending Review"
+                    title="Pending Review"
                     value={pendingWorkers.length}
-                    note={pendingWorkers.length > 0 ? 'Requires action' : 'All caught up'}
-                    icon={Clock}
-                    variant={pendingWorkers.length > 0 ? 'amber-tint' : 'default'}
-                    onClick={() => onNavigateTab('attendance')}
+                    change={pendingWorkers.length > 0 ? 'Requires Action' : 'All Caught Up'}
+                    isPositive={pendingWorkers.length === 0}
+                    helpText="Punches awaiting sign-off"
+                    icon={ClockIcon}
+                    visualType="sparkline"
+                    sparklineColor={pendingWorkers.length > 0 ? '#F59E0B' : '#01B075'}
+                    iconBgColor={pendingWorkers.length > 0 ? 'bg-amber-50' : 'bg-[#E6F7EF]'}
+                    iconColor={pendingWorkers.length > 0 ? 'text-amber-600' : 'text-[#01B075]'}
+                    onOpenClick={() => onNavigateTab('attendance')}
+                    className="cursor-pointer"
                 />
 
                 <StatCard
-                    label="Active on Site"
+                    title="Active on Site"
                     value={approvedWorkers.length}
-                    note={`of ${siteWorkers.length} scheduled`}
-                    icon={UserCheck}
-                    variant="solid-green"
-                    onClick={() => onNavigateTab('attendance')}
+                    change={`${siteWorkers.length > 0 ? Math.round((approvedWorkers.length / siteWorkers.length) * 100) : 0}%`}
+                    isPositive={true}
+                    helpText={`of ${siteWorkers.length} scheduled staff`}
+                    icon={CheckCircleIcon}
+                    visualType="ring"
+                    progressPercent={siteWorkers.length > 0 ? Math.round((approvedWorkers.length / siteWorkers.length) * 100) : 0}
+                    barColor="#01B075"
+                    iconBgColor="bg-[#E6F7EF]"
+                    iconColor="text-[#01B075]"
+                    onOpenClick={() => onNavigateTab('attendance')}
+                    className="cursor-pointer"
                 />
 
                 <StatCard
-                    label="Not Yet In"
+                    title="Not Yet In"
                     value={notYetInWorkers.length}
-                    note="Shift pending clock-in"
-                    icon={Users}
-                    variant="default"
-                    onClick={() => onNavigateTab('attendance')}
+                    change={notYetInWorkers.length > 0 ? 'Shift Pending' : 'All In'}
+                    isPositive={notYetInWorkers.length === 0}
+                    helpText="Workers awaiting clock-in"
+                    icon={GroupIcon}
+                    visualType="sparkline"
+                    sparklineColor="#3B82F6"
+                    iconBgColor="bg-blue-50"
+                    iconColor="text-blue-600"
+                    onOpenClick={() => onNavigateTab('attendance')}
+                    className="cursor-pointer"
                 />
 
                 <StatCard
-                    label="On Leave / Absent"
+                    title="On Leave / Absent"
                     value={onLeaveOrAbsentWorkers.length}
-                    note="Scheduled off today"
-                    icon={CalendarDays}
-                    variant="default"
-                    onClick={() => onNavigateTab('leaves')}
+                    change={onLeaveOrAbsentWorkers.length > 0 ? 'Off Duty' : 'Full Team'}
+                    isPositive={onLeaveOrAbsentWorkers.length === 0}
+                    helpText="Scheduled off or absent today"
+                    icon={CalenderIcon}
+                    visualType="bars"
+                    sparklineColor="#8B5CF6"
+                    iconBgColor="bg-purple-50"
+                    iconColor="text-purple-600"
+                    onOpenClick={() => onNavigateTab('leaves')}
+                    className="cursor-pointer"
                 />
             </div>
 
@@ -317,18 +336,18 @@ export const SupervisorHomeTab: React.FC<SupervisorHomeTabProps> = ({
                         <button
                             type="button"
                             onClick={() => onNavigateTab('attendance')}
-                            className="text-xs font-bold text-[#12A66A] hover:underline flex items-center gap-1 cursor-pointer shrink-0"
+                            className="text-xs font-bold text-[#01B075] hover:underline flex items-center gap-1 cursor-pointer shrink-0"
                         >
                             <span>View All ({pendingWorkers.length})</span>
-                            <ChevronRight className="w-4 h-4" />
+                            <ChevronRightIcon className="w-4 h-4" />
                         </button>
                     )}
                 </div>
 
                 {pendingWorkers.length === 0 ? (
                     <div className="p-8 text-center bg-[#F8FAFC] border border-[#E8EEF4] rounded-2xl space-y-2">
-                        <div className="w-12 h-12 rounded-full bg-[#E6F7EF] text-[#12A66A] flex items-center justify-center mx-auto">
-                            <ShieldCheck className="w-6 h-6" />
+                        <div className="w-12 h-12 rounded-full bg-[#E6F7EF] text-[#01B075] flex items-center justify-center mx-auto">
+                            <SecuritySafeIcon className="w-6 h-6" />
                         </div>
                         <h4 className="text-sm font-bold text-slate-800">All Punches Verified</h4>
                         <p className="text-xs text-slate-500 max-w-sm mx-auto">
@@ -370,10 +389,10 @@ export const SupervisorHomeTab: React.FC<SupervisorHomeTabProps> = ({
                         <button
                             type="button"
                             onClick={() => onNavigateTab('spend')}
-                            className="text-xs font-bold text-[#12A66A] hover:underline flex items-center gap-1 cursor-pointer shrink-0"
+                            className="text-xs font-bold text-[#01B075] hover:underline flex items-center gap-1 cursor-pointer shrink-0"
                         >
                             <span>Manage Spend</span>
-                            <ChevronRight className="w-4 h-4" />
+                            <ChevronRightIcon className="w-4 h-4" />
                         </button>
                     </div>
 
@@ -397,10 +416,10 @@ export const SupervisorHomeTab: React.FC<SupervisorHomeTabProps> = ({
                         <button
                             type="button"
                             onClick={() => onNavigateTab('attendance')}
-                            className="p-4 rounded-2xl border border-[#E8EEF4] hover:border-[#12A66A]/40 hover:bg-[#F8FAFC] text-left transition-all cursor-pointer group space-y-2 shadow-xs"
+                            className="p-4 rounded-2xl border border-[#E8EEF4] hover:border-[#01B075]/40 hover:bg-[#F8FAFC] text-left transition-all cursor-pointer group space-y-2 shadow-xs"
                         >
-                            <div className="w-9 h-9 rounded-xl bg-[#E6F7EF] text-[#12A66A] flex items-center justify-center group-hover:scale-105 transition-transform">
-                                <UserCheck className="w-5 h-5" />
+                            <div className="w-9 h-9 rounded-xl bg-[#E6F7EF] text-[#01B075] flex items-center justify-center group-hover:scale-105 transition-transform">
+                                <Profile2Icon className="w-5 h-5" />
                             </div>
                             <div>
                                 <span className="text-xs font-bold text-slate-900 block">Team Roster</span>
@@ -411,10 +430,10 @@ export const SupervisorHomeTab: React.FC<SupervisorHomeTabProps> = ({
                         <button
                             type="button"
                             onClick={() => onNavigateTab('leaves')}
-                            className="p-4 rounded-2xl border border-[#E8EEF4] hover:border-[#12A66A]/40 hover:bg-[#F8FAFC] text-left transition-all cursor-pointer group space-y-2 shadow-xs"
+                            className="p-4 rounded-2xl border border-[#E8EEF4] hover:border-[#01B075]/40 hover:bg-[#F8FAFC] text-left transition-all cursor-pointer group space-y-2 shadow-xs"
                         >
                             <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-                                <CalendarDays className="w-5 h-5" />
+                                <CalenderIcon className="w-5 h-5" />
                             </div>
                             <div>
                                 <span className="text-xs font-bold text-slate-900 block">Worker Leaves</span>
@@ -425,10 +444,10 @@ export const SupervisorHomeTab: React.FC<SupervisorHomeTabProps> = ({
                         <button
                             type="button"
                             onClick={() => onNavigateTab('spend')}
-                            className="p-4 rounded-2xl border border-[#E8EEF4] hover:border-[#12A66A]/40 hover:bg-[#F8FAFC] text-left transition-all cursor-pointer group space-y-2 shadow-xs"
+                            className="p-4 rounded-2xl border border-[#E8EEF4] hover:border-[#01B075]/40 hover:bg-[#F8FAFC] text-left transition-all cursor-pointer group space-y-2 shadow-xs"
                         >
                             <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-                                <Receipt className="w-5 h-5" />
+                                <NoteTextIcon className="w-5 h-5" />
                             </div>
                             <div>
                                 <span className="text-xs font-bold text-slate-900 block">Spend Ledger</span>
@@ -439,10 +458,10 @@ export const SupervisorHomeTab: React.FC<SupervisorHomeTabProps> = ({
                         <button
                             type="button"
                             onClick={() => onNavigateTab('history')}
-                            className="p-4 rounded-2xl border border-[#E8EEF4] hover:border-[#12A66A]/40 hover:bg-[#F8FAFC] text-left transition-all cursor-pointer group space-y-2 shadow-xs"
+                            className="p-4 rounded-2xl border border-[#E8EEF4] hover:border-[#01B075]/40 hover:bg-[#F8FAFC] text-left transition-all cursor-pointer group space-y-2 shadow-xs"
                         >
                             <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-                                <ShieldCheck className="w-5 h-5" />
+                                <SecuritySafeIcon className="w-5 h-5" />
                             </div>
                             <div>
                                 <span className="text-xs font-bold text-slate-900 block">Site History</span>

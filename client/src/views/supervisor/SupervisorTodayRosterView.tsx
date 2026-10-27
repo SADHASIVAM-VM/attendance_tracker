@@ -3,24 +3,20 @@ import { apiRequest } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import {
-  CalendarDays,
-  MapPin,
-  Clock,
-  Users,
-  ShieldAlert,
-  ShieldCheck,
-  Building2,
-  RefreshCw,
-  Search,
-  CheckCircle2,
-  Repeat,
-  Sun,
-  User,
-  Mail,
-  Calendar as CalendarIcon,
-  ChevronRight,
-  XCircle,
-} from 'lucide-react';
+  ClockIcon,
+  CheckCircleIcon,
+  CalenderIcon,
+  SearchIcon,
+  Building1Icon,
+  GroupIcon,
+  SecuritySafeIcon,
+  RotateCwIcon,
+  LocationIcon,
+  SunIcon,
+  ArrowRightIcon,
+  Profile2Icon,
+  EmailIcon,
+} from '@astraicons/react/linear';
 
 export const SupervisorTodayRosterView: React.FC = () => {
   const { user } = useAuth();
@@ -90,7 +86,7 @@ export const SupervisorTodayRosterView: React.FC = () => {
 
       {/* Admin Central Management Notice */}
       <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200 text-blue-900 text-xs flex items-start gap-3">
-        <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+        <SecuritySafeIcon className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
         <div>
           <span className="font-semibold block">Central Administrator Scheduling</span>
           <span>
@@ -102,12 +98,12 @@ export const SupervisorTodayRosterView: React.FC = () => {
       {/* Content */}
       {loading ? (
         <div className="p-12 text-center text-slate-400 text-sm flex items-center justify-center gap-2">
-          <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
+          <RotateCwIcon className="w-4 h-4 animate-spin text-slate-400" />
           Loading assigned roster...
         </div>
       ) : assignments.length === 0 ? (
         <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-500 shadow-2xs">
-          <CalendarDays className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <CalenderIcon className="w-12 h-12 text-slate-300 mx-auto mb-3" />
           <h3 className="font-bold text-slate-900 text-base">No Assigned Schedule for {selectedDate}</h3>
           <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
             You do not have an active worksite group assigned for this date. The administrator has not scheduled or published assignments for this date yet.
@@ -132,14 +128,14 @@ export const SupervisorTodayRosterView: React.FC = () => {
                   {/* Left: Building Icon & Worksite Title */}
                   <div className="flex items-start gap-4">
                     <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100/60 text-indigo-600 flex items-center justify-center shrink-0">
-                      <Building2 className="w-7 h-7 text-indigo-600" />
+                      <Building1Icon className="w-7 h-7 text-indigo-600" />
                     </div>
                     <div className="min-w-0">
                       <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
                         {assignment.worksiteName}
                       </h2>
                       <div className="flex items-center gap-1.5 text-xs sm:text-sm text-slate-500 font-medium mt-1">
-                        <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
+                        <LocationIcon className="w-4 h-4 text-slate-400 shrink-0" />
                         <span className="truncate">{assignment.worksiteAddress}</span>
                       </div>
                     </div>
@@ -149,7 +145,7 @@ export const SupervisorTodayRosterView: React.FC = () => {
                   <div className="flex flex-wrap items-center gap-2.5 sm:self-start">
                     {/* Shift Pill */}
                     <div className="px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 bg-sky-50 text-sky-700 border border-sky-100 shadow-2xs">
-                      <Sun className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                      <SunIcon className="w-3.5 h-3.5 text-sky-600 shrink-0" />
                       <span>{assignment.groupName || assignment.shiftName || 'Morning Shift'}</span>
                     </div>
 
@@ -190,7 +186,7 @@ export const SupervisorTodayRosterView: React.FC = () => {
                     {/* Carried Forward Pill */}
                     {assignment.carryForward !== false && (
                       <div className="px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 bg-indigo-50/90 text-indigo-700 border border-indigo-100 shadow-2xs">
-                        <CalendarIcon className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                        <CalenderIcon className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                         <span>
                           {assignment.isCarriedForward || assignment.workDate !== selectedDate
                             ? `Carried Forward (${String(assignment.workDate).split('T')[0]})`
@@ -206,7 +202,7 @@ export const SupervisorTodayRosterView: React.FC = () => {
                   <div className="bg-sky-50/70 border border-sky-100 rounded-2xl p-4 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3.5 min-w-0">
                       <div className="w-11 h-11 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center shrink-0">
-                        <CalendarIcon className="w-5 h-5 text-sky-600" />
+                        <CalenderIcon className="w-5 h-5 text-sky-600" />
                       </div>
                       <div className="min-w-0">
                         <h4 className="font-bold text-slate-900 text-sm">
@@ -217,7 +213,7 @@ export const SupervisorTodayRosterView: React.FC = () => {
                         </p>
                       </div>
                     </div>
-                    <ChevronRight className="w-5 h-5 text-slate-400 shrink-0" />
+                    <ArrowRightIcon className="w-5 h-5 text-slate-400 shrink-0" />
                   </div>
                 )}
 
@@ -228,7 +224,7 @@ export const SupervisorTodayRosterView: React.FC = () => {
                     {/* Supervisor Details */}
                     <div className="flex items-start gap-4">
                       <div className="w-14 h-14 rounded-full bg-indigo-50 border border-indigo-100/80 text-indigo-600 flex items-center justify-center shrink-0">
-                        <User className="w-7 h-7 text-indigo-600" />
+                        <Profile2Icon className="w-7 h-7 text-indigo-600" />
                       </div>
                       <div className="min-w-0 flex-1">
                         <span className="text-xs font-semibold text-slate-400 block tracking-wide uppercase">
@@ -240,7 +236,7 @@ export const SupervisorTodayRosterView: React.FC = () => {
                         <span className="text-xs font-medium text-slate-500 block">Site Supervisor</span>
                         {assignment.supervisorEmail && (
                           <span className="text-xs text-slate-600 flex items-center gap-1.5 mt-1 truncate">
-                            <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <EmailIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                             <span className="truncate">{assignment.supervisorEmail}</span>
                           </span>
                         )}
@@ -251,7 +247,7 @@ export const SupervisorTodayRosterView: React.FC = () => {
                     <div className="space-y-3 pt-4 border-t border-slate-200/70">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <Users className="w-5 h-5 text-slate-600 shrink-0" />
+                          <GroupIcon className="w-5 h-5 text-slate-600 shrink-0" />
                           <div>
                             <span className="text-xs font-medium text-slate-500 block">
                               Assigned Users
@@ -274,7 +270,7 @@ export const SupervisorTodayRosterView: React.FC = () => {
                                   title={`${w.fullName} (${w.employeeCode || ''})`}
                                   className="w-8 h-8 rounded-full bg-indigo-50 border-2 border-white text-indigo-600 flex items-center justify-center text-xs font-semibold -ml-2.5 first:ml-0 shadow-2xs"
                                 >
-                                  <User className="w-4 h-4 text-indigo-600" />
+                                  <Profile2Icon className="w-4 h-4 text-indigo-600" />
                                 </div>
                               ))}
                               {workers.length > 4 && (
@@ -291,13 +287,14 @@ export const SupervisorTodayRosterView: React.FC = () => {
 
                       {/* Worker Filter Search Bar if more than 4 workers */}
                       {workers.length > 4 && (
-                        <div className="pt-2">
+                        <div className="pt-2 relative">
+                          <SearchIcon className="w-3.5 h-3.5 text-[#8C90A0] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                           <input
                             type="text"
                             value={searchWorker}
                             onChange={(e) => setSearchWorker(e.target.value)}
                             placeholder="Filter assigned workers by name or code..."
-                            className="w-full text-xs px-3 py-1.5 bg-white border border-slate-200 rounded-xl placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            className="w-full text-xs pl-8 pr-3 py-1.5 bg-white border border-[#E8EEF4] rounded-full text-[#1E1F24] placeholder-[#8C90A0] focus:outline-none focus:border-[#01B075] focus:ring-1 focus:ring-[#01B075] shadow-2xs transition-all font-medium"
                           />
                         </div>
                       )}
@@ -308,7 +305,7 @@ export const SupervisorTodayRosterView: React.FC = () => {
                   <div className="bg-emerald-50/30 border border-emerald-100/70 rounded-2xl p-5 flex flex-col justify-between">
                     <div>
                       <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-4">
-                        <Clock className="w-7 h-7 text-emerald-600" />
+                        <ClockIcon className="w-7 h-7 text-emerald-600" />
                       </div>
                       <span className="text-xs font-semibold text-slate-500 block tracking-wide uppercase">
                         Shift Timing
@@ -319,7 +316,7 @@ export const SupervisorTodayRosterView: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium mt-4">
-                      <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
+                      <LocationIcon className="w-4 h-4 text-slate-400 shrink-0" />
                       <span>Radius: {assignment.worksiteRadius || 20}m geofence</span>
                     </div>
                   </div>
@@ -328,7 +325,7 @@ export const SupervisorTodayRosterView: React.FC = () => {
                 {/* Bottom Action Footer */}
                 <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="flex items-center gap-2.5 text-slate-500">
-                    <CalendarDays className="w-5 h-5 text-slate-400 shrink-0" />
+                    <CalenderIcon className="w-5 h-5 text-slate-400 shrink-0" />
                     <div className="leading-tight">
                       <span className="text-[11px] text-slate-400 block font-medium">Published</span>
                       <span className="text-xs font-semibold text-slate-700 block">

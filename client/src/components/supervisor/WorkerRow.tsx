@@ -1,7 +1,7 @@
 import React from 'react';
 import { SupervisorWorkerAttendance } from '../../types/supervisor';
 import { StatusPill } from './StatusPill';
-import { Check, X, Clock, MapPin, Eye, CheckSquare, Square } from 'lucide-react';
+import { CheckIcon, CloseIcon, ClockIcon, LocationIcon, CheckCircleIcon } from '@astraicons/react/linear';
 
 interface WorkerRowProps {
   worker: SupervisorWorkerAttendance;
@@ -50,9 +50,9 @@ export const WorkerRow: React.FC<WorkerRowProps> = ({
           className="text-[#12A66A] p-1 -ml-1 transition-transform active:scale-90"
         >
           {isSelected ? (
-            <CheckSquare className="w-5 h-5 fill-[#12A66A] text-white" />
+            <CheckCircleIcon className="w-5 h-5 text-[#12A66A]" />
           ) : (
-            <Square className="w-5 h-5 text-slate-300" />
+            <div className="w-4 h-4 rounded border-2 border-slate-300" />
           )}
         </button>
       )}
@@ -103,7 +103,7 @@ export const WorkerRow: React.FC<WorkerRowProps> = ({
         {/* Times & Distance */}
         <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 mt-0.5 text-xs text-[#64748B]">
           <span className="flex items-center gap-1 font-medium tabular-nums">
-            <Clock className="w-3 h-3 text-[#12A66A]" />
+            <ClockIcon className="w-3.5 h-3.5 text-[#12A66A]" />
             {worker.clockInTime ? worker.clockInTime : 'Not clocked in'}
             {worker.clockOutTime && ` – ${worker.clockOutTime}`}
           </span>
@@ -114,7 +114,7 @@ export const WorkerRow: React.FC<WorkerRowProps> = ({
                 worker.isWithinRadius ? 'text-[#0E8F5B]' : 'text-[#DC2626]'
               }`}
             >
-              <MapPin className="w-2.5 h-2.5" />
+              <LocationIcon className="w-3 h-3" />
               {worker.distanceMeters}m {worker.isWithinRadius ? 'on site' : 'outside'}
             </span>
           )}
@@ -142,7 +142,7 @@ export const WorkerRow: React.FC<WorkerRowProps> = ({
                 title="Quick Reject"
                 className="w-8 h-8 rounded-full border border-rose-200 bg-rose-50 hover:bg-rose-100 text-[#DC2626] flex items-center justify-center transition-colors active:scale-95"
               >
-                <X className="w-4 h-4 stroke-[2.5]" />
+                <CloseIcon className="w-3.5 h-3.5 stroke-[2.5]" />
               </button>
             )}
             {onQuickApprove && (
@@ -155,7 +155,7 @@ export const WorkerRow: React.FC<WorkerRowProps> = ({
                 title="Quick Approve"
                 className="w-8 h-8 rounded-full bg-[#12A66A] hover:bg-[#0E8F5B] text-white flex items-center justify-center shadow-xs transition-colors active:scale-95"
               >
-                <Check className="w-4 h-4 stroke-[2.5]" />
+                <CheckIcon className="w-3.5 h-3.5 stroke-[2.5]" />
               </button>
             )}
           </div>

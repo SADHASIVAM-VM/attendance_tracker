@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { CalenderIcon, ChevronLeftIcon, ChevronRightIcon } from '@astraicons/react/linear';
 
 export interface DateRange {
   startDate: string; // YYYY-MM-DD
@@ -237,7 +237,7 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
         }}
         className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-xs font-semibold text-slate-800 shadow-2xs hover:shadow-xs transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#12A66A]/20"
       >
-        <CalendarIcon className="w-4 h-4 text-[#12A66A] shrink-0" />
+        <CalenderIcon className="w-4 h-4 text-[#12A66A] shrink-0" />
         <span className="tabular-nums">
           {startDate ? formatHumanDate(startDate) : 'Start date'} –{' '}
           {endDate ? formatHumanDate(endDate) : 'End date'}
@@ -284,7 +284,7 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
                   className="p-1 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
                   title="Previous month"
                 >
-                  <ChevronLeft className="w-4 h-4" />
+                  <ChevronLeftIcon className="w-4 h-4" />
                 </button>
 
                 <span className="text-xs font-bold text-slate-900">
@@ -297,7 +297,7 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
                   className="p-1 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
                   title="Next month"
                 >
-                  <ChevronRight className="w-4 h-4" />
+                  <ChevronRightIcon className="w-4 h-4" />
                 </button>
               </div>
 

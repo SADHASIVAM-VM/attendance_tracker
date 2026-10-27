@@ -57,32 +57,40 @@ export const WeeklyAttendanceChart: React.FC = () => {
 
   return (
     <div className="bg-white border border-[#E8EEF4] p-5 sm:p-6 rounded-[20px] shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col justify-between">
-      {/* Top Header */}
-      <div className="flex items-center justify-between pb-3">
-        <div>
-          <span className="text-xs font-semibold text-[#6B7280] block">
-            Attendance Rate &amp; Volume
-          </span>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-2xl sm:text-3xl font-extrabold text-[#111827] tabular-nums tracking-tight">
-              98.4%
-            </span>
-            <span className="inline-flex items-center gap-0.5 text-xs font-bold text-[#12A66A] bg-[#E6F7EF] px-2.5 py-0.5 rounded-full">
-              <ArrowUpRight className="w-3.5 h-3.5" />
-              8.24%
-            </span>
-          </div>
+      {/* Top Header matching Reference Image 3 */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#F1F4F8]">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-bold text-[#1E1F24] m-0">
+            Daily Attendance Statistic
+          </h3>
+          <span className="w-4 h-4 rounded-full bg-slate-100 text-slate-400 text-[10px] flex items-center justify-center font-bold">i</span>
         </div>
 
-        {/* Dropdown Filter Pill */}
-        <div className="relative">
-          <button
-            type="button"
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] rounded-full text-xs font-semibold text-[#475569] transition-colors cursor-pointer"
-          >
-            <span>{timeframe}</span>
-            <ChevronDown className="w-3.5 h-3.5 text-[#64748B]" />
-          </button>
+        {/* Legend matching Reference Image 3 */}
+        <div className="flex items-center gap-4 text-xs font-semibold">
+          <div className="flex items-center gap-1.5 text-[#1E1F24]">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#01B075]" />
+            <span>Present 04%</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[#1E1F24]">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B]" />
+            <span>Absent 13%</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[#1E1F24]">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#EF4444]" />
+            <span>Leave 9%</span>
+          </div>
+
+          {/* Dropdown Filter Pill */}
+          <div className="relative pl-2">
+            <button
+              type="button"
+              className="flex items-center gap-1.5 px-3 py-1 bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] rounded-full text-xs font-semibold text-[#464853] transition-colors cursor-pointer"
+            >
+              <span>Daily</span>
+              <ChevronDown className="w-3.5 h-3.5 text-[#94A3B8]" />
+            </button>
+          </div>
         </div>
       </div>
 

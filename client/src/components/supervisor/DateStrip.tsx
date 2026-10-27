@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalenderIcon } from '@astraicons/react/linear';
 
 interface DateStripProps {
   selectedDate: string; // YYYY-MM-DD
@@ -51,11 +51,11 @@ export const DateStrip: React.FC<DateStripProps> = ({
       <div className="relative flex-shrink-0">
         <button
           type="button"
-          onClick={() => dateInputRef.current?.showPicker?.() || dateInputRef.current?.focus()}
+          onClick={() => dateInputRef?.current?.showPicker?.() || dateInputRef.current?.focus()}
           title="Pick calendar date"
           className="w-10 h-14 rounded-[12px] bg-[#E6F7EF] hover:bg-[#C3F2DD] text-[#12A66A] flex flex-col items-center justify-center transition-colors active:scale-95"
         >
-          <Calendar className="w-4 h-4" />
+          <CalenderIcon className="w-4 h-4" />
           <span className="text-[9px] font-bold mt-1">Pick</span>
         </button>
         <input
@@ -83,16 +83,14 @@ export const DateStrip: React.FC<DateStripProps> = ({
               type="button"
               data-active={isSelected ? 'true' : 'false'}
               onClick={() => onSelectDate(item.dateStr)}
-              className={`min-w-[44px] h-14 rounded-[12px] flex flex-col items-center justify-center transition-all cursor-pointer flex-shrink-0 relative ${
-                isSelected
+              className={`min-w-[44px] h-14 rounded-[12px] flex flex-col items-center justify-center transition-all cursor-pointer flex-shrink-0 relative ${isSelected
                   ? 'bg-[#12A66A] text-white shadow-xs'
                   : 'bg-[#F8FAFC] hover:bg-[#F1F5F9] text-slate-700'
-              }`}
+                }`}
             >
               <span
-                className={`text-[10px] font-semibold leading-tight ${
-                  isSelected ? 'text-emerald-100' : 'text-slate-400'
-                }`}
+                className={`text-[10px] font-semibold leading-tight ${isSelected ? 'text-emerald-100' : 'text-slate-400'
+                  }`}
               >
                 {item.dayName}
               </span>
@@ -101,9 +99,8 @@ export const DateStrip: React.FC<DateStripProps> = ({
               </span>
               {item.isToday && (
                 <span
-                  className={`w-1 h-1 rounded-full absolute bottom-1.5 ${
-                    isSelected ? 'bg-white' : 'bg-[#12A66A]'
-                  }`}
+                  className={`w-1 h-1 rounded-full absolute bottom-1.5 ${isSelected ? 'bg-white' : 'bg-[#12A66A]'
+                    }`}
                 />
               )}
             </button>

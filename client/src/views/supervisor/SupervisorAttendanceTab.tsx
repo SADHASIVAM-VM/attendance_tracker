@@ -15,33 +15,31 @@ import { StatusBadge } from '../../components/common/StatusBadge';
 import { DateRangePicker, DateRange } from '../../components/ui/date-range-picker';
 import { DataTablePagination } from '../../components/ui/data-table-pagination';
 import { apiRequest } from '../../lib/api';
+
 import {
-  Calendar,
-  CheckCircle2,
-  Clock,
-  XCircle,
-  Filter,
-  CheckSquare,
-  Square,
-  ShieldCheck,
-  AlertCircle,
-  AlertTriangle,
-  RotateCcw,
-  User,
-  Users,
-  Search,
-  ShieldAlert,
-  History,
-  Building2,
-  RefreshCw,
-  Sliders,
-  HelpCircle,
-  Download,
-  MapPin,
-  Check,
-  X,
-  Eye,
-} from 'lucide-react';
+  ClockIcon,
+  CheckCircleIcon,
+  CalenderIcon,
+  SearchIcon,
+  Building1Icon,
+  GroupIcon,
+  EditProfileIcon,
+  ErrorProfileIcon,
+  CloseCircleIcon,
+  CloseIcon,
+  CheckIcon,
+  LocationIcon,
+  Filter1Icon,
+  RotateCwIcon,
+  RotateCcwIcon,
+  TransactionHistoryIcon,
+  ShieldIcon,
+  SecuritySafeIcon,
+  Download1Icon,
+  EyeIcon,
+  Profile2Icon,
+  HelpCircleIcon,
+} from '@astraicons/react/linear';
 
 export type SupervisorSection =
   | 'today-attendance'
@@ -577,17 +575,16 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
       {/* ── Top Flash Alert ─────────────────────────────────────────────────── */}
       {flashMessage && (
         <div
-          className={`p-4 rounded-2xl text-xs font-semibold border flex items-center justify-between shadow-xs transition-all ${
-            flashMessage.type === 'success'
+          className={`p-4 rounded-2xl text-xs font-semibold border flex items-center justify-between shadow-xs transition-all ${flashMessage.type === 'success'
               ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
               : 'bg-rose-50 text-rose-900 border-rose-200'
-          }`}
+            }`}
         >
           <div className="flex items-center gap-2.5">
             {flashMessage.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <CheckCircleIcon className="w-4 h-4 text-[#01B075] shrink-0" />
             ) : (
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <CloseCircleIcon className="w-4 h-4 text-rose-600 shrink-0" />
             )}
             <span>{flashMessage.text}</span>
           </div>
@@ -611,15 +608,14 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
               handleSectionClick('today-attendance');
               setActiveCardFilter('TOTAL');
             }}
-            className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
-              section === 'today-attendance' && activeCardFilter === 'TOTAL'
+            className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${section === 'today-attendance' && activeCardFilter === 'TOTAL'
                 ? 'bg-[#F0FDF4] border-2 border-[#12A66A] shadow-xs ring-1 ring-[#12A66A]'
                 : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
-            }`}
+              }`}
           >
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total</span>
-              <Users className="w-4 h-4 text-slate-500" />
+              <GroupIcon className="w-4 h-4 text-slate-500" />
             </div>
             <div className="text-2xl font-extrabold text-slate-900 tabular-nums">{totalCount}</div>
             <span className="text-[10px] text-slate-400 font-medium">Assigned Today</span>
@@ -632,15 +628,14 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
               handleSectionClick('today-attendance');
               setActiveCardFilter('APPROVED');
             }}
-            className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
-              section === 'today-attendance' && activeCardFilter === 'APPROVED'
+            className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${section === 'today-attendance' && activeCardFilter === 'APPROVED'
                 ? 'bg-[#E6F7EF] border-2 border-[#12A66A] shadow-xs ring-1 ring-[#12A66A]'
                 : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
-            }`}
+              }`}
           >
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Approved</span>
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <CheckCircleIcon className="w-4 h-4 text-[#01B075]" />
             </div>
             <div className="text-2xl font-extrabold text-[#0E8F5B] tabular-nums">{approvedCount}</div>
             <span className="text-[10px] text-emerald-600 font-medium">Verified Today</span>
@@ -653,15 +648,14 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
               handleSectionClick('today-attendance');
               setActiveCardFilter('REJECTED');
             }}
-            className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
-              section === 'today-attendance' && activeCardFilter === 'REJECTED'
+            className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${section === 'today-attendance' && activeCardFilter === 'REJECTED'
                 ? 'bg-rose-50 border-2 border-rose-500 shadow-xs ring-1 ring-rose-400'
                 : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
-            }`}
+              }`}
           >
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[10px] font-bold text-rose-800 uppercase tracking-wider">Rejected / Absent</span>
-              <XCircle className="w-4 h-4 text-rose-600" />
+              <CloseCircleIcon className="w-4 h-4 text-rose-600" />
             </div>
             <div className="text-2xl font-extrabold text-rose-700 tabular-nums">{rejectedCount}</div>
             <span className="text-[10px] text-rose-600 font-medium">Declined / Absent Today</span>
@@ -674,15 +668,14 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
               handleSectionClick('today-attendance');
               setActiveCardFilter('PENDING');
             }}
-            className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
-              section === 'today-attendance' && activeCardFilter === 'PENDING'
+            className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${section === 'today-attendance' && activeCardFilter === 'PENDING'
                 ? 'bg-amber-50 border-2 border-amber-500 shadow-xs ring-1 ring-amber-400'
                 : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
-            }`}
+              }`}
           >
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Pending</span>
-              <Clock className="w-4 h-4 text-amber-600 animate-pulse" />
+              <ClockIcon className="w-4 h-4 text-amber-600 animate-pulse" />
             </div>
             <div className="text-2xl font-extrabold text-amber-700 tabular-nums">{pendingCount}</div>
             <span className="text-[10px] text-amber-600 font-medium">Review Needed</span>
@@ -694,15 +687,14 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
             onClick={() => {
               handleSectionClick('missing-attendance');
             }}
-            className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
-              section === 'missing-attendance'
+            className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${section === 'missing-attendance'
                 ? 'bg-amber-100/70 border-2 border-amber-600 shadow-xs ring-1 ring-amber-500'
                 : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
-            }`}
+              }`}
           >
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wider">Missing In</span>
-              <AlertTriangle className="w-4 h-4 text-amber-600" />
+              <ErrorProfileIcon className="w-4 h-4 text-amber-600" />
             </div>
             <div className="text-2xl font-extrabold text-amber-800 tabular-nums">{missingCount}</div>
             <span className="text-[10px] text-amber-700 font-medium">Unclocked Shifts</span>
@@ -715,15 +707,14 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
               handleSectionClick('today-attendance');
               setActiveCardFilter('FLAGGED');
             }}
-            className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
-              section === 'today-attendance' && activeCardFilter === 'FLAGGED'
+            className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${section === 'today-attendance' && activeCardFilter === 'FLAGGED'
                 ? 'bg-purple-50 border-2 border-purple-600 shadow-xs ring-1 ring-purple-500'
                 : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
-            }`}
+              }`}
           >
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[10px] font-bold text-purple-900 uppercase tracking-wider">Flagged</span>
-              <ShieldAlert className="w-4 h-4 text-purple-600" />
+              <ShieldIcon className="w-4 h-4 text-purple-600" />
             </div>
             <div className="text-2xl font-extrabold text-purple-700 tabular-nums">{flaggedDatesCount}</div>
             <span className="text-[10px] text-purple-600 font-medium">Exceptions Reviewed</span>
@@ -733,23 +724,21 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
 
       {/* ── COMBINED DAILY ATTENDANCE (TODAY & MISSING) SEGMENTED SWITCHER ───────────────────────────── */}
       {(section === 'today-attendance' || section === 'missing-attendance') && (
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white border border-[#E8EEF4] rounded-[18px] p-2 shadow-xs">
-          <div className="flex p-1 bg-[#F1F6FC] rounded-[14px] gap-1 flex-1 sm:max-w-md">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white border border-[#E8EEF4] rounded-[20px] p-3 shadow-2xs">
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
             <button
               type="button"
               onClick={() => handleSectionClick('today-attendance')}
-              className={`flex-1 py-2 px-3 rounded-[10px] text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                section === 'today-attendance'
-                  ? 'bg-[#12A66A] text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
+              className={`cursor-pointer whitespace-nowrap transition-all ${section === 'today-attendance'
+                  ? 'bg-[#1E1F24] text-white px-5 py-2.5 rounded-full text-xs font-bold shadow-xs flex items-center gap-2'
+                  : 'bg-white text-[#464853] border border-[#E8EEF4] hover:bg-[#F8FAFC] px-5 py-2.5 rounded-full text-xs font-semibold shadow-2xs flex items-center gap-2'
+                }`}
             >
-              <Users className="w-3.5 h-3.5" />
+              <GroupIcon className={`w-3.5 h-3.5 ${section === 'today-attendance' ? 'text-[#01B075]' : 'text-[#8C90A0]'}`} />
               <span>Today's Attendance</span>
               <span
-                className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
-                  section === 'today-attendance' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
-                }`}
+                className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${section === 'today-attendance' ? 'bg-white/20 text-white' : 'bg-[#F4F6F8] text-[#464853]'
+                  }`}
               >
                 {totalCount}
               </span>
@@ -758,19 +747,17 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
             <button
               type="button"
               onClick={() => handleSectionClick('missing-attendance')}
-              className={`flex-1 py-2 px-3 rounded-[10px] text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                section === 'missing-attendance'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
+              className={`cursor-pointer whitespace-nowrap transition-all ${section === 'missing-attendance'
+                  ? 'bg-[#1E1F24] text-white px-5 py-2.5 rounded-full text-xs font-bold shadow-xs flex items-center gap-2'
+                  : 'bg-white text-[#464853] border border-[#E8EEF4] hover:bg-[#F8FAFC] px-5 py-2.5 rounded-full text-xs font-semibold shadow-2xs flex items-center gap-2'
+                }`}
             >
-              <AlertTriangle className="w-3.5 h-3.5" />
+              <ErrorProfileIcon className={`w-3.5 h-3.5 ${section === 'missing-attendance' ? 'text-amber-400' : 'text-[#8C90A0]'}`} />
               <span>Missing Attendance</span>
               {missingCases.length > 0 && (
                 <span
-                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
-                    section === 'missing-attendance' ? 'bg-white/25 text-white' : 'bg-amber-500 text-white'
-                  }`}
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${section === 'missing-attendance' ? 'bg-amber-400/20 text-amber-300' : 'bg-amber-100 text-amber-800'
+                    }`}
                 >
                   {missingCases.length}
                 </span>
@@ -778,7 +765,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
             </button>
           </div>
 
-          <div className="text-[11px] text-slate-500 px-3 font-medium hidden sm:block">
+          <div className="text-[11px] text-[#8C90A0] px-3 font-medium hidden sm:block">
             {section === 'today-attendance' ? "Live today's worker shift records" : 'Missing punch flags & grace review'}
           </div>
         </div>
@@ -791,7 +778,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
           <div className="bg-white border border-[#E8EEF4] rounded-[18px] p-3 sm:px-4 shadow-xs flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
               <div className="p-2 rounded-xl bg-[#E6F7EF] text-[#12A66A]">
-                <Calendar className="w-4 h-4" />
+                <CalenderIcon className="w-4 h-4 text-[#01B075]" />
               </div>
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
@@ -817,11 +804,10 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                     setMultiSelectMode(!multiSelectMode);
                     setSelectedWorkerIds([]);
                   }}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                    multiSelectMode
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${multiSelectMode
                       ? 'bg-slate-800 text-white shadow-xs'
                       : 'bg-white border border-[#E8EEF4] text-[#12A66A] hover:bg-[#E6F7EF]'
-                  }`}
+                    }`}
                 >
                   <CheckSquare className="w-3.5 h-3.5" />
                   <span>{multiSelectMode ? 'Cancel Selection' : 'Multi-Select'}</span>
@@ -833,13 +819,13 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
           {/* Search & Pending Filter Pill */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <SearchIcon className="w-4 h-4 text-[#8C90A0] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search worker by name, employee code, role..."
-                className="w-full pl-10 pr-9 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#12A66A] focus:ring-2 focus:ring-[#12A66A]/10 transition-all shadow-xs"
+                className="w-full pl-10 pr-9 py-2 text-xs bg-white border border-[#E8EEF4] rounded-full text-[#1E1F24] placeholder-[#8C90A0] focus:outline-none focus:border-[#01B075] focus:ring-1 focus:ring-[#01B075] shadow-2xs transition-all font-medium"
               />
               {searchQuery && (
                 <button
@@ -848,7 +834,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 text-xs font-bold"
                   title="Clear search"
                 >
-                  ✕
+                  <CloseIcon className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
@@ -859,13 +845,12 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                 onClick={() =>
                   setActiveCardFilter(activeCardFilter === 'PENDING' ? 'TOTAL' : 'PENDING')
                 }
-                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                  activeCardFilter === 'PENDING'
+                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${activeCardFilter === 'PENDING'
                     ? 'bg-amber-600 text-white shadow-xs'
                     : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
-                }`}
+                  }`}
               >
-                <Clock className="w-3.5 h-3.5" />
+                <ClockIcon className="w-3.5 h-3.5" />
                 <span>Pending Reviews ({pendingCount})</span>
               </button>
             )}
@@ -875,21 +860,21 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
           {(activeCardFilter !== 'TOTAL' || searchQuery) && (
             <div className="p-2.5 px-3.5 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between text-xs text-slate-600 animate-in fade-in duration-100">
               <div className="flex items-center gap-2">
-                <Filter className="w-3.5 h-3.5 text-[#12A66A]" />
+                <Filter1Icon className="w-3.5 h-3.5 text-[#01B075]" />
                 <span>
                   Filtered by:{' '}
                   <strong className="text-slate-900">
                     {activeCardFilter === 'APPROVED'
                       ? 'Approved'
                       : activeCardFilter === 'REJECTED'
-                      ? 'Rejected / Absent'
-                      : activeCardFilter === 'MISSING_CLOCK_IN'
-                      ? 'Missing Clock-ins'
-                      : activeCardFilter === 'PENDING'
-                      ? 'Pending Reviews'
-                      : activeCardFilter === 'FLAGGED'
-                      ? 'Flagged Records'
-                      : 'All'}
+                        ? 'Rejected / Absent'
+                        : activeCardFilter === 'MISSING_CLOCK_IN'
+                          ? 'Missing Clock-ins'
+                          : activeCardFilter === 'PENDING'
+                            ? 'Pending Reviews'
+                            : activeCardFilter === 'FLAGGED'
+                              ? 'Flagged Records'
+                              : 'All'}
                   </strong>
                   {searchQuery && (
                     <span>
@@ -921,7 +906,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                 className="flex items-center gap-2 text-xs font-bold text-[#0E8F5B] cursor-pointer"
               >
                 {selectedWorkerIds.length > 0 &&
-                selectedWorkerIds.length ===
+                  selectedWorkerIds.length ===
                   filteredWorkers.filter((w) => w.status === 'PENDING').length ? (
                   <CheckSquare className="w-4 h-4 fill-[#12A66A] text-white" />
                 ) : (
@@ -968,7 +953,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                   onClick={onRetry}
                   className="px-4 py-2 rounded-xl text-xs font-bold bg-[#12A66A] hover:bg-[#0E8F5B] text-white transition-colors cursor-pointer inline-flex items-center gap-1.5"
                 >
-                  <RotateCcw className="w-3.5 h-3.5" />
+                  <RotateCcwIcon className="w-3.5 h-3.5" />
                   <span>Retry</span>
                 </button>
               )}
@@ -976,7 +961,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
           ) : workers.length === 0 ? (
             <div className="p-12 text-center bg-white border border-[#E8EEF4] rounded-[20px] shadow-xs space-y-3">
               <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center mx-auto">
-                <Users className="w-6 h-6" />
+                <GroupIcon className="w-6 h-6" />
               </div>
               <h4 className="text-base font-bold text-slate-900">No Workers Assigned Today</h4>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
@@ -986,7 +971,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
           ) : filteredWorkers.length === 0 ? (
             <div className="p-10 text-center bg-white border border-[#E8EEF4] rounded-[20px] shadow-xs space-y-3">
               <div className="w-11 h-11 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
-                <Filter className="w-5 h-5" />
+                <Filter1Icon className="w-5 h-5" />
               </div>
               <h4 className="text-sm sm:text-base font-bold text-slate-800">
                 No matching records found
@@ -1033,7 +1018,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                               }
                             >
                               {paginatedWorkers.length > 0 &&
-                              paginatedWorkers.every((w) => selectedWorkerIds.includes(w.id)) ? (
+                                paginatedWorkers.every((w) => selectedWorkerIds.includes(w.id)) ? (
                                 <CheckSquare className="w-4 h-4 fill-[#12A66A] text-white" />
                               ) : (
                                 <Square className="w-4 h-4 text-slate-300" />
@@ -1063,9 +1048,8 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                                 setSelectedWorkerForReview(worker);
                               }
                             }}
-                            className={`hover:bg-slate-50/80 transition-colors cursor-pointer ${
-                              isSelected ? 'bg-emerald-50/40' : ''
-                            }`}
+                            className={`hover:bg-slate-50/80 transition-colors cursor-pointer ${isSelected ? 'bg-emerald-50/40' : ''
+                              }`}
                           >
                             {/* Checkbox column */}
                             {multiSelectMode && (
@@ -1133,11 +1117,10 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                                 </div>
                                 {worker.clockInTime && (
                                   <div
-                                    className={`flex items-center gap-0.5 text-[10px] font-semibold ${
-                                      worker.isWithinRadius ? 'text-emerald-700' : 'text-rose-600'
-                                    }`}
+                                    className={`flex items-center gap-0.5 text-[10px] font-semibold ${worker.isWithinRadius ? 'text-emerald-700' : 'text-rose-600'
+                                      }`}
                                   >
-                                    <MapPin className="w-2.5 h-2.5" />
+                                    <LocationIcon className="w-2.5 h-2.5" />
                                     <span>
                                       {worker.distanceMeters}m {worker.isWithinRadius ? 'on site' : 'outside perimeter'}
                                     </span>
@@ -1149,7 +1132,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                             {/* Worksite */}
                             <td className="py-3 px-4 text-xs font-semibold text-slate-800 whitespace-nowrap">
                               <div className="flex items-center gap-1.5">
-                                <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <Building1Icon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                 <span>{worker.worksiteName || currentWorksite?.name || '—'}</span>
                               </div>
                             </td>
@@ -1186,7 +1169,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                                       aria-label="Approve"
                                       className="w-8 h-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105"
                                     >
-                                      <Check className="w-4 h-4 stroke-[2.5]" />
+                                      <CheckIcon className="w-4 h-4 stroke-[2.5]" />
                                     </button>
                                     <button
                                       type="button"
@@ -1198,7 +1181,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                                       aria-label="Reject"
                                       className="w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105"
                                     >
-                                      <X className="w-4 h-4 stroke-[2.5]" />
+                                      <CloseIcon className="w-4 h-4 stroke-[2.5]" />
                                     </button>
                                     <button
                                       type="button"
@@ -1210,7 +1193,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                                       aria-label="Review"
                                       className="w-8 h-8 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105"
                                     >
-                                      <Eye className="w-4 h-4 text-slate-500" />
+                                      <EyeIcon className="w-4 h-4 text-slate-500" />
                                     </button>
                                   </div>
                                 ) : (
@@ -1220,7 +1203,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                                     title="View Details"
                                     className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
                                   >
-                                    <Eye className="w-4 h-4" />
+                                    <EyeIcon className="w-4 h-4" />
                                   </button>
                                 )}
                               </div>
@@ -1271,7 +1254,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                 onClick={() => setShowBulkConfirmModal(true)}
                 className="px-4 py-2.5 bg-[#12A66A] hover:bg-[#0E8F5B] text-white rounded-[12px] text-xs font-bold shadow-md shadow-[#12A66A]/20 transition-transform active:scale-95 flex items-center gap-1.5 cursor-pointer"
               >
-                <CheckCircle2 className="w-4 h-4" />
+                <CheckCircleIcon className="w-4 h-4" />
                 <span>Approve Selected</span>
               </button>
             </div>
@@ -1281,7 +1264,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
           {undoAvailable && (
             <div className="fixed bottom-20 inset-x-4 max-w-md mx-auto z-40 bg-slate-900 text-white rounded-[14px] p-3 shadow-2xl flex items-center justify-between animate-in slide-in-from-bottom duration-150">
               <div className="flex items-center gap-2 text-xs">
-                <CheckCircle2 className="w-4 h-4 text-[#12A66A]" />
+                <CheckCircleIcon className="w-4 h-4 text-[#01B075]" />
                 <span>{undoAvailable.message}</span>
               </div>
               {onUndoLastAction && (
@@ -1290,7 +1273,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                   onClick={onUndoLastAction}
                   className="text-xs font-bold text-emerald-400 hover:text-emerald-300 underline flex items-center gap-1 px-2 py-1 cursor-pointer"
                 >
-                  <RotateCcw className="w-3 h-3" />
+                  <RotateCcwIcon className="w-3 h-3" />
                   Undo
                 </button>
               )}
@@ -1302,7 +1285,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
             <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
               <div className="bg-white rounded-[20px] max-w-xs w-full p-5 space-y-4 shadow-2xl border border-[#E8EEF4]">
                 <div className="w-11 h-11 rounded-full bg-[#E6F7EF] text-[#12A66A] flex items-center justify-center mx-auto">
-                  <CheckCircle2 className="w-6 h-6" />
+                  <CheckCircleIcon className="w-6 h-6" />
                 </div>
 
                 <div className="text-center space-y-1">
@@ -1442,7 +1425,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                 {sessionCheckState.sessionExists === false && (
                   <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
                     <div className="flex items-start gap-2">
-                      <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                      <ErrorProfileIcon className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
                       <div className="text-xs text-amber-900 leading-relaxed">
                         <p className="font-bold text-amber-950 m-0">No Attendance Record</p>
                         <p className="mt-1 text-[11px] text-amber-800 m-0">
@@ -1547,10 +1530,10 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                   {isSubmittingOverride
                     ? 'Applying Override...'
                     : sessionCheckState.sessionExists === false
-                    ? 'Override Blocked - No Attendance Record'
-                    : isOverrideNonCurrentMonth
-                    ? 'Current Month Only'
-                    : 'Apply Attendance Override'}
+                      ? 'Override Blocked - No Attendance Record'
+                      : isOverrideNonCurrentMonth
+                        ? 'Current Month Only'
+                        : 'Apply Attendance Override'}
                 </button>
               </form>
             </div>
@@ -1596,23 +1579,23 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                       {overridesList
                         .slice((overridesPage - 1) * overridesLimit, overridesPage * overridesLimit)
                         .map((item, idx) => (
-                        <tr key={item.id || idx} className="hover:bg-slate-50/70">
-                          <td className="py-3 px-3 font-semibold text-slate-900">{item.workDate}</td>
-                          <td className="py-3 px-3 font-medium">{item.workerName || 'Worker'}</td>
-                          <td className="py-3 px-3">
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-800">
-                              {item.newStatus || item.status}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 max-w-[180px] truncate" title={item.reason}>
-                            "{item.reason}"
-                          </td>
-                          <td className="py-3 px-3 text-slate-500">{item.supervisorName || 'Supervisor'}</td>
-                          <td className="py-3 px-3 text-[11px] text-slate-400 font-mono">
-                            {new Date(item.overriddenAt || item.createdAt || Date.now()).toLocaleDateString()}
-                          </td>
-                        </tr>
-                      ))}
+                          <tr key={item.id || idx} className="hover:bg-slate-50/70">
+                            <td className="py-3 px-3 font-semibold text-slate-900">{item.workDate}</td>
+                            <td className="py-3 px-3 font-medium">{item.workerName || 'Worker'}</td>
+                            <td className="py-3 px-3">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-800">
+                                {item.newStatus || item.status}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 max-w-[180px] truncate" title={item.reason}>
+                              "{item.reason}"
+                            </td>
+                            <td className="py-3 px-3 text-slate-500">{item.supervisorName || 'Supervisor'}</td>
+                            <td className="py-3 px-3 text-[11px] text-slate-400 font-mono">
+                              {new Date(item.overriddenAt || item.createdAt || Date.now()).toLocaleDateString()}
+                            </td>
+                          </tr>
+                        ))}
                     </tbody>
                   </table>
                   <DataTablePagination
@@ -1645,7 +1628,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h3 className="text-base font-bold text-slate-900 m-0 flex items-center gap-2">
-                  <History className="w-5 h-5 text-[#12A66A]" />
+                  <TransactionHistoryIcon className="w-5 h-5 text-[#01B075]" />
                   Attendance History
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
@@ -1661,7 +1644,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                   className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors flex items-center gap-1.5 cursor-pointer"
                   title="Export records to CSV"
                 >
-                  <Download className="w-3.5 h-3.5" />
+                  <Download1Icon className="w-3.5 h-3.5" />
                   <span>Export CSV</span>
                 </button>
 
@@ -1671,7 +1654,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                   disabled={isLoadingHistory}
                   className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingHistory ? 'animate-spin text-[#12A66A]' : ''}`} />
+                  <RotateCwIcon className={`w-3.5 h-3.5 ${isLoadingHistory ? 'animate-spin text-[#01B075]' : ''}`} />
                   <span>Refresh</span>
                 </button>
               </div>
@@ -1764,7 +1747,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
               <div className="p-12 text-center text-xs text-slate-400">Loading historical attendance records...</div>
             ) : historyRecords.length === 0 ? (
               <div className="p-12 text-center bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-500 space-y-1">
-                <History className="w-8 h-8 text-slate-400 mx-auto mb-1" />
+                <TransactionHistoryIcon className="w-8 h-8 text-slate-400 mx-auto mb-1" />
                 <p className="font-bold text-slate-800">No Attendance Records Found</p>
                 <p className="text-slate-500">
                   No attendance records found between {historyRange.startDate} and {historyRange.endDate} matching your filters.
@@ -1788,62 +1771,62 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                     {historyRecords
                       .slice((historyPage - 1) * historyLimit, historyPage * historyLimit)
                       .map((item) => {
-                      return (
-                        <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
-                          {/* 1. Date */}
-                          <td className="py-3.5 px-3.5 font-bold text-slate-900 whitespace-nowrap">
-                            {item.date}
-                          </td>
+                        return (
+                          <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
+                            {/* 1. Date */}
+                            <td className="py-3.5 px-3.5 font-bold text-slate-900 whitespace-nowrap">
+                              {item.date}
+                            </td>
 
-                          {/* 2. Worker Name with EmpId */}
-                          <td className="py-3.5 px-3.5">
-                            <span className="font-bold text-slate-900 block">{item.workerName}</span>
-                            <span className="text-[11px] font-mono text-slate-500">{item.employeeCode}</span>
-                          </td>
+                            {/* 2. Worker Name with EmpId */}
+                            <td className="py-3.5 px-3.5">
+                              <span className="font-bold text-slate-900 block">{item.workerName}</span>
+                              <span className="text-[11px] font-mono text-slate-500">{item.employeeCode}</span>
+                            </td>
 
-                          {/* 3. Clock-In */}
-                          <td className="py-3.5 px-3.5 font-mono text-slate-800 whitespace-nowrap">
-                            {formatPunchTime(item.clockInTime)}
-                          </td>
+                            {/* 3. Clock-In */}
+                            <td className="py-3.5 px-3.5 font-mono text-slate-800 whitespace-nowrap">
+                              {formatPunchTime(item.clockInTime)}
+                            </td>
 
-                          {/* 4. Clock-Out */}
-                          <td className="py-3.5 px-3.5 font-mono text-slate-800 whitespace-nowrap">
-                            {formatPunchTime(item.clockOutTime)}
-                          </td>
+                            {/* 4. Clock-Out */}
+                            <td className="py-3.5 px-3.5 font-mono text-slate-800 whitespace-nowrap">
+                              {formatPunchTime(item.clockOutTime)}
+                            </td>
 
-                          {/* 5. Site */}
-                          <td className="py-3.5 px-3.5 text-slate-700">
-                            <span className="font-medium">{item.worksiteName}</span>
-                            {item.worksiteCode && (
-                              <span className="text-[10px] text-slate-400 block font-mono">
-                                {item.worksiteCode}
-                              </span>
-                            )}
-                          </td>
-
-                          {/* 6. Status */}
-                          <td className="py-3.5 px-3.5">
-                            <StatusBadge status={item.status} />
-                          </td>
-
-                          {/* 7. Action By */}
-                          <td className="py-3.5 px-3.5 whitespace-nowrap">
-                            {item.actionByName && item.actionByName !== '—' ? (
-                              <div className="flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-700 uppercase">
-                                  {item.actionByName.charAt(0)}
-                                </div>
-                                <span className="font-medium text-slate-800 text-xs">
-                                  {item.actionByName}
+                            {/* 5. Site */}
+                            <td className="py-3.5 px-3.5 text-slate-700">
+                              <span className="font-medium">{item.worksiteName}</span>
+                              {item.worksiteCode && (
+                                <span className="text-[10px] text-slate-400 block font-mono">
+                                  {item.worksiteCode}
                                 </span>
-                              </div>
-                            ) : (
-                              <span className="text-slate-400 font-normal">—</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                              )}
+                            </td>
+
+                            {/* 6. Status */}
+                            <td className="py-3.5 px-3.5">
+                              <StatusBadge status={item.status} />
+                            </td>
+
+                            {/* 7. Action By */}
+                            <td className="py-3.5 px-3.5 whitespace-nowrap">
+                              {item.actionByName && item.actionByName !== '—' ? (
+                                <div className="flex items-center gap-2">
+                                  <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-700 uppercase">
+                                    {item.actionByName.charAt(0)}
+                                  </div>
+                                  <span className="font-medium text-slate-800 text-xs">
+                                    {item.actionByName}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 font-normal">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
                 <DataTablePagination

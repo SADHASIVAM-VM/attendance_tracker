@@ -4,30 +4,23 @@ import { StatusBadge } from '../../components/common/StatusBadge';
 import { Modal } from '../../components/common/Modal';
 import { DataTablePagination } from '../../components/ui/data-table-pagination';
 import {
-  UserCheck,
-  Check,
-  X,
-  MapPin,
-  Clock,
-  ShieldCheck,
-  AlertTriangle,
-  ArrowRightLeft,
-  Eye,
-  CalendarDays,
-  AlertCircle,
-  HelpCircle,
-  Filter,
-  RefreshCw,
-  Search,
-  CheckCircle2,
-  XCircle,
-  Building2,
-  Calendar,
-  Send,
-  Flag,
-  ArrowUpRight,
-  FileEdit,
-} from 'lucide-react';
+  CheckCircleIcon,
+  ClockIcon,
+  CalenderIcon,
+  SearchIcon,
+  ErrorProfileIcon,
+  EditProfileIcon,
+  CheckIcon,
+  CloseIcon,
+  CloseCircleIcon,
+  RotateCwIcon,
+  EyeIcon,
+  SecuritySafeIcon,
+  HelpCircleIcon,
+  Building1Icon,
+  ArrowUpRightIcon,
+  EmailSentIcon,
+} from '@astraicons/react/linear';
 
 export type QueueTab = 'attendance' | 'regularization' | 'overtime' | 'leave' | 'exceptions' | 'escalated';
 
@@ -404,7 +397,7 @@ export const SupervisorApprovalsView: React.FC = () => {
           disabled={loading}
           className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer shadow-2xs transition-all w-fit"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-emerald-600' : 'text-slate-500'}`} />
+          <RotateCwIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-emerald-600' : 'text-slate-500'}`} />
           <span>Refresh Queues</span>
         </button>
       </div>
@@ -420,26 +413,26 @@ export const SupervisorApprovalsView: React.FC = () => {
         >
           <span>{message.text}</span>
           <button onClick={() => setMessage(null)} className="cursor-pointer text-slate-400 hover:text-slate-600">
-            <X className="w-4 h-4" />
+            <CloseIcon className="w-4 h-4" />
           </button>
         </div>
       )}
 
-      {/* 4 QUEUE TABS */}
-      <div className="flex items-center gap-2 border-b border-slate-200 overflow-x-auto pb-px">
+      {/* QUEUE TABS */}
+      <div className="flex items-center gap-2.5 overflow-x-auto pb-1.5 scrollbar-none">
         <button
           onClick={() => setActiveTab('attendance')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+          className={`cursor-pointer whitespace-nowrap transition-all ${
             activeTab === 'attendance'
-              ? 'border-emerald-600 text-emerald-700'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
+              ? 'bg-[#1E1F24] text-white px-5 py-2.5 rounded-full text-xs font-bold shadow-xs flex items-center gap-2'
+              : 'bg-white text-[#464853] border border-[#E8EEF4] hover:bg-[#F8FAFC] px-5 py-2.5 rounded-full text-xs font-semibold shadow-2xs flex items-center gap-2'
           }`}
         >
-          <UserCheck className="w-4 h-4" />
+          <CheckCircleIcon className="w-4 h-4 text-[#01B075]" />
           <span>Pending Attendance</span>
           <span
             className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-              activeTab === 'attendance' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
+              activeTab === 'attendance' ? 'bg-white/20 text-white' : 'bg-[#F4F6F8] text-[#464853]'
             }`}
           >
             {counts.pendingAttendance}
@@ -448,17 +441,17 @@ export const SupervisorApprovalsView: React.FC = () => {
 
         <button
           onClick={() => setActiveTab('overtime')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+          className={`cursor-pointer whitespace-nowrap transition-all ${
             activeTab === 'overtime'
-              ? 'border-indigo-600 text-indigo-700'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
+              ? 'bg-[#1E1F24] text-white px-5 py-2.5 rounded-full text-xs font-bold shadow-xs flex items-center gap-2'
+              : 'bg-white text-[#464853] border border-[#E8EEF4] hover:bg-[#F8FAFC] px-5 py-2.5 rounded-full text-xs font-semibold shadow-2xs flex items-center gap-2'
           }`}
         >
-          <Clock className="w-4 h-4" />
+          <ClockIcon className="w-4 h-4 text-[#01B075]" />
           <span>Overtime Review</span>
           <span
             className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-              counts.overtime > 0 ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-600'
+              activeTab === 'overtime' ? 'bg-white/20 text-white' : 'bg-[#F4F6F8] text-[#464853]'
             }`}
           >
             {counts.overtime}
@@ -467,17 +460,17 @@ export const SupervisorApprovalsView: React.FC = () => {
 
         <button
           onClick={() => setActiveTab('regularization')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+          className={`cursor-pointer whitespace-nowrap transition-all ${
             activeTab === 'regularization'
-              ? 'border-blue-600 text-blue-700'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
+              ? 'bg-[#1E1F24] text-white px-5 py-2.5 rounded-full text-xs font-bold shadow-xs flex items-center gap-2'
+              : 'bg-white text-[#464853] border border-[#E8EEF4] hover:bg-[#F8FAFC] px-5 py-2.5 rounded-full text-xs font-semibold shadow-2xs flex items-center gap-2'
           }`}
         >
-          <FileEdit className="w-4 h-4" />
+          <EditProfileIcon className="w-4 h-4 text-[#01B075]" />
           <span>Attendance Regularisation</span>
           <span
             className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-              counts.regularization > 0 ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-600'
+              activeTab === 'regularization' ? 'bg-white/20 text-white' : 'bg-[#F4F6F8] text-[#464853]'
             }`}
           >
             {counts.regularization}
@@ -486,17 +479,17 @@ export const SupervisorApprovalsView: React.FC = () => {
 
         <button
           onClick={() => setActiveTab('leave')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+          className={`cursor-pointer whitespace-nowrap transition-all ${
             activeTab === 'leave'
-              ? 'border-emerald-600 text-emerald-700'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
+              ? 'bg-[#1E1F24] text-white px-5 py-2.5 rounded-full text-xs font-bold shadow-xs flex items-center gap-2'
+              : 'bg-white text-[#464853] border border-[#E8EEF4] hover:bg-[#F8FAFC] px-5 py-2.5 rounded-full text-xs font-semibold shadow-2xs flex items-center gap-2'
           }`}
         >
-          <CalendarDays className="w-4 h-4" />
+          <CalenderIcon className="w-4 h-4 text-[#01B075]" />
           <span>Pending Leave</span>
           <span
             className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-              activeTab === 'leave' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
+              activeTab === 'leave' ? 'bg-white/20 text-white' : 'bg-[#F4F6F8] text-[#464853]'
             }`}
           >
             {counts.pendingLeave}
@@ -505,17 +498,17 @@ export const SupervisorApprovalsView: React.FC = () => {
 
         <button
           onClick={() => setActiveTab('exceptions')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+          className={`cursor-pointer whitespace-nowrap transition-all ${
             activeTab === 'exceptions'
-              ? 'border-emerald-600 text-emerald-700'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
+              ? 'bg-[#1E1F24] text-white px-5 py-2.5 rounded-full text-xs font-bold shadow-xs flex items-center gap-2'
+              : 'bg-white text-[#464853] border border-[#E8EEF4] hover:bg-[#F8FAFC] px-5 py-2.5 rounded-full text-xs font-semibold shadow-2xs flex items-center gap-2'
           }`}
         >
-          <AlertCircle className="w-4 h-4" />
+          <ErrorProfileIcon className="w-4 h-4 text-amber-500" />
           <span>Attendance Exceptions</span>
           <span
             className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-              counts.exceptions > 0 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'
+              activeTab === 'exceptions' ? 'bg-white/20 text-white' : 'bg-[#F4F6F8] text-[#464853]'
             }`}
           >
             {counts.exceptions}
@@ -524,17 +517,17 @@ export const SupervisorApprovalsView: React.FC = () => {
 
         <button
           onClick={() => setActiveTab('escalated')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+          className={`cursor-pointer whitespace-nowrap transition-all ${
             activeTab === 'escalated'
-              ? 'border-emerald-600 text-emerald-700'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
+              ? 'bg-[#1E1F24] text-white px-5 py-2.5 rounded-full text-xs font-bold shadow-xs flex items-center gap-2'
+              : 'bg-white text-[#464853] border border-[#E8EEF4] hover:bg-[#F8FAFC] px-5 py-2.5 rounded-full text-xs font-semibold shadow-2xs flex items-center gap-2'
           }`}
         >
-          <Flag className="w-4 h-4" />
+          <Flag className="w-4 h-4 text-rose-500" />
           <span>Escalated Requests</span>
           <span
             className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-              counts.escalated > 0 ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-600'
+              activeTab === 'escalated' ? 'bg-white/20 text-white' : 'bg-[#F4F6F8] text-[#464853]'
             }`}
           >
             {counts.escalated}
@@ -543,21 +536,21 @@ export const SupervisorApprovalsView: React.FC = () => {
       </div>
 
       {/* FILTER TOOLBAR */}
-      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+      <div className="bg-white p-3.5 rounded-2xl border border-[#E8EEF4] shadow-2xs flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3 flex-1 min-w-[240px]">
-          <div className="relative flex-1 max-w-xs">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+          <div className="relative flex-1 max-w-sm">
+            <SearchIcon className="w-4 h-4 text-[#8C90A0] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               placeholder="Search worker by name or ID..."
               value={searchWorker}
               onChange={(e) => setSearchWorker(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-200 rounded-xl focus:outline-emerald-600 bg-slate-50/50"
+              className="w-full pl-10 pr-4 py-2 text-xs bg-white border border-[#E8EEF4] rounded-full text-[#1E1F24] placeholder-[#8C90A0] focus:outline-none focus:border-[#01B075] focus:ring-1 focus:ring-[#01B075] shadow-2xs transition-all"
             />
           </div>
 
-          <div className="flex items-center gap-1.5 text-xs text-slate-600">
-            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+          <div className="flex items-center gap-1.5 text-xs text-[#464853] bg-[#F8FAFC] border border-[#E8EEF4] px-3 py-1.5 rounded-full">
+            <CalenderIcon className="w-3.5 h-3.5 text-[#8C90A0]" />
             <input
               type="date"
               value={filterDate}
@@ -598,7 +591,7 @@ export const SupervisorApprovalsView: React.FC = () => {
       {/* ─── TAB CONTENT ─── */}
       {loading ? (
         <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 text-slate-500">
-          <RefreshCw className="w-6 h-6 animate-spin text-emerald-600 mx-auto mb-2" />
+          <RotateCwIcon className="w-6 h-6 animate-spin text-emerald-600 mx-auto mb-2" />
           <p className="text-sm font-semibold">Loading Queue Records...</p>
         </div>
       ) : (
@@ -608,7 +601,7 @@ export const SupervisorApprovalsView: React.FC = () => {
             <div className="space-y-4">
               {filterList(pendingAttendance).length === 0 ? (
                 <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 text-slate-500">
-                  <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
+                  <CheckCircleIcon className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
                   <p className="text-sm font-semibold text-slate-800">No Pending Attendance Approvals</p>
                   <p className="text-xs text-slate-400 mt-1">All worker clock-ins for your sites are up to date.</p>
                 </div>
@@ -650,12 +643,9 @@ export const SupervisorApprovalsView: React.FC = () => {
                             <Building2 className="w-3.5 h-3.5 text-slate-400" />
                             {item.worksiteName}
                           </span>
-                          <span className="text-slate-400 font-mono text-[11px]">{item.workDate}</span>
-                        </div>
-
-                        <div className="flex items-center justify-between text-slate-600 pt-1 border-t border-slate-200/50">
+                              <div className="flex items-center justify-between text-slate-600 pt-1 border-t border-slate-200/50">
                           <span className="flex items-center gap-1.5">
-                            <Clock className="w-3.5 h-3.5 text-slate-400" />
+                            <ClockIcon className="w-3.5 h-3.5 text-slate-400" />
                             {item.shiftName} ({item.shiftStartTime} - {item.shiftEndTime})
                           </span>
                           <span className="font-semibold text-emerald-700">
@@ -669,11 +659,11 @@ export const SupervisorApprovalsView: React.FC = () => {
                         <div className="flex items-center gap-2">
                           {item.isWithinGeofence ? (
                             <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
-                              <ShieldCheck className="w-3.5 h-3.5" /> Inside Geofence
+                              <SecuritySafeIcon className="w-3.5 h-3.5" /> Inside Geofence
                             </span>
                           ) : (
                             <span className="flex items-center gap-1 text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md">
-                              <AlertTriangle className="w-3.5 h-3.5" /> {Math.round(item.calculatedDistanceMeters)}m outside
+                              <ErrorProfileIcon className="w-3.5 h-3.5" /> {Math.round(item.calculatedDistanceMeters)}m outside
                             </span>
                           )}
 
@@ -689,7 +679,7 @@ export const SupervisorApprovalsView: React.FC = () => {
                             onClick={() => setInspectItem(item)}
                             className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
                           >
-                            <Eye className="w-3.5 h-3.5" /> Inspect
+                            <EyeIcon className="w-3.5 h-3.5" /> Inspect
                           </button>
                         )}
                       </div>
@@ -701,7 +691,7 @@ export const SupervisorApprovalsView: React.FC = () => {
                           disabled={submitting}
                           className="w-full py-2 px-3 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                         >
-                          <Check className="w-3.5 h-3.5 stroke-[2.5]" /> Approve
+                          <CheckIcon className="w-3.5 h-3.5 stroke-[2.5]" /> Approve
                         </button>
 
                         <button
@@ -709,7 +699,7 @@ export const SupervisorApprovalsView: React.FC = () => {
                           disabled={submitting}
                           className="w-full py-2 px-3 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                         >
-                          <X className="w-3.5 h-3.5 stroke-[2.5]" /> Reject
+                          <CloseIcon className="w-3.5 h-3.5 stroke-[2.5]" /> Reject
                         </button>
                       </div>
 
@@ -721,9 +711,9 @@ export const SupervisorApprovalsView: React.FC = () => {
                             setClarifyMessage('');
                             setClarifyModalOpen(true);
                           }}
-                          className="hover:text-indigo-600 flex items-center gap-1 cursor-pointer"
+                          className="hover:text-indigo-700 flex items-center gap-1 cursor-pointer"
                         >
-                          <HelpCircle className="w-3 h-3" /> Ask Clarification
+                          <HelpCircleIcon className="w-3 h-3" /> Ask Clarification
                         </button>
 
                         <button
@@ -734,7 +724,7 @@ export const SupervisorApprovalsView: React.FC = () => {
                           }}
                           className="hover:text-amber-700 flex items-center gap-1 cursor-pointer"
                         >
-                          <ArrowUpRight className="w-3 h-3" /> Escalate
+                          <ArrowUpRightIcon className="w-3 h-3" /> Escalate
                         </button>
                       </div>
                     </div>
@@ -866,7 +856,7 @@ export const SupervisorApprovalsView: React.FC = () => {
                               disabled={submitting}
                               className="py-2 px-3 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                             >
-                              <Check className="w-3.5 h-3.5 stroke-[2.5]" /> Approve OT
+                              <CheckIcon className="w-3.5 h-3.5 stroke-[2.5]" /> Approve OT
                             </button>
 
                             <button
@@ -874,7 +864,7 @@ export const SupervisorApprovalsView: React.FC = () => {
                               disabled={submitting}
                               className="py-2 px-3 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                             >
-                              <X className="w-3.5 h-3.5 stroke-[2.5]" /> Reject
+                              <CloseIcon className="w-3.5 h-3.5 stroke-[2.5]" /> Reject
                             </button>
                           </div>
                         ) : isPendingDecision && item.hasMissingClockOut ? (
@@ -902,7 +892,7 @@ export const SupervisorApprovalsView: React.FC = () => {
             <div className="space-y-4">
               {filterList(pendingRegularization).length === 0 ? (
                 <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 text-slate-500">
-                  <CheckCircle2 className="w-8 h-8 text-blue-600 mx-auto mb-2" />
+                  <CheckCircleIcon className="w-8 h-8 text-blue-600 mx-auto mb-2" />
                   <p className="text-sm font-semibold text-slate-800">No Pending Attendance Regularisations</p>
                   <p className="text-xs text-slate-400 mt-1">All timestamp correction and missed punch requests are resolved.</p>
                 </div>
@@ -939,7 +929,7 @@ export const SupervisorApprovalsView: React.FC = () => {
                             </td>
                             <td className="py-3.5 px-4 text-slate-600 font-medium">
                               <div className="flex items-center gap-1.5">
-                                <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <Building1Icon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                 <span>{item.worksiteName || 'Assigned Site'}</span>
                               </div>
                             </td>
@@ -981,7 +971,7 @@ export const SupervisorApprovalsView: React.FC = () => {
                                     title="Approve regularisation"
                                     className="p-1.5 text-emerald-700 hover:text-white bg-emerald-50 hover:bg-emerald-600 border border-emerald-200 rounded-lg transition-all cursor-pointer shadow-xs disabled:opacity-50"
                                   >
-                                    <Check className="w-4 h-4 stroke-[2.5]" />
+                                    <CheckIcon className="w-4 h-4 stroke-[2.5]" />
                                   </button>
 
                                   <button
@@ -990,7 +980,7 @@ export const SupervisorApprovalsView: React.FC = () => {
                                     title="Reject regularisation"
                                     className="p-1.5 text-rose-700 hover:text-white bg-rose-50 hover:bg-rose-600 border border-rose-200 rounded-lg transition-all cursor-pointer shadow-xs disabled:opacity-50"
                                   >
-                                    <X className="w-4 h-4 stroke-[2.5]" />
+                                    <CloseIcon className="w-4 h-4 stroke-[2.5]" />
                                   </button>
                                 </div>
                               ) : (
@@ -1102,7 +1092,7 @@ export const SupervisorApprovalsView: React.FC = () => {
                           disabled={submitting}
                           className="w-full py-2 px-3 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                         >
-                          <Check className="w-3.5 h-3.5 stroke-[2.5]" /> Approve
+                          <CheckIcon className="w-3.5 h-3.5 stroke-[2.5]" /> Approve
                         </button>
 
                         <button
@@ -1110,7 +1100,7 @@ export const SupervisorApprovalsView: React.FC = () => {
                           disabled={submitting}
                           className="w-full py-2 px-3 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                         >
-                          <X className="w-3.5 h-3.5 stroke-[2.5]" /> Reject
+                          <CloseIcon className="w-3.5 h-3.5 stroke-[2.5]" /> Reject
                         </button>
                       </div>
 
@@ -1124,7 +1114,7 @@ export const SupervisorApprovalsView: React.FC = () => {
                           }}
                           className="hover:text-amber-700 flex items-center gap-1 cursor-pointer"
                         >
-                          <ArrowUpRight className="w-3 h-3" /> Escalate to Fallback / Admin
+                          <ArrowUpRightIcon className="w-3 h-3" /> Escalate to Fallback / Admin
                         </button>
                       </div>
                     </div>
@@ -1139,7 +1129,7 @@ export const SupervisorApprovalsView: React.FC = () => {
             <div className="space-y-4">
               {filterList(exceptions).length === 0 ? (
                 <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 text-slate-500">
-                  <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
+                  <CheckCircleIcon className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
                   <p className="text-sm font-semibold text-slate-800">No Open Attendance Exceptions</p>
                   <p className="text-xs text-slate-400 mt-1">No missing punches or conflicts requiring resolution.</p>
                 </div>
@@ -1244,7 +1234,7 @@ export const SupervisorApprovalsView: React.FC = () => {
             <div className="space-y-4">
               {filterList(escalated).length === 0 ? (
                 <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 text-slate-500">
-                  <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
+                  <CheckCircleIcon className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
                   <p className="text-sm font-semibold text-slate-800">No Escalated Requests</p>
                   <p className="text-xs text-slate-400 mt-1">All requests are within standard resolution deadlines.</p>
                 </div>
@@ -1265,7 +1255,7 @@ export const SupervisorApprovalsView: React.FC = () => {
                         </div>
                         <p className="text-xs text-slate-700 m-0">{item.summary}</p>
                         <p className="text-[11px] text-rose-700 font-semibold m-0 flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3" /> {item.escalationReason}
+                          <ErrorProfileIcon className="w-3 h-3" /> {item.escalationReason}
                         </p>
                       </div>
 
@@ -1374,7 +1364,7 @@ export const SupervisorApprovalsView: React.FC = () => {
               disabled={submitting || !clarifyMessage.trim()}
               className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl cursor-pointer shadow-xs flex items-center gap-1.5"
             >
-              <Send className="w-3.5 h-3.5" /> Send Inquiry
+              <EmailSentIcon className="w-3.5 h-3.5" /> Send Inquiry
             </button>
           </div>
         </div>

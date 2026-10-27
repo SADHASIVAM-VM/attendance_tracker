@@ -1,7 +1,16 @@
 import React, { useState } from 'react';
 import { WorkerLeaveItem } from '../../types/supervisor';
 import { StatusPill } from './StatusPill';
-import { Calendar, ChevronDown, ChevronUp, ShieldCheck, Clock, Ban, AlertCircle, Eye } from 'lucide-react';
+import {
+  CalenderIcon,
+  ArrowDownIcon,
+  ArrowUpIcon,
+  SecuritySafeIcon,
+  ClockIcon,
+  CloseCircleIcon,
+  ErrorProfileIcon,
+  EyeIcon,
+} from '@astraicons/react/linear';
 
 interface LeaveCardProps {
     leave: WorkerLeaveItem;
@@ -66,7 +75,7 @@ export const LeaveCard: React.FC<LeaveCardProps> = ({ leave, onApprove, onReject
                             className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
                             title="View Leave Details"
                         >
-                            <Eye className="w-3.5 h-3.5" />
+                            <EyeIcon className="w-3.5 h-3.5" />
                         </button>
                     )}
                 </div>
@@ -75,7 +84,7 @@ export const LeaveCard: React.FC<LeaveCardProps> = ({ leave, onApprove, onReject
             {/* Date Range & Duration Badge */}
             <div className="flex items-center justify-between bg-[#F8FAFC] rounded-[12px] p-2.5 text-xs text-[#334155]">
                 <div className="flex items-center gap-1.5 font-medium">
-                    <Calendar className="w-3.5 h-3.5 text-[#12A66A]" />
+                    <CalenderIcon className="w-3.5 h-3.5 text-[#01B075]" />
                     <span>
                         {leave.startDate} – {leave.endDate}
                     </span>
@@ -93,9 +102,9 @@ export const LeaveCard: React.FC<LeaveCardProps> = ({ leave, onApprove, onReject
                     className="flex items-center justify-between w-full text-xs font-semibold text-[#64748B] hover:text-[#111827] transition-colors py-0.5"
                 >
                     <span>Reason for leave</span>
-                    <span className="flex items-center gap-0.5 text-[#12A66A] text-[11px]">
+                    <span className="flex items-center gap-0.5 text-[#01B075] text-[11px]">
                         {isExpanded ? 'Hide' : 'View'}
-                        {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        {isExpanded ? <ArrowUpIcon className="w-3 h-3" /> : <ArrowDownIcon className="w-3 h-3" />}
                     </span>
                 </button>
 
@@ -111,7 +120,7 @@ export const LeaveCard: React.FC<LeaveCardProps> = ({ leave, onApprove, onReject
                 <div className="p-2.5 bg-rose-50/80 border border-rose-200 rounded-[10px] text-xs space-y-1">
                     <div className="flex items-center justify-between text-rose-800 font-bold text-[11px]">
                         <span className="flex items-center gap-1">
-                            <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                            <ErrorProfileIcon className="w-3.5 h-3.5 text-rose-600" />
                             Revocation Details
                         </span>
                         {leave.revokedAt && (
@@ -174,7 +183,7 @@ export const LeaveCard: React.FC<LeaveCardProps> = ({ leave, onApprove, onReject
                         }}
                         className="w-full py-1.5 px-3 rounded-[10px] bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                     >
-                        <Ban className="w-3.5 h-3.5 text-amber-700" />
+                        <CloseCircleIcon className="w-3.5 h-3.5 text-amber-700" />
                         <span>Revoke Leave</span>
                     </button>
                 </div>
@@ -183,11 +192,11 @@ export const LeaveCard: React.FC<LeaveCardProps> = ({ leave, onApprove, onReject
             {/* Status footer */}
             <div className="pt-2 border-t border-[#F1F5F9] flex items-center justify-between text-[11px] text-[#94A3B8]">
                 <span className="flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
+                    <ClockIcon className="w-3 h-3" />
                     Applied on {leave.appliedOn}
                 </span>
-                <span className="flex items-center gap-1 font-semibold text-[#12A66A]">
-                    <ShieldCheck className="w-3.5 h-3.5" />
+                <span className="flex items-center gap-1 font-semibold text-[#01B075]">
+                    <SecuritySafeIcon className="w-3.5 h-3.5" />
                     {leave.status === 'APPROVED'
                         ? leave.isApprovedByAdmin
                             ? 'Approved (Admin)'

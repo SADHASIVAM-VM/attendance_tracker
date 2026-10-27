@@ -9,18 +9,18 @@ import { WorkerRow } from '../../components/supervisor/WorkerRow';
 import { SpendEntryRow } from '../../components/supervisor/SpendEntryRow';
 import { ReviewSheet } from '../../components/supervisor/ReviewSheet';
 import {
-  Calendar,
-  Building2,
-  Clock,
-  CheckCircle2,
-  XCircle,
-  Receipt,
-  UserX,
-  CalendarDays,
-  ChevronLeft,
-  ChevronRight,
-  Search,
-} from 'lucide-react';
+  ClockIcon,
+  CheckCircleIcon,
+  CalenderIcon,
+  SearchIcon,
+  Building1Icon,
+  GroupIcon,
+  CloseCircleIcon,
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  NoteTextIcon,
+  ErrorProfileIcon,
+} from '@astraicons/react/linear';
 
 interface SupervisorHistoryTabProps {
   workers: SupervisorWorkerAttendance[];
@@ -177,12 +177,12 @@ export const SupervisorHistoryTab: React.FC<SupervisorHistoryTabProps> = ({
               title="Previous day"
               className="p-1.5 rounded-lg border border-[#E8EEF4] bg-[#F8FAFC] hover:bg-slate-100 text-slate-700 cursor-pointer"
             >
-              <ChevronLeft className="w-3.5 h-3.5" />
+              <ArrowLeftIcon className="w-3.5 h-3.5" />
             </button>
             <button
               type="button"
               onClick={() => handleDateChange(todayStr)}
-              className="px-2.5 py-1 rounded-lg border border-[#12A66A]/30 bg-[#E6F7EF] hover:bg-[#d4f3e3] text-[#0E8F5B] text-xs font-bold cursor-pointer"
+              className="px-2.5 py-1 rounded-lg border border-[#01B075]/30 bg-[#E6F7EF] hover:bg-[#d4f3e3] text-[#0E8F5B] text-xs font-bold cursor-pointer"
             >
               Today
             </button>
@@ -192,7 +192,7 @@ export const SupervisorHistoryTab: React.FC<SupervisorHistoryTabProps> = ({
               title="Next day"
               className="p-1.5 rounded-lg border border-[#E8EEF4] bg-[#F8FAFC] hover:bg-slate-100 text-slate-700 cursor-pointer"
             >
-              <ChevronRight className="w-3.5 h-3.5" />
+              <ArrowRightIcon className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
@@ -227,7 +227,7 @@ export const SupervisorHistoryTab: React.FC<SupervisorHistoryTabProps> = ({
         {/* Location Dropdown */}
         <div className="relative flex-1">
           <div className="flex items-center gap-1.5 px-3 py-2 bg-white border border-[#E8EEF4] rounded-[12px] text-xs font-semibold text-slate-800">
-            <Building2 className="w-3.5 h-3.5 text-[#12A66A] flex-shrink-0" />
+            <Building1Icon className="w-3.5 h-3.5 text-[#01B075] flex-shrink-0" />
             <select
               value={selectedWorksite.id}
               onChange={(e) => {
@@ -246,28 +246,37 @@ export const SupervisorHistoryTab: React.FC<SupervisorHistoryTabProps> = ({
         </div>
 
         {/* Tab Segment: Attendance vs Spend */}
-        <div className="flex p-1 bg-white border border-[#E8EEF4] rounded-[14px]">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setActiveTab('attendance')}
-            className={`px-4 py-2 rounded-[10px] text-xs font-bold transition-all cursor-pointer ${
+            className={`cursor-pointer whitespace-nowrap transition-all ${
               activeTab === 'attendance'
-                ? 'bg-[#12A66A] text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-[#1E1F24] text-white px-5 py-2.5 rounded-full text-xs font-bold shadow-xs flex items-center gap-2'
+                : 'bg-white text-[#464853] border border-[#E8EEF4] hover:bg-[#F8FAFC] px-5 py-2.5 rounded-full text-xs font-semibold shadow-2xs flex items-center gap-2'
             }`}
           >
-            Attendance Log
+            <CalenderIcon className={`w-3.5 h-3.5 ${activeTab === 'attendance' ? 'text-[#01B075]' : 'text-[#8C90A0]'}`} />
+            <span>Attendance Log</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('spend')}
-            className={`px-4 py-2 rounded-[10px] text-xs font-bold transition-all cursor-pointer ${
+            className={`cursor-pointer whitespace-nowrap transition-all ${
               activeTab === 'spend'
-                ? 'bg-[#12A66A] text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-[#1E1F24] text-white px-5 py-2.5 rounded-full text-xs font-bold shadow-xs flex items-center gap-2'
+                : 'bg-white text-[#464853] border border-[#E8EEF4] hover:bg-[#F8FAFC] px-5 py-2.5 rounded-full text-xs font-semibold shadow-2xs flex items-center gap-2'
             }`}
           >
-            Spend Log ({dateSpendEntries.length})
+            <ClockIcon className={`w-3.5 h-3.5 ${activeTab === 'spend' ? 'text-[#01B075]' : 'text-[#8C90A0]'}`} />
+            <span>Spend Log</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                activeTab === 'spend' ? 'bg-white/20 text-white' : 'bg-[#F4F6F8] text-[#464853]'
+              }`}
+            >
+              {dateSpendEntries.length}
+            </span>
           </button>
         </div>
       </div>
@@ -278,26 +287,26 @@ export const SupervisorHistoryTab: React.FC<SupervisorHistoryTabProps> = ({
           {/* Summary Chips */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
             <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold bg-[#E6F7EF] text-[#0E8F5B]">
-              <CheckCircle2 className="w-3.5 h-3.5" />
+              <CheckCircleIcon className="w-3.5 h-3.5" />
               <span>Approved: {approvedCount}</span>
             </div>
             <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold bg-[#FEE2E2] text-[#DC2626]">
-              <XCircle className="w-3.5 h-3.5" />
+              <CloseCircleIcon className="w-3.5 h-3.5" />
               <span>Rejected: {rejectedCount}</span>
             </div>
             {pendingCount > 0 && (
               <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold bg-[#FEF3C7] text-[#B45309]">
-                <Clock className="w-3.5 h-3.5" />
+                <ClockIcon className="w-3.5 h-3.5" />
                 <span>Pending: {pendingCount}</span>
               </div>
             )}
             <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">
-              <UserX className="w-3.5 h-3.5" />
+              <ErrorProfileIcon className="w-3.5 h-3.5" />
               <span>Absent: {absentCount}</span>
             </div>
             {onLeaveCount > 0 && (
               <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
-                <CalendarDays className="w-3.5 h-3.5" />
+                <CalenderIcon className="w-3.5 h-3.5" />
                 <span>On Leave: {onLeaveCount}</span>
               </div>
             )}
@@ -306,7 +315,7 @@ export const SupervisorHistoryTab: React.FC<SupervisorHistoryTabProps> = ({
           {/* Worker Records List */}
           {dateWorkers.length === 0 ? (
             <div className="p-12 text-center bg-white border border-[#E8EEF4] rounded-[20px] shadow-xs space-y-2">
-              <Calendar className="w-8 h-8 text-slate-300 mx-auto" />
+              <CalenderIcon className="w-8 h-8 text-slate-300 mx-auto" />
               <h4 className="text-sm sm:text-base font-bold text-slate-700">No Attendance Records</h4>
               <p className="text-xs text-slate-400">
                 No shift activity logged for {selectedDate}.
@@ -386,13 +395,13 @@ export const SupervisorHistoryTab: React.FC<SupervisorHistoryTabProps> = ({
               All Vouchers Recorded on {selectedDate}
             </h4>
             <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <SearchIcon className="w-3.5 h-3.5 text-[#8C90A0] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 value={spendSearch}
                 onChange={(e) => setSpendSearch(e.target.value)}
                 placeholder="Search note or worker..."
-                className="text-xs pl-8 pr-3 py-1.5 bg-white border border-[#E8EEF4] rounded-[10px] text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#12A66A]"
+                className="text-xs pl-9 pr-4 py-2 bg-white border border-[#E8EEF4] rounded-full text-[#1E1F24] placeholder-[#8C90A0] focus:outline-none focus:border-[#01B075] focus:ring-1 focus:ring-[#01B075] shadow-2xs transition-all font-medium"
               />
             </div>
           </div>
@@ -400,7 +409,7 @@ export const SupervisorHistoryTab: React.FC<SupervisorHistoryTabProps> = ({
           {/* Entries List: 1-col on mobile, 2-col on md+ */}
           {dateSpendEntries.length === 0 ? (
             <div className="p-12 text-center bg-white border border-[#E8EEF4] rounded-[20px] shadow-xs space-y-2">
-              <Receipt className="w-8 h-8 text-slate-300 mx-auto" />
+              <NoteTextIcon className="w-8 h-8 text-slate-300 mx-auto" />
               <h4 className="text-sm sm:text-base font-bold text-slate-700">No Expense Entries</h4>
               <p className="text-xs text-slate-400">
                 No money spent was recorded on {selectedDate}.

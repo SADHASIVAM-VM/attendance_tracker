@@ -1,21 +1,18 @@
 import React, { useState } from 'react';
 import { SpendCategory, SpendEntry } from '../../types/supervisor';
 import {
-  X,
-  Plus,
-  Camera,
-  Upload,
-  User,
-  MapPin,
-  Calendar,
-  AlertCircle,
-  Package,
-  Utensils,
-  Truck,
-  Banknote,
-  Receipt,
-  Check,
-} from 'lucide-react';
+  CloseIcon,
+  Upload1Icon,
+  Profile2Icon,
+  LocationIcon,
+  ErrorProfileIcon,
+  BoxIcon,
+  CoffeeIcon,
+  TruckIcon,
+  MoneyIcon,
+  NoteTextIcon,
+  CheckIcon,
+} from '@astraicons/react/linear';
 
 interface AddSpendSheetProps {
   isOpen: boolean;
@@ -28,11 +25,11 @@ interface AddSpendSheetProps {
 }
 
 const CATEGORIES: { label: SpendCategory; icon: any }[] = [
-  { label: 'Materials', icon: Package },
-  { label: 'Food', icon: Utensils },
-  { label: 'Transport', icon: Truck },
-  { label: 'Worker payment', icon: Banknote },
-  { label: 'Other', icon: Receipt },
+  { label: 'Materials', icon: BoxIcon },
+  { label: 'Food', icon: CoffeeIcon },
+  { label: 'Transport', icon: TruckIcon },
+  { label: 'Worker payment', icon: MoneyIcon },
+  { label: 'Other', icon: NoteTextIcon },
 ];
 
 export const AddSpendSheet: React.FC<AddSpendSheetProps> = ({
@@ -185,7 +182,7 @@ export const AddSpendSheet: React.FC<AddSpendSheetProps> = ({
             onClick={onClose}
             className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
           >
-            <X className="w-5 h-5" />
+            <CloseIcon className="w-5 h-5" />
           </button>
         </div>
 
@@ -252,7 +249,7 @@ export const AddSpendSheet: React.FC<AddSpendSheetProps> = ({
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <MapPin className="w-3.5 h-3.5" />
+                <LocationIcon className="w-3.5 h-3.5" />
                 <span>Site in General</span>
               </button>
 
@@ -265,7 +262,7 @@ export const AddSpendSheet: React.FC<AddSpendSheetProps> = ({
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <User className="w-3.5 h-3.5" />
+                <Profile2Icon className="w-3.5 h-3.5" />
                 <span>Specific Worker</span>
               </button>
             </div>
@@ -334,13 +331,13 @@ export const AddSpendSheet: React.FC<AddSpendSheetProps> = ({
                   onClick={() => setReceiptUrl('')}
                   className="absolute top-2 right-2 p-1 rounded-full bg-black/60 text-white hover:bg-black/80"
                 >
-                  <X className="w-4 h-4" />
+                  <CloseIcon className="w-4 h-4" />
                 </button>
               </div>
             ) : (
               <div className="flex gap-2">
                 <label className="flex-1 py-3 border border-dashed border-[#12A66A]/40 rounded-[12px] bg-[#E6F7EF]/50 hover:bg-[#E6F7EF] text-[#12A66A] text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors">
-                  <Upload className="w-4 h-4" />
+                  <Upload1Icon className="w-4 h-4" />
                   <span>Upload Receipt</span>
                   <input
                     type="file"
@@ -363,7 +360,7 @@ export const AddSpendSheet: React.FC<AddSpendSheetProps> = ({
           {/* Error Message */}
           {errorMsg && (
             <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-[10px] text-xs text-rose-700 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-600" />
+              <ErrorProfileIcon className="w-4 h-4 flex-shrink-0 text-rose-600" />
               <span>{errorMsg}</span>
             </div>
           )}
@@ -374,7 +371,7 @@ export const AddSpendSheet: React.FC<AddSpendSheetProps> = ({
               type="submit"
               className="w-full py-3.5 bg-[#12A66A] hover:bg-[#0E8F5B] text-white rounded-[14px] text-sm font-bold shadow-md shadow-[#12A66A]/20 transition-all active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
             >
-              <Check className="w-4 h-4 stroke-[2.5]" />
+              <CheckIcon className="w-4 h-4 stroke-[2.5]" />
               <span>{initialEntry ? 'Update Expense Entry' : 'Save Expense Entry'}</span>
             </button>
           </div>

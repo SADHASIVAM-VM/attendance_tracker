@@ -21,27 +21,7 @@ import { SupervisorProfileTab } from './SupervisorProfileTab';
 import { SupervisorRegularizationView } from './SupervisorRegularizationView';
 import { AttendanceExceptionsView } from '../common/AttendanceExceptionsView';
 import { SupervisorAppShell } from '../../components/layout/SupervisorAppShell';
-import {
-  Home,
-  UserCheck,
-  CalendarDays,
-  Receipt,
-  History,
-  Building2,
-  Bell,
-  WifiOff,
-  RefreshCw,
-  LogOut,
-  Sliders,
-  CheckCircle2,
-  ChevronDown,
-  Sun,
-  ShieldAlert,
-  ArrowRightLeft,
-  X,
-  User,
-  FileEdit,
-} from 'lucide-react';
+
 
 export type SupervisorTabId = 'home' | 'attendance' | 'regularization' | 'leaves' | 'spend' | 'history' | 'profile';
 

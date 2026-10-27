@@ -2,20 +2,19 @@ import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { SupervisorWorksite } from '../../types/supervisor';
 import {
-  User,
-  Building2,
-  Mail,
-  Phone,
-  ShieldCheck,
-  Users,
-  Clock,
-  Globe,
-  Sun,
-  LogOut,
-  MapPin,
-  CheckCircle2,
-  AlertTriangle,
-} from 'lucide-react';
+  Profile2Icon,
+  Building1Icon,
+  EmailIcon,
+  CallIcon,
+  SecuritySafeIcon,
+  GroupIcon,
+  ClockIcon,
+  SunIcon,
+  LogOut1Icon,
+  LocationIcon,
+  CheckCircleIcon,
+  ErrorProfileIcon,
+} from '@astraicons/react/linear';
 
 interface SupervisorProfileTabProps {
   currentWorksite: SupervisorWorksite | null;
@@ -72,8 +71,8 @@ export const SupervisorProfileTab: React.FC<SupervisorProfileTabProps> = ({
               </div>
 
               <div className="flex items-center justify-center sm:justify-end gap-2">
-                <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#E6F7EF] text-[#0E8F5B] border border-[#12A66A]/20 flex items-center gap-1.5 shadow-xs">
-                  <ShieldCheck className="w-3.5 h-3.5" />
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#E6F7EF] text-[#0E8F5B] border border-[#01B075]/20 flex items-center gap-1.5 shadow-xs">
+                  <SecuritySafeIcon className="w-3.5 h-3.5" />
                   Site Supervisor
                 </span>
               </div>
@@ -130,14 +129,14 @@ export const SupervisorProfileTab: React.FC<SupervisorProfileTabProps> = ({
         {/* Contact Info Card */}
         <div className="bg-white border border-[#E8EEF4] rounded-[22px] p-5 shadow-xs space-y-4">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
-            <User className="w-3.5 h-3.5 text-[#12A66A]" />
+            <Profile2Icon className="w-3.5 h-3.5 text-[#01B075]" />
             Supervisor Account Details
           </h3>
 
           <div className="space-y-3 text-xs">
             <div className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl">
               <span className="text-slate-500 flex items-center gap-2">
-                <Mail className="w-3.5 h-3.5 text-slate-400" />
+                <EmailIcon className="w-3.5 h-3.5 text-slate-400" />
                 Work Email
               </span>
               <strong className="text-slate-900 font-semibold">{user?.email || 'supervisor@enterprise.com'}</strong>
@@ -145,7 +144,7 @@ export const SupervisorProfileTab: React.FC<SupervisorProfileTabProps> = ({
 
             <div className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl">
               <span className="text-slate-500 flex items-center gap-2">
-                <Phone className="w-3.5 h-3.5 text-slate-400" />
+                <CallIcon className="w-3.5 h-3.5 text-slate-400" />
                 Phone Number
               </span>
               <strong className="text-slate-900 font-semibold">{user?.phone || '+91 98765 43210'}</strong>
@@ -153,7 +152,7 @@ export const SupervisorProfileTab: React.FC<SupervisorProfileTabProps> = ({
 
             <div className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl">
               <span className="text-slate-500 flex items-center gap-2">
-                <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                <Building1Icon className="w-3.5 h-3.5 text-slate-400" />
                 Organization
               </span>
               <strong className="text-slate-900 font-semibold">{(user as any)?.orgName || 'Enterprise Corp'}</strong>
@@ -164,7 +163,7 @@ export const SupervisorProfileTab: React.FC<SupervisorProfileTabProps> = ({
         {/* Assigned Site Information */}
         <div className="bg-white border border-[#E8EEF4] rounded-[22px] p-5 shadow-xs space-y-4">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
-            <Building2 className="w-3.5 h-3.5 text-[#12A66A]" />
+            <Building1Icon className="w-3.5 h-3.5 text-[#01B075]" />
             Active Worksite Deployment
           </h3>
 
@@ -178,7 +177,7 @@ export const SupervisorProfileTab: React.FC<SupervisorProfileTabProps> = ({
                   {currentWorksite.name}
                 </h4>
                 <p className="text-[11px] text-emerald-800 flex items-start gap-1 mt-1">
-                  <MapPin className="w-3 h-3 text-emerald-600 shrink-0 mt-0.5" />
+                  <LocationIcon className="w-3 h-3 text-emerald-600 shrink-0 mt-0.5" />
                   <span>{currentWorksite.address || 'Designated site location'}</span>
                 </p>
               </div>
@@ -196,7 +195,7 @@ export const SupervisorProfileTab: React.FC<SupervisorProfileTabProps> = ({
             </div>
           ) : (
             <div className="p-5 text-center bg-slate-50 border border-slate-100 rounded-xl space-y-1">
-              <AlertTriangle className="w-6 h-6 text-amber-500 mx-auto" />
+              <ErrorProfileIcon className="w-6 h-6 text-amber-500 mx-auto" />
               <p className="text-xs font-bold text-slate-700">No worksite currently assigned</p>
               <p className="text-[11px] text-slate-500">Contact admin to assign your profile to a worksite.</p>
             </div>
@@ -214,14 +213,14 @@ export const SupervisorProfileTab: React.FC<SupervisorProfileTabProps> = ({
           {/* Outdoor Mode */}
           <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-900">
-              <Sun className="w-4 h-4 text-amber-500" />
+              <SunIcon className="w-4 h-4 text-amber-500" />
               <span>High-Contrast Sunlight Mode</span>
             </div>
             <button
               type="button"
               onClick={() => setIsOutdoorMode(!isOutdoorMode)}
               className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
-                isOutdoorMode ? 'bg-[#12A66A]' : 'bg-slate-300'
+                isOutdoorMode ? 'bg-[#01B075]' : 'bg-slate-300'
               }`}
             >
               <span
@@ -238,7 +237,7 @@ export const SupervisorProfileTab: React.FC<SupervisorProfileTabProps> = ({
             onClick={logout}
             className="w-full py-3.5 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-xs active:scale-98"
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut1Icon className="w-4 h-4" />
             <span>Sign Out of Supervisor Account</span>
           </button>
         </div>

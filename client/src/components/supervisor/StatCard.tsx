@@ -1,11 +1,10 @@
 import React from 'react';
-import { LucideIcon } from 'lucide-react';
 
 interface StatCardProps {
   label: string;
   value: string | number;
   note?: string;
-  icon: LucideIcon;
+  icon: React.ComponentType<{ className?: string }> | any;
   variant?: 'solid-green' | 'amber-tint' | 'default';
   onClick?: () => void;
   className?: string;

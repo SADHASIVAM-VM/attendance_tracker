@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { SpendDaySummary } from '../../types/supervisor';
-import { Calendar, TrendingUp } from 'lucide-react';
+import { ActivityIcon, CalenderIcon } from '@astraicons/react/linear';
+import { CalendarIcon } from 'lucide-react';
 
 interface SpendBarChartProps {
   data: SpendDaySummary[];
@@ -132,7 +133,7 @@ export const SpendBarChart: React.FC<SpendBarChartProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-slate-100">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-[#E6F7EF] text-[#12A66A] flex items-center justify-center shrink-0">
-            <Calendar className="w-4 h-4" />
+            <CalendarIcon className="w-4 h-4" />
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -161,7 +162,7 @@ export const SpendBarChart: React.FC<SpendBarChartProps> = ({
           {highestDay && highestDay.amount > 0 && (
             <div className="pl-2 border-l border-slate-200 hidden xs:block text-right">
               <span className="text-[10px] text-[#0E8F5B] font-semibold flex items-center justify-end gap-1">
-                <TrendingUp className="w-3 h-3" />
+                <ActivityIcon className="w-3 h-3" />
                 Peak
               </span>
               <span className="text-xs font-bold text-[#12A66A] tabular-nums">
@@ -192,22 +193,20 @@ export const SpendBarChart: React.FC<SpendBarChartProps> = ({
                 onClick={() => onSelectDay?.(item)}
                 onMouseEnter={() => setHoveredDay(item)}
                 onMouseLeave={() => setHoveredDay(null)}
-                className={`flex flex-col items-center h-full justify-end cursor-pointer group transition-all duration-150 p-1 rounded-xl ${
-                  isSelected ? 'bg-white shadow-xs ring-1 ring-[#12A66A]/30' : 'hover:bg-white/60'
-                }`}
+                className={`flex flex-col items-center h-full justify-end cursor-pointer group transition-all duration-150 p-1 rounded-xl ${isSelected ? 'bg-white shadow-xs ring-1 ring-[#12A66A]/30' : 'hover:bg-white/60'
+                  }`}
               >
                 {/* ── Expense Mark (Top) ────────────────────────── */}
                 <div className="mb-2 flex flex-col items-center">
                   <span
-                    className={`text-[9px] sm:text-[11px] font-bold tabular-nums px-1 sm:px-1.5 py-0.5 rounded-md transition-all whitespace-nowrap text-center ${
-                      isHighest
-                        ? 'bg-[#12A66A] text-white shadow-xs font-black'
-                        : isSelected
+                    className={`text-[9px] sm:text-[11px] font-bold tabular-nums px-1 sm:px-1.5 py-0.5 rounded-md transition-all whitespace-nowrap text-center ${isHighest
+                      ? 'bg-[#12A66A] text-white shadow-xs font-black'
+                      : isSelected
                         ? 'bg-slate-900 text-white font-bold'
                         : hasSpend
-                        ? 'bg-[#E6F7EF] text-[#0E8F5B] font-extrabold'
-                        : 'text-slate-400 font-semibold'
-                    }`}
+                          ? 'bg-[#E6F7EF] text-[#0E8F5B] font-extrabold'
+                          : 'text-slate-400 font-semibold'
+                      }`}
                     title={`${currencySymbol}${item.amount.toLocaleString()} on ${item.dayName}, ${item.dateLabel}`}
                   >
                     {formatExpenseMark(item.amount, currencySymbol)}
@@ -218,17 +217,16 @@ export const SpendBarChart: React.FC<SpendBarChartProps> = ({
                 <div className="w-full flex-1 flex flex-col justify-end items-center px-0.5 sm:px-1">
                   <div
                     style={{ height: `${heightPercent}%` }}
-                    className={`w-full max-w-[32px] sm:max-w-[44px] rounded-t-[8px] transition-all duration-300 origin-bottom relative ${
-                      !hasSpend
-                        ? 'bg-slate-200/80 group-hover:bg-slate-300 min-h-[5px]'
-                        : isHighest
+                    className={`w-full max-w-[32px] sm:max-w-[44px] rounded-t-[8px] transition-all duration-300 origin-bottom relative ${!hasSpend
+                      ? 'bg-slate-200/80 group-hover:bg-slate-300 min-h-[5px]'
+                      : isHighest
                         ? 'bg-gradient-to-t from-[#0E8F5B] via-[#12A66A] to-[#1FD68B] shadow-sm shadow-[#12A66A]/30'
                         : isSelected
-                        ? 'bg-gradient-to-t from-[#0E8F5B] to-[#12A66A] ring-2 ring-[#12A66A]/40'
-                        : item.isToday
-                        ? 'bg-gradient-to-t from-[#10B981] to-[#34D399] shadow-xs'
-                        : 'bg-gradient-to-t from-[#A7F3D0] to-[#6EE7B7] group-hover:from-[#6EE7B7] group-hover:to-[#34D399]'
-                    }`}
+                          ? 'bg-gradient-to-t from-[#0E8F5B] to-[#12A66A] ring-2 ring-[#12A66A]/40'
+                          : item.isToday
+                            ? 'bg-gradient-to-t from-[#10B981] to-[#34D399] shadow-xs'
+                            : 'bg-gradient-to-t from-[#A7F3D0] to-[#6EE7B7] group-hover:from-[#6EE7B7] group-hover:to-[#34D399]'
+                      }`}
                   >
                     {/* Peak Indicator Dot */}
                     {isHighest && (
@@ -241,26 +239,24 @@ export const SpendBarChart: React.FC<SpendBarChartProps> = ({
                 <div className="w-full flex flex-col items-center pt-2 text-center select-none border-t border-slate-100/80 mt-1">
                   {/* Day (e.g. MON, TUE) */}
                   <span
-                    className={`text-[10px] sm:text-xs font-black uppercase tracking-tight leading-tight ${
-                      item.isToday
-                        ? 'text-[#12A66A]'
-                        : isSelected
+                    className={`text-[10px] sm:text-xs font-black uppercase tracking-tight leading-tight ${item.isToday
+                      ? 'text-[#12A66A]'
+                      : isSelected
                         ? 'text-slate-900'
                         : 'text-slate-600'
-                    }`}
+                      }`}
                   >
                     {item.dayOfWeek}
                   </span>
 
                   {/* Date (e.g. 19 Oct on sm+, 19 on mobile) */}
                   <span
-                    className={`text-[9px] sm:text-[11px] leading-tight font-semibold mt-0.5 tabular-nums ${
-                      item.isToday
-                        ? 'text-[#0E8F5B] font-bold'
-                        : isSelected
+                    className={`text-[9px] sm:text-[11px] leading-tight font-semibold mt-0.5 tabular-nums ${item.isToday
+                      ? 'text-[#0E8F5B] font-bold'
+                      : isSelected
                         ? 'text-slate-700 font-bold'
                         : 'text-slate-400'
-                    }`}
+                      }`}
                   >
                     <span className="sm:hidden">{item.dayNumber}</span>
                     <span className="hidden sm:inline">{item.dateLabel}</span>
@@ -286,9 +282,8 @@ export const SpendBarChart: React.FC<SpendBarChartProps> = ({
         <div className="p-3 rounded-[16px] bg-white border border-[#E8EEF4] shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs animate-in fade-in duration-150">
           <div className="flex items-center gap-2.5">
             <div
-              className={`w-3 h-3 rounded-full shrink-0 ${
-                activeDay.amount > 0 ? 'bg-[#12A66A]' : 'bg-slate-300'
-              }`}
+              className={`w-3 h-3 rounded-full shrink-0 ${activeDay.amount > 0 ? 'bg-[#12A66A]' : 'bg-slate-300'
+                }`}
             />
             <div>
               <div className="flex items-center gap-2">
@@ -303,9 +298,8 @@ export const SpendBarChart: React.FC<SpendBarChartProps> = ({
               </div>
               <span className="text-[11px] text-slate-500">
                 {activeDay.entriesCount > 0
-                  ? `${activeDay.entriesCount} expense ${
-                      activeDay.entriesCount === 1 ? 'mark' : 'marks'
-                    } recorded for this day`
+                  ? `${activeDay.entriesCount} expense ${activeDay.entriesCount === 1 ? 'mark' : 'marks'
+                  } recorded for this day`
                   : 'No expenses marked for this day'}
               </span>
             </div>

@@ -12,21 +12,17 @@ import { SpendBarChart } from '../../components/supervisor/SpendBarChart';
 import { CategoryDonut } from '../../components/supervisor/CategoryDonut';
 import { DateStrip } from '../../components/supervisor/DateStrip';
 import {
-  Plus,
-  Receipt,
-  PieChart,
-  ListFilter,
-  History,
-  Calendar,
-  ChevronLeft,
-  ChevronRight,
-  Search,
-  Filter,
-  CheckCircle2,
-  CalendarDays,
-  ArrowRight,
-  TrendingUp,
-} from 'lucide-react';
+  PlusIcon,
+  NoteTextIcon,
+  ChartIcon,
+  Filter1Icon,
+  TransactionHistoryIcon,
+  CalenderIcon,
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  SearchIcon,
+  CheckCircleIcon,
+} from '@astraicons/react/linear';
 
 interface SupervisorSpendTabProps {
   entries: SpendEntry[];
@@ -206,7 +202,7 @@ export const SupervisorSpendTab: React.FC<SupervisorSpendTabProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="text-xs uppercase font-bold tracking-wider text-emerald-100 flex items-center gap-1.5">
-              <Receipt className="w-4 h-4 text-emerald-200" />
+              <NoteTextIcon className="w-4 h-4 text-emerald-200" />
               Today's Total Spend
             </span>
             <span className="text-[11px] bg-white/20 backdrop-blur-xs px-2.5 py-0.5 rounded-full font-bold">
@@ -219,7 +215,7 @@ export const SupervisorSpendTab: React.FC<SupervisorSpendTabProps> = ({
             onClick={() => setIsAddSheetOpen(true)}
             className="hidden sm:inline-flex items-center gap-2 px-4 py-2 bg-white text-[#0E8F5B] hover:bg-emerald-50 rounded-full font-bold text-xs shadow-md transition-all active:scale-95 cursor-pointer self-start sm:self-auto"
           >
-            <Plus className="w-4 h-4 stroke-[3]" />
+            <PlusIcon className="w-4 h-4" />
             <span>Record New Expense</span>
           </button>
         </div>
@@ -257,11 +253,11 @@ export const SupervisorSpendTab: React.FC<SupervisorSpendTabProps> = ({
           onClick={() => setSubTab('entries')}
           className={`flex-1 py-2.5 rounded-[12px] text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
             subTab === 'entries'
-              ? 'bg-[#12A66A] text-white shadow-xs'
+              ? 'bg-[#01B075] text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <ListFilter className="w-3.5 h-3.5" />
+          <Filter1Icon className="w-3.5 h-3.5" />
           <span>Today ({todayEntries.length})</span>
         </button>
 
@@ -270,11 +266,11 @@ export const SupervisorSpendTab: React.FC<SupervisorSpendTabProps> = ({
           onClick={() => setSubTab('history')}
           className={`flex-1 py-2.5 rounded-[12px] text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
             subTab === 'history'
-              ? 'bg-[#12A66A] text-white shadow-xs'
+              ? 'bg-[#01B075] text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <History className="w-3.5 h-3.5" />
+          <TransactionHistoryIcon className="w-3.5 h-3.5" />
           <span>Spent History</span>
         </button>
 
@@ -283,11 +279,11 @@ export const SupervisorSpendTab: React.FC<SupervisorSpendTabProps> = ({
           onClick={() => setSubTab('analytics')}
           className={`flex-1 py-2.5 rounded-[12px] text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
             subTab === 'analytics'
-              ? 'bg-[#12A66A] text-white shadow-xs'
+              ? 'bg-[#01B075] text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <PieChart className="w-3.5 h-3.5" />
+          <ChartIcon className="w-3.5 h-3.5" />
           <span>Analytics</span>
         </button>
       </div>
@@ -317,8 +313,8 @@ export const SupervisorSpendTab: React.FC<SupervisorSpendTabProps> = ({
             </div>
           ) : todayEntries.length === 0 ? (
             <div className="p-12 text-center bg-white border border-[#E8EEF4] rounded-[20px] shadow-xs space-y-3">
-              <div className="w-12 h-12 rounded-full bg-[#E6F7EF] text-[#12A66A] flex items-center justify-center mx-auto">
-                <Receipt className="w-6 h-6" />
+              <div className="w-12 h-12 rounded-full bg-[#E6F7EF] text-[#01B075] flex items-center justify-center mx-auto">
+                <NoteTextIcon className="w-6 h-6" />
               </div>
               <h4 className="text-sm sm:text-base font-bold text-slate-800">No Spend Entries Today</h4>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
@@ -359,14 +355,14 @@ export const SupervisorSpendTab: React.FC<SupervisorSpendTabProps> = ({
               {/* Year Dropdown Switcher */}
               <div className="flex items-center gap-2 self-start sm:self-auto">
                 <label className="text-xs font-bold text-slate-600 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-[#12A66A]" />
+                  <CalenderIcon className="w-3.5 h-3.5 text-[#01B075]" />
                   <span>Year:</span>
                 </label>
                 <div className="relative">
                   <select
                     value={historyYear}
                     onChange={(e) => handleYearChange(e.target.value)}
-                    className="px-3 py-1.5 bg-[#F8FAFC] border border-[#E8EEF4] rounded-[12px] text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#12A66A]/20 cursor-pointer"
+                    className="px-3 py-1.5 bg-[#F8FAFC] border border-[#E8EEF4] rounded-[12px] text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#01B075]/20 cursor-pointer"
                   >
                     {availableYears.map((yr) => (
                       <option key={yr} value={yr}>
@@ -389,7 +385,7 @@ export const SupervisorSpendTab: React.FC<SupervisorSpendTabProps> = ({
                     onClick={() => handleMonthChange(m.num)}
                     className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                       isSelected
-                        ? 'bg-[#12A66A] text-white shadow-xs'
+                        ? 'bg-[#01B075] text-white shadow-xs'
                         : 'bg-[#F8FAFC] hover:bg-slate-100 text-slate-600 border border-[#E8EEF4]'
                     }`}
                   >
@@ -412,12 +408,12 @@ export const SupervisorSpendTab: React.FC<SupervisorSpendTabProps> = ({
                     title="Previous day"
                     className="p-1 rounded-lg border border-[#E8EEF4] bg-[#F8FAFC] hover:bg-slate-100 text-slate-700 cursor-pointer"
                   >
-                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <ArrowLeftIcon className="w-3.5 h-3.5" />
                   </button>
                   <button
                     type="button"
                     onClick={() => handleSelectHistoryDate(todayStr)}
-                    className="px-2.5 py-0.5 rounded-lg border border-[#12A66A]/30 bg-[#E6F7EF] hover:bg-[#d4f3e3] text-[#0E8F5B] text-[11px] font-bold cursor-pointer"
+                    className="px-2.5 py-0.5 rounded-lg border border-[#01B075]/30 bg-[#E6F7EF] hover:bg-[#d4f3e3] text-[#0E8F5B] text-[11px] font-bold cursor-pointer"
                   >
                     Today
                   </button>
@@ -427,7 +423,7 @@ export const SupervisorSpendTab: React.FC<SupervisorSpendTabProps> = ({
                     title="Next day"
                     className="p-1 rounded-lg border border-[#E8EEF4] bg-[#F8FAFC] hover:bg-slate-100 text-slate-700 cursor-pointer"
                   >
-                    <ChevronRight className="w-3.5 h-3.5" />
+                    <ArrowRightIcon className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
@@ -443,8 +439,8 @@ export const SupervisorSpendTab: React.FC<SupervisorSpendTabProps> = ({
           <div className="bg-gradient-to-br from-[#F8FAFC] to-white border border-[#E8EEF4] rounded-[22px] p-4 sm:p-5 shadow-xs space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
               <div className="space-y-0.5">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#12A66A] flex items-center gap-1.5">
-                  <CalendarDays className="w-3.5 h-3.5" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#01B075] flex items-center gap-1.5">
+                  <CalenderIcon className="w-3.5 h-3.5" />
                   {formattedDayTitle}
                 </span>
                 <div className="flex items-baseline gap-2">
@@ -459,7 +455,7 @@ export const SupervisorSpendTab: React.FC<SupervisorSpendTabProps> = ({
               </div>
 
               <div className="flex items-center gap-2 self-start sm:self-auto">
-                <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-[#E6F7EF] text-[#0E8F5B] border border-[#12A66A]/20">
+                <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-[#E6F7EF] text-[#0E8F5B] border border-[#01B075]/20">
                   {dayEntries.length} {dayEntries.length === 1 ? 'entry' : 'entries'} on this day
                 </span>
               </div>
@@ -500,13 +496,13 @@ export const SupervisorSpendTab: React.FC<SupervisorSpendTabProps> = ({
               {/* Search & Category Filter */}
               <div className="flex items-center gap-2">
                 <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <SearchIcon className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     value={historySearchQuery}
                     onChange={(e) => setHistorySearchQuery(e.target.value)}
                     placeholder="Search entries..."
-                    className="text-xs pl-8 pr-3 py-1.5 bg-white border border-[#E8EEF4] rounded-[10px] text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#12A66A]"
+                    className="text-xs pl-8 pr-3 py-1.5 bg-white border border-[#E8EEF4] rounded-[10px] text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#01B075]"
                   />
                 </div>
 
@@ -528,8 +524,8 @@ export const SupervisorSpendTab: React.FC<SupervisorSpendTabProps> = ({
             {/* List of Entries on the Day */}
             {dayEntries.length === 0 ? (
               <div className="p-10 text-center bg-white border border-[#E8EEF4] rounded-[20px] shadow-xs space-y-3">
-                <div className="w-12 h-12 rounded-full bg-[#E6F7EF] text-[#12A66A] flex items-center justify-center mx-auto">
-                  <Receipt className="w-6 h-6" />
+                <div className="w-12 h-12 rounded-full bg-[#E6F7EF] text-[#01B075] flex items-center justify-center mx-auto">
+                  <NoteTextIcon className="w-6 h-6" />
                 </div>
                 <div>
                   <h4 className="text-sm sm:text-base font-bold text-slate-800">
@@ -542,9 +538,9 @@ export const SupervisorSpendTab: React.FC<SupervisorSpendTabProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsAddSheetOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#12A66A] hover:bg-[#0E8F5B] text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#01B075] hover:bg-[#00925f] text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
                 >
-                  <Plus className="w-3.5 h-3.5" />
+                  <PlusIcon className="w-3.5 h-3.5" />
                   <span>Log Spend for this Day</span>
                 </button>
               </div>
@@ -637,7 +633,7 @@ export const SupervisorSpendTab: React.FC<SupervisorSpendTabProps> = ({
                             {isCurrentSelected ? 'Currently Viewing' : 'Tap to View'}
                           </span>
                         </div>
-                        <ArrowRight className="w-4 h-4 text-slate-400" />
+                        <ArrowRightIcon className="w-4 h-4 text-slate-400" />
                       </div>
                     </div>
                   );
@@ -690,9 +686,9 @@ export const SupervisorSpendTab: React.FC<SupervisorSpendTabProps> = ({
             setEditingEntry(null);
             setIsAddSheetOpen(true);
           }}
-          className="pointer-events-auto px-5 py-3.5 bg-[#12A66A] hover:bg-[#0E8F5B] text-white rounded-full font-bold text-xs sm:text-sm shadow-xl shadow-[#12A66A]/30 flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
+          className="pointer-events-auto px-5 py-3.5 bg-[#01B075] hover:bg-[#00925f] text-white rounded-full font-bold text-xs sm:text-sm shadow-xl shadow-[#01B075]/30 flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
         >
-          <Plus className="w-4 h-4 stroke-[3]" />
+          <PlusIcon className="w-4 h-4" />
           <span>Add Spend</span>
         </button>
       </div>

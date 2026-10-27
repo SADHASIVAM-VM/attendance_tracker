@@ -1,24 +1,24 @@
 import React, { useState, useMemo } from 'react';
 import { MissingClockInCase, AttendanceFlagStatus } from '../../types/supervisor';
 import {
-  AlertTriangle,
-  Clock,
-  CheckCircle2,
-  XCircle,
-  HelpCircle,
-  ShieldCheck,
-  MessageSquare,
-  User,
-  Calendar,
-  Building2,
-  ArrowRight,
-  Filter,
-  Check,
-  X,
-  Phone,
-  Info,
-  FileEdit,
-} from 'lucide-react';
+  ErrorProfileIcon,
+  ClockIcon,
+  CheckCircleIcon,
+  CloseCircleIcon,
+  HelpCircleIcon,
+  SecuritySafeIcon,
+  MessageIcon,
+  Profile2Icon,
+  CalenderIcon,
+  Building1Icon,
+  ArrowRightIcon,
+  Filter1Icon,
+  CheckIcon,
+  CloseIcon,
+  CallIcon,
+  InfoIcon,
+  EditProfileIcon,
+} from '@astraicons/react/linear';
 import { apiRequest } from '../../lib/api';
 import { DataTablePagination } from '../ui/data-table-pagination';
 
@@ -133,7 +133,7 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
       {/* ── Status Banner Alert ────────────────────────────────────────────── */}
       <div className="bg-amber-50/70 border border-amber-200/80 rounded-[18px] p-4 flex items-start gap-3 shadow-xs">
         <div className="p-2 rounded-xl bg-amber-100 text-amber-700 mt-0.5">
-          <AlertTriangle className="w-5 h-5" />
+          <ErrorProfileIcon className="w-5 h-5" />
         </div>
         <div className="flex-1 text-xs">
           <h4 className="font-bold text-amber-900 text-sm">Supervisor Missing Clock-In Review</h4>
@@ -150,11 +150,11 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
       {actionSuccessMessage && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-[14px] text-xs font-semibold flex items-center justify-between animate-in fade-in">
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <CheckCircleIcon className="w-4 h-4 text-emerald-600" />
             <span>{actionSuccessMessage}</span>
           </div>
           <button type="button" onClick={() => setActionSuccessMessage(null)} className="text-emerald-700 hover:text-emerald-900">
-            <X className="w-3.5 h-3.5" />
+            <CloseIcon className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
@@ -164,7 +164,7 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
         <div className="bg-white border border-[#E8EEF4] rounded-[16px] p-3 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 mb-1">
             <span className="text-[11px] font-semibold">Approve</span>
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+            <CheckCircleIcon className="w-3.5 h-3.5 text-emerald-500" />
           </div>
           <div className="text-xl font-bold text-slate-900">{approvedCount}</div>
         </div>
@@ -172,7 +172,7 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
         <div className="bg-white border border-[#E8EEF4] rounded-[16px] p-3 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 mb-1">
             <span className="text-[11px] font-semibold">Absent</span>
-            <XCircle className="w-3.5 h-3.5 text-rose-500" />
+            <CloseCircleIcon className="w-3.5 h-3.5 text-rose-500" />
           </div>
           <div className="text-xl font-bold text-slate-900">{rejectedCount}</div>
         </div>
@@ -180,7 +180,7 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
         <div className="bg-white border border-[#E8EEF4] rounded-[16px] p-3 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 mb-1">
             <span className="text-[11px] font-semibold">Pending</span>
-            <HelpCircle className="w-3.5 h-3.5 text-amber-500" />
+            <HelpCircleIcon className="w-3.5 h-3.5 text-amber-500" />
           </div>
           <div className="text-xl font-bold text-slate-900">{pendingReviewCount}</div>
         </div>
@@ -188,7 +188,7 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
         <div className="bg-white border border-[#E8EEF4] rounded-[16px] p-3 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 mb-1">
             <span className="text-[11px] font-semibold">Clocked In Later</span>
-            <Clock className="w-3.5 h-3.5 text-blue-500" />
+            <ClockIcon className="w-3.5 h-3.5 text-blue-500" />
           </div>
           <div className="text-xl font-bold text-slate-900">{resolvedCount}</div>
         </div>
@@ -234,13 +234,13 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
       {/* ── Table of Missing Clock-In Cases ───────────────────────────────────── */}
       {isLoading ? (
         <div className="bg-white border border-[#E8EEF4] rounded-[18px] p-10 text-center text-slate-400 text-xs">
-          <Clock className="w-6 h-6 animate-spin mx-auto text-[#12A66A] mb-2" />
+          <ClockIcon className="w-6 h-6 animate-spin mx-auto text-[#12A66A] mb-2" />
           <span>Evaluating today's missing clock-ins...</span>
         </div>
       ) : filteredCases.length === 0 ? (
         <div className="p-10 text-center bg-white border border-[#E8EEF4] rounded-[20px] shadow-xs space-y-2">
           <div className="w-11 h-11 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
-            <CheckCircle2 className="w-5 h-5" />
+            <CheckCircleIcon className="w-5 h-5" />
           </div>
           <h4 className="text-sm font-bold text-slate-800">No Missing Clock-Ins For Today</h4>
           <p className="text-xs text-slate-500 max-w-sm mx-auto">
@@ -284,7 +284,7 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
                             {item.workerAvatar || item.avatar ? (
                               <img src={item.workerAvatar || item.avatar} alt={item.workerName} className="w-full h-full object-cover" />
                             ) : (
-                              <User className="w-4 h-4 text-slate-400" />
+                              <Profile2Icon className="w-4 h-4 text-slate-400" />
                             )}
                           </div>
                           <div>
@@ -306,7 +306,7 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
                       {/* 2. Missed Date */}
                       <td className="py-3 px-4 whitespace-nowrap">
                         <div className="flex items-center gap-1.5 text-xs text-slate-800 font-medium">
-                          <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <CalenderIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                           <span>{missedDateFormatted}</span>
                           <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 ml-1">
                             Today
@@ -317,7 +317,7 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
                       {/* 3. Worksite */}
                       <td className="py-3 px-4 text-xs font-semibold text-slate-800">
                         <div className="flex items-center gap-1.5">
-                          <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <Building1Icon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                           <span>{item.worksiteName || '—'}</span>
                         </div>
                       </td>
@@ -347,10 +347,10 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
                         {resolvedTimestamp || isResolved ? (
                           <div className="space-y-0.5">
                             <div className="flex items-center gap-1.5 text-xs text-slate-800 font-semibold font-mono">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <CheckCircleIcon className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                               <span>
                                 {resolvedTimestamp
-                                  ? new Date(resolvedTimestamp).toLocaleDateString('en-GB', {
+                                   ? new Date(resolvedTimestamp).toLocaleDateString('en-GB', {
                                       day: '2-digit',
                                       month: 'short',
                                       year: 'numeric',
@@ -385,7 +385,7 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
                                 title="Approve"
                                 aria-label="Approve"
                               >
-                                <Check className="w-4 h-4 stroke-[2.5]" />
+                                <CheckIcon className="w-4 h-4 stroke-[2.5]" />
                               </button>
                               <button
                                 type="button"
@@ -394,7 +394,7 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
                                 title="Absent / Reject"
                                 aria-label="Absent"
                               >
-                                <X className="w-4 h-4 stroke-[2.5]" />
+                                <CloseIcon className="w-4 h-4 stroke-[2.5]" />
                               </button>
                               <button
                                 type="button"
@@ -403,7 +403,7 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
                                 title="Keep Pending"
                                 aria-label="Pending"
                               >
-                                <Clock className="w-4 h-4 stroke-[2.5] text-amber-600" />
+                                <ClockIcon className="w-4 h-4 stroke-[2.5] text-amber-600" />
                               </button>
                             </div>
                           ) : (
@@ -430,7 +430,7 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
                                 title="Update Flag"
                                 aria-label="Update Flag"
                               >
-                                <FileEdit className="w-3.5 h-3.5" />
+                                <EditProfileIcon className="w-3.5 h-3.5" />
                               </button>
                             </div>
                           )}
@@ -475,7 +475,7 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
                 onClick={closeReviewModal}
                 className="p-1 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
               >
-                <X className="w-5 h-5" />
+                <CloseIcon className="w-5 h-5" />
               </button>
             </div>
 
@@ -608,7 +608,7 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
                     <span>Saving...</span>
                   ) : (
                     <>
-                      <CheckCircle2 className="w-4 h-4" />
+                      <CheckCircleIcon className="w-4 h-4" />
                       <span>Confirm Decision</span>
                     </>
                   )}

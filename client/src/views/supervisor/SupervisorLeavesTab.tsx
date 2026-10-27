@@ -1,23 +1,25 @@
 import React, { useState } from 'react';
 import { WorkerLeaveItem, LeaveFilter } from '../../types/supervisor';
-import {
-  CalendarDays,
-  Search,
-  Palmtree,
-  Users,
-  Ban,
-  AlertTriangle,
-  X,
-  Loader2,
-  CheckCircle2,
-  Check,
-  Eye,
-  Calendar,
-  ShieldCheck,
-} from 'lucide-react';
 import { LeaveCard } from '#components/supervisor/LeaveCard';
 import { StatusPill } from '#components/supervisor/StatusPill';
+import { StatCard } from '../../components/common/StatCard';
 import { apiRequest } from '../../lib/api';
+import {
+  ClockIcon,
+  CheckCircleIcon,
+  CalenderIcon,
+  SearchIcon,
+  Building1Icon,
+  GroupIcon,
+  EditProfileIcon,
+  ErrorProfileIcon,
+  CloseIcon,
+  CheckIcon,
+  EyeIcon,
+  SecuritySafeIcon,
+  CloseCircleIcon,
+  TreeIcon,
+} from '@astraicons/react/linear';
 
 interface SupervisorLeavesTabProps {
   leaves: WorkerLeaveItem[];
@@ -227,9 +229,9 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
         >
           <div className="flex items-center gap-2 text-xs font-semibold">
             {toastMessage.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <CheckCircleIcon className="w-4 h-4 text-emerald-600 shrink-0" />
             ) : (
-              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              <ErrorProfileIcon className="w-4 h-4 text-rose-600 shrink-0" />
             )}
             <span>{toastMessage.text}</span>
           </div>
@@ -238,7 +240,7 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
             onClick={() => setToastMessage(null)}
             className="text-slate-400 hover:text-slate-600 cursor-pointer p-1"
           >
-            <X className="w-3.5 h-3.5" />
+            <CloseIcon className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
@@ -246,8 +248,8 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
       {/* ── 1. HEADER BANNER ────────────────────────────────────────── */}
       <div className="bg-white border border-[#E8EEF4] rounded-[18px] p-4 shadow-xs flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#E6F7EF] text-[#12A66A] flex items-center justify-center shadow-2xs">
-            <CalendarDays className="w-5 h-5 stroke-[2.2]" />
+          <div className="w-10 h-10 rounded-xl bg-[#E6F7EF] text-[#01B075] flex items-center justify-center shadow-2xs">
+            <CalenderIcon className="w-5 h-5 stroke-[2.2]" />
           </div>
           <div>
             <h2 className="text-base font-extrabold text-slate-900 leading-tight">
@@ -261,104 +263,91 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
 
         <div className="flex items-center gap-2">
           <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#E6F7EF] text-[#0E8F5B]">
-            <Users className="w-3.5 h-3.5" />
+            <GroupIcon className="w-3.5 h-3.5" />
             <span>{leaves.length} Total Requests</span>
           </span>
         </div>
       </div>
 
-      {/* ── 2. STAT STRIP ────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4">
-        <div className="bg-white border border-[#E8EEF4] rounded-[16px] p-3 text-center shadow-xs">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-            On Leave Today
-          </span>
-          <span className="text-xl font-black text-[#12A66A] tabular-nums block mt-0.5">
-            {onLeaveTodayCount}
-          </span>
-          <span className="text-[10px] text-slate-500 font-medium">Workers off-site</span>
-        </div>
-
-        <div className="bg-[#FFFBEB] border border-[#FDE68A] rounded-[16px] p-3 text-center shadow-xs">
-          <span className="text-[10px] font-bold text-[#B45309] uppercase tracking-wider block">
-            Pending Approval
-          </span>
-          <span className="text-xl font-black text-[#92400E] tabular-nums block mt-0.5">
-            {pendingCount}
-          </span>
-          <span className="text-[10px] text-[#B45309] font-medium">Awaiting decision</span>
-        </div>
-
-        <div className="bg-white border border-[#E8EEF4] rounded-[16px] p-3 text-center shadow-xs">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-            Approved Month
-          </span>
-          <span className="text-xl font-black text-slate-900 tabular-nums block mt-0.5">
-            {approvedMonthCount}
-          </span>
-          <span className="text-[10px] text-slate-500 font-medium">Active approved</span>
-        </div>
-
-        <div className="bg-rose-50/50 border border-rose-200 rounded-[16px] p-3 text-center shadow-xs">
-          <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wider block">
-            Revoked
-          </span>
-          <span className="text-xl font-black text-rose-700 tabular-nums block mt-0.5">
-            {revokedCount}
-          </span>
-          <span className="text-[10px] text-rose-600 font-medium">Revoked leaves</span>
-        </div>
+      {/* ── 2. STANDARD STAT CARDS ────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+        <StatCard
+          title="On Leave Today"
+          value={onLeaveTodayCount}
+          icon={CalenderIcon}
+          badge="Workers Off-Site"
+          chartType="sparkline"
+        />
+        <StatCard
+          title="Pending Approval"
+          value={pendingCount}
+          icon={ClockIcon}
+          badge={pendingCount > 0 ? 'Awaiting Action' : 'All Clear'}
+          badgeColor="text-amber-800 bg-amber-100 border-amber-200"
+          chartType="ring"
+          percentage={leaves.length > 0 ? Math.round((pendingCount / leaves.length) * 100) : 0}
+        />
+        <StatCard
+          title="Approved Month"
+          value={approvedMonthCount}
+          icon={CheckCircleIcon}
+          badge="Active Leaves"
+          badgeColor="text-emerald-700 bg-emerald-50 border-emerald-200"
+          chartType="bar"
+          percentage={leaves.length > 0 ? Math.round((approvedMonthCount / leaves.length) * 100) : 0}
+        />
+        <StatCard
+          title="Revoked"
+          value={revokedCount}
+          icon={ErrorProfileIcon}
+          badge="Cancelled"
+          badgeColor="text-rose-700 bg-rose-50 border-rose-200"
+          chartType="ring"
+          percentage={leaves.length > 0 ? Math.round((revokedCount / leaves.length) * 100) : 0}
+        />
       </div>
 
       {/* ── 3. SEARCH & FILTER CHIPS ─────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        {/* Search bar */}
-        <div className="relative flex-1 sm:max-w-xs">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search worker or leave type..."
-            className="w-full text-xs pl-9 pr-3 py-2.5 bg-white border border-[#E8EEF4] rounded-[14px] text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#12A66A]/20 focus:border-[#12A66A]"
-          />
-        </div>
-
+      <div className="bg-white border border-[#E8EEF4] rounded-[20px] p-3.5 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
         {/* Filter Chips */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 no-scrollbar">
+        <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 scrollbar-none">
           {(
             [
-              { id: 'Today', label: 'On Leave Today', count: onLeaveTodayCount },
-              { id: 'Pending', label: 'Pending Approval', count: pendingCount },
-              { id: 'Approved', label: 'Approved', count: approvedMonthCount },
+              { id: 'Today', label: 'On Leave Today', count: onLeaveTodayCount, icon: CalenderIcon },
+              { id: 'Pending', label: 'Pending Approval', count: pendingCount, icon: ClockIcon },
+              { id: 'Approved', label: 'Approved', count: approvedMonthCount, icon: CheckCircleIcon },
               {
                 id: 'Rejected',
                 label: 'Rejected',
                 count: leaves.filter((l) => l.status === 'REJECTED').length,
+                icon: ErrorProfileIcon,
               },
               {
                 id: 'Revoked',
                 label: 'Revoked',
                 count: revokedCount,
+                icon: ErrorProfileIcon,
               },
             ] as const
           ).map((chip) => {
             const isSelected = activeFilter === chip.id;
+            const IconComponent = chip.icon;
             return (
               <button
                 key={chip.id}
                 type="button"
                 onClick={() => setActiveFilter(chip.id)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                className={`cursor-pointer whitespace-nowrap transition-all ${
                   isSelected
-                    ? 'bg-[#12A66A] text-white shadow-xs'
-                    : 'bg-white border border-[#E8EEF4] text-slate-600 hover:bg-slate-50'
+                    ? 'bg-[#1E1F24] text-white px-5 py-2.5 rounded-full text-xs font-bold shadow-xs flex items-center gap-2'
+                    : 'bg-white text-[#464853] border border-[#E8EEF4] hover:bg-[#F8FAFC] px-5 py-2.5 rounded-full text-xs font-semibold shadow-2xs flex items-center gap-2'
                 }`}
               >
+                <IconComponent className={`w-3.5 h-3.5 ${isSelected ? 'text-[#01B075]' : 'text-[#8C90A0]'}`} />
                 <span>{chip.label}</span>
                 <span
-                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                    isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                    isSelected ? 'bg-white/20 text-white' : 'bg-[#F4F6F8] text-[#464853]'
                   }`}
                 >
                   {chip.count}
@@ -366,6 +355,18 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
               </button>
             );
           })}
+        </div>
+
+        {/* Search bar */}
+        <div className="relative w-full sm:w-72">
+          <SearchIcon className="w-4 h-4 text-[#8C90A0] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search worker or leave type..."
+            className="w-full pl-10 pr-4 py-2 text-xs bg-white border border-[#E8EEF4] rounded-full text-[#1E1F24] placeholder-[#8C90A0] focus:outline-none focus:border-[#01B075] focus:ring-1 focus:ring-[#01B075] shadow-2xs transition-all font-medium"
+          />
         </div>
       </div>
 
@@ -387,8 +388,8 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
         </div>
       ) : filteredLeaves.length === 0 ? (
         <div className="p-12 text-center bg-white border border-[#E8EEF4] rounded-[20px] shadow-xs space-y-3">
-          <div className="w-12 h-12 rounded-full bg-[#E6F7EF] text-[#12A66A] flex items-center justify-center mx-auto">
-            <Palmtree className="w-6 h-6" />
+          <div className="w-12 h-12 rounded-full bg-[#E6F7EF] text-[#01B075] flex items-center justify-center mx-auto">
+            <TreeIcon className="w-6 h-6" />
           </div>
           <h4 className="text-sm sm:text-base font-bold text-slate-800">
             {activeFilter === 'Today'
@@ -424,7 +425,7 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
-                  <Calendar className="w-4 h-4 stroke-[2.2]" />
+                  <CalenderIcon className="w-4 h-4 stroke-[2.2]" />
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 text-sm m-0 leading-tight">
@@ -442,7 +443,7 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
                   onClick={() => setSelectedLeaveForDetails(null)}
                   className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
                 >
-                  <X className="w-4 h-4" />
+                  <CloseIcon className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -495,7 +496,7 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
                     Leave Period
                   </span>
                   <div className="font-bold text-slate-900 mt-1 flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-[#12A66A]" />
+                    <CalenderIcon className="w-3.5 h-3.5 text-[#01B075]" />
                     <span>
                       {selectedLeaveForDetails.startDate} to {selectedLeaveForDetails.endDate}
                     </span>
@@ -517,7 +518,7 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
               {(selectedLeaveForDetails.decisionNote || selectedLeaveForDetails.reviewerName) && (
                 <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200/60 text-xs space-y-1">
                   <div className="flex items-center gap-1.5 text-emerald-900 font-bold">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
+                    <SecuritySafeIcon className="w-3.5 h-3.5 text-emerald-700" />
                     <span>Review Decision</span>
                   </div>
                   {selectedLeaveForDetails.reviewerName && (
@@ -537,7 +538,7 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
               {selectedLeaveForDetails.status === 'REVOKED' && (
                 <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs space-y-1">
                   <div className="flex items-center gap-1.5 text-rose-900 font-bold">
-                    <Ban className="w-3.5 h-3.5 text-rose-700" />
+                    <CloseCircleIcon className="w-3.5 h-3.5 text-rose-700" />
                     <span>Revocation Record</span>
                   </div>
                   {selectedLeaveForDetails.revocationReason && (
@@ -572,15 +573,15 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
                       onClick={() => handleOpenRejectModal(selectedLeaveForDetails)}
                       className="px-4 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      <CloseIcon className="w-3.5 h-3.5" />
                       <span>Reject</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => handleOpenApproveModal(selectedLeaveForDetails)}
-                      className="px-4 py-2 rounded-xl bg-[#12A66A] hover:bg-[#0E8F5B] text-white text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                      className="px-4 py-2 rounded-xl bg-[#01B075] hover:bg-[#00925f] text-white text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
                     >
-                      <Check className="w-3.5 h-3.5" />
+                      <CheckIcon className="w-3.5 h-3.5" />
                       <span>Approve</span>
                     </button>
                   </>
@@ -592,7 +593,7 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
                     onClick={() => handleOpenRevokeModal(selectedLeaveForDetails)}
                     className="px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
                   >
-                    <Ban className="w-3.5 h-3.5 text-amber-700" />
+                    <CloseCircleIcon className="w-3.5 h-3.5 text-amber-700" />
                     <span>Revoke Leave</span>
                   </button>
                 )}
@@ -609,8 +610,8 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
             {/* Header */}
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-emerald-50/50">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-[#E6F7EF] text-[#12A66A] flex items-center justify-center shadow-2xs">
-                  <Check className="w-5 h-5 stroke-[2.5]" />
+                <div className="w-9 h-9 rounded-xl bg-[#E6F7EF] text-[#01B075] flex items-center justify-center shadow-2xs">
+                  <CheckIcon className="w-5 h-5 stroke-[2.5]" />
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 text-sm m-0">
@@ -627,7 +628,7 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
                 disabled={isSubmittingAction}
                 className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
               >
-                <X className="w-4 h-4" />
+                <CloseIcon className="w-4 h-4" />
               </button>
             </div>
 
@@ -693,7 +694,7 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
                   </>
                 ) : (
                   <>
-                    <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <CheckIcon className="w-3.5 h-3.5 stroke-[2.5]" />
                     <span>Confirm Approval</span>
                   </>
                 )}
@@ -711,7 +712,7 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-rose-50/50">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shadow-2xs">
-                  <X className="w-5 h-5 stroke-[2.5]" />
+                  <CloseIcon className="w-5 h-5 stroke-[2.5]" />
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 text-sm m-0">
@@ -728,7 +729,7 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
                 disabled={isSubmittingAction}
                 className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
               >
-                <X className="w-4 h-4" />
+                <CloseIcon className="w-4 h-4" />
               </button>
             </div>
 
@@ -799,7 +800,7 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
                   </>
                 ) : (
                   <>
-                    <X className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <CloseIcon className="w-3.5 h-3.5 stroke-[2.5]" />
                     <span>Confirm Rejection</span>
                   </>
                 )}
@@ -816,7 +817,7 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
             {/* Header */}
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-amber-50/50">
               <div className="flex items-center gap-2.5 text-amber-800 font-bold text-sm">
-                <Ban className="w-4 h-4 text-amber-600" />
+                <CloseCircleIcon className="w-4 h-4 text-amber-600" />
                 <span>Revoke Approved Leave</span>
               </div>
               <button
@@ -825,7 +826,7 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
                 disabled={isSubmittingAction}
                 className="text-slate-400 hover:text-slate-600 p-1 rounded-lg transition-colors cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <CloseIcon className="w-4 h-4" />
               </button>
             </div>
 
@@ -851,7 +852,7 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
               </div>
 
               <div className="bg-amber-50 border border-amber-200 rounded-[12px] p-3 flex items-start gap-2.5 text-xs text-amber-900">
-                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <ErrorProfileIcon className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                 <div className="leading-relaxed">
                   <strong>Notice:</strong> Revoking this leave will cancel the worker's approved leave. The dates will no longer be excused.
                 </div>
@@ -903,7 +904,7 @@ export const SupervisorLeavesTab: React.FC<SupervisorLeavesTabProps> = ({
                   </>
                 ) : (
                   <>
-                    <Ban className="w-3.5 h-3.5" />
+                    <CloseCircleIcon className="w-3.5 h-3.5" />
                     <span>Confirm Revocation</span>
                   </>
                 )}

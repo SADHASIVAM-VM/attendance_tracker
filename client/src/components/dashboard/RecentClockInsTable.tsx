@@ -133,28 +133,42 @@ export const RecentClockInsTable: React.FC<RecentClockInsTableProps> = ({
         </button>
       </div>
 
-      {/* Table Structure */}
+      {/* Table Structure matching Reference Image 1 */}
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs">
+        <table className="w-full text-left text-xs border-separate border-spacing-y-2">
           <thead>
-            <tr className="border-b border-[#F1F5F9] text-[#6B7280] font-semibold">
-              <th className="py-2.5 px-3">#</th>
+            <tr className="text-[#71737D] font-semibold text-[11px] uppercase tracking-wider">
+              <th className="py-2.5 px-4 w-10">
+                <input
+                  type="checkbox"
+                  aria-label="Select all"
+                  className="w-4 h-4 rounded border-slate-300 text-[#01B075] focus:ring-[#01B075]/20 cursor-pointer"
+                />
+              </th>
               <th className="py-2.5 px-3">Worker</th>
               <th className="py-2.5 px-3">Location</th>
               <th className="py-2.5 px-3">Clock In</th>
               <th className="py-2.5 px-3">Photo Proof</th>
               <th className="py-2.5 px-3">Status</th>
+              <th className="py-2.5 px-4 text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#F8FAFC]">
-            {MOCK_RECORDS.filter(r => filterType === 'All' || r.status === filterType).map((row, index) => (
+          <tbody>
+            {MOCK_RECORDS.filter(r => filterType === 'All' || r.status === filterType).map((row) => (
               <tr
                 key={row.id}
                 onClick={() => onSelectWorker?.(row)}
-                className="hover:bg-[#F8FAFC] transition-colors cursor-pointer group"
+                className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.02)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.04)] transition-all cursor-pointer group"
               >
-                <td className="py-3 px-3   text-[#94A3B8]">{index + 1}</td>
-                <td className="py-3 px-3">
+                <td className="py-3 px-4 first:rounded-l-xl border-y border-l border-[#F0F3F6]">
+                  <input
+                    type="checkbox"
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={`Select ${row.workerName}`}
+                    className="w-4 h-4 rounded border-slate-300 text-[#01B075] focus:ring-[#01B075]/20 cursor-pointer"
+                  />
+                </td>
+                <td className="py-3 px-3 border-y border-[#F0F3F6]">
                   <div className="flex items-center gap-2.5">
                     <img
                       src={row.avatarUrl}
@@ -162,32 +176,32 @@ export const RecentClockInsTable: React.FC<RecentClockInsTableProps> = ({
                       className="w-8 h-8 rounded-full object-cover border border-[#E2E8F0]"
                     />
                     <div>
-                      <span className="font-semibold text-[#111827] block group-hover:text-[#12A66A] transition-colors">
+                      <span className="font-semibold text-[#1E1F24] block group-hover:text-[#01B075] transition-colors">
                         {row.workerName}
                       </span>
-                      <span className="text-[10px] text-[#94A3B8]   block">
+                      <span className="text-[10px] text-[#71737D] block">
                         {row.workerCode}
                       </span>
                     </div>
                   </div>
                 </td>
-                <td className="py-3 px-3 text-[#475569]">
+                <td className="py-3 px-3 text-[#464853] border-y border-[#F0F3F6]">
                   <span className="flex items-center gap-1 font-medium">
                     <MapPin className="w-3.5 h-3.5 text-[#94A3B8] shrink-0" />
                     {row.worksite}
                   </span>
                 </td>
-                <td className="py-3 px-3   font-semibold text-[#111827]">
+                <td className="py-3 px-3 font-semibold text-[#1E1F24] border-y border-[#F0F3F6]">
                   {row.clockInTime}
                 </td>
-                <td className="py-3 px-3">
+                <td className="py-3 px-3 border-y border-[#F0F3F6]">
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       onViewPhoto?.(row);
                     }}
-                    className="relative group/photo flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 hover:border-[#12A66A] transition-all cursor-pointer"
+                    className="relative group/photo flex items-center gap-1 px-2 py-1 rounded-lg bg-[#F4F6F8] border border-slate-200 hover:border-[#01B075] transition-all cursor-pointer"
                   >
                     <img
                       src={row.photoUrl}
@@ -197,8 +211,14 @@ export const RecentClockInsTable: React.FC<RecentClockInsTableProps> = ({
                     <span className="text-[10px] font-semibold text-slate-600">View</span>
                   </button>
                 </td>
-                <td className="py-3 px-3">
+                <td className="py-3 px-3 border-y border-[#F0F3F6]">
                   {renderStatusPill(row.status)}
+                </td>
+                <td className="py-3 px-4 last:rounded-r-xl border-y border-r border-[#F0F3F6] text-right">
+                  <div className="flex items-center justify-end gap-1.5 text-slate-400 group-hover:text-[#01B075] transition-colors">
+                    <Eye className="w-4 h-4" />
+                    <span className="text-xs">&gt;</span>
+                  </div>
                 </td>
               </tr>
             ))}

@@ -2,24 +2,24 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { apiRequest } from '../../lib/api';
 import { StatusBadge } from '../../components/common/StatusBadge';
+import { StatCard } from '../../components/common/StatCard';
 import { DataTablePagination } from '../../components/ui/data-table-pagination';
 import {
-  FileEdit,
-  CheckCircle2,
-  Clock,
-  XCircle,
-  Users,
-  Search,
-  RefreshCw,
-  Check,
-  X,
-  Building2,
-  ExternalLink,
-  AlertCircle,
-  HelpCircle,
-  ShieldCheck,
-  Calendar,
-} from 'lucide-react';
+  ClockIcon,
+  CheckCircleIcon,
+  CalenderIcon,
+  SearchIcon,
+  Building1Icon,
+  GroupIcon,
+  EditProfileIcon,
+  ErrorProfileIcon,
+  CloseCircleIcon,
+  CloseIcon,
+  CheckIcon,
+  RotateCwIcon,
+  SecuritySafeIcon,
+  ArrowUpRightIcon,
+} from '@astraicons/react/linear';
 import { SupervisorWorksite } from '../../types/supervisor';
 
 type RegularizationFilter = 'approved' | 'pending' | 'rejected' | 'all';
@@ -223,7 +223,7 @@ export const SupervisorRegularizationView: React.FC<SupervisorRegularizationView
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 m-0 flex items-center gap-2">
-            <FileEdit className="w-6 h-6 text-indigo-600" />
+            <EditProfileIcon className="w-6 h-6 text-[#01B075]" />
             Worker Attendance Regularization
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
@@ -237,7 +237,7 @@ export const SupervisorRegularizationView: React.FC<SupervisorRegularizationView
           disabled={loading}
           className="px-3.5 py-2 text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer ml-auto sm:ml-0"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-indigo-600' : 'text-slate-500'}`} />
+          <RotateCwIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#01B075]' : 'text-slate-500'}`} />
           <span>Refresh</span>
         </button>
       </div>
@@ -253,9 +253,9 @@ export const SupervisorRegularizationView: React.FC<SupervisorRegularizationView
         >
           <div className="flex items-center gap-2.5">
             {message.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <CheckCircleIcon className="w-4 h-4 text-emerald-600 shrink-0" />
             ) : (
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <ErrorProfileIcon className="w-4 h-4 text-rose-600 shrink-0" />
             )}
             <span>{message.text}</span>
           </div>
@@ -269,109 +269,81 @@ export const SupervisorRegularizationView: React.FC<SupervisorRegularizationView
         </div>
       )}
 
-      {/* ── STAT CARDS (Total, Pending, Approved, Rejected) ──────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {/* 1. Approved */}
-        <button
-          type="button"
-          onClick={() => setStatusFilter('approved')}
-          className={`p-4 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
-            statusFilter === 'approved'
-              ? 'bg-[#E6F7EF] border-2 border-[#12A66A] shadow-xs ring-1 ring-[#12A66A]'
-              : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">Approved</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-          </div>
-          <div className="text-2xl font-extrabold text-[#0E8F5B] tabular-nums">{statCounts.approved}</div>
-          <span className="text-[10px] text-emerald-600/80 font-medium mt-1">Adjustments applied</span>
-        </button>
-
-        {/* 2. Pending */}
-        <button
-          type="button"
-          onClick={() => setStatusFilter('pending')}
-          className={`p-4 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
-            statusFilter === 'pending'
-              ? 'bg-amber-50 border-2 border-amber-500 shadow-xs ring-1 ring-amber-400'
-              : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">Pending</span>
-            <Clock className="w-4 h-4 text-amber-600 animate-pulse" />
-          </div>
-          <div className="text-2xl font-extrabold text-amber-700 tabular-nums">{statCounts.pending}</div>
-          <span className="text-[10px] text-amber-600/80 font-medium mt-1">Awaiting decision</span>
-        </button>
-
-        {/* 3. Rejected */}
-        <button
-          type="button"
-          onClick={() => setStatusFilter('rejected')}
-          className={`p-4 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
-            statusFilter === 'rejected'
-              ? 'bg-rose-50 border-2 border-rose-500 shadow-xs ring-1 ring-rose-400'
-              : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-rose-800 uppercase tracking-wider">Rejected</span>
-            <XCircle className="w-4 h-4 text-rose-600" />
-          </div>
-          <div className="text-2xl font-extrabold text-rose-700 tabular-nums">{statCounts.rejected}</div>
-          <span className="text-[10px] text-rose-600/80 font-medium mt-1">Requests declined</span>
-        </button>
-
-        {/* 4. All */}
-        <button
-          type="button"
-          onClick={() => setStatusFilter('all')}
-          className={`p-4 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
-            statusFilter === 'all'
-              ? 'bg-indigo-50 border-2 border-indigo-600 shadow-xs ring-1 ring-indigo-500'
-              : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-indigo-900 uppercase tracking-wider">All</span>
-            <Users className="w-4 h-4 text-indigo-600" />
-          </div>
-          <div className="text-2xl font-extrabold text-indigo-900 tabular-nums">{statCounts.all}</div>
-          <span className="text-[10px] text-indigo-600/80 font-medium mt-1">Total requests</span>
-        </button>
+      {/* ── STANDARD STAT CARDS ────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+        <div onClick={() => setStatusFilter('all')} className="cursor-pointer">
+          <StatCard
+            title="Total Requests"
+            value={statCounts.all}
+            icon={GroupIcon}
+            badge="All Regularisations"
+            chartType="sparkline"
+          />
+        </div>
+        <div onClick={() => setStatusFilter('pending')} className="cursor-pointer">
+          <StatCard
+            title="Pending Review"
+            value={statCounts.pending}
+            icon={ClockIcon}
+            badge={statCounts.pending > 0 ? 'Awaiting Action' : 'All Clear'}
+            badgeColor="text-amber-800 bg-amber-100 border-amber-200"
+            chartType="ring"
+            percentage={statCounts.all > 0 ? Math.round((statCounts.pending / statCounts.all) * 100) : 0}
+          />
+        </div>
+        <div onClick={() => setStatusFilter('approved')} className="cursor-pointer">
+          <StatCard
+            title="Approved"
+            value={statCounts.approved}
+            icon={CheckCircleIcon}
+            badge="Adjustments Applied"
+            badgeColor="text-emerald-700 bg-emerald-50 border-emerald-200"
+            chartType="bar"
+            percentage={statCounts.all > 0 ? Math.round((statCounts.approved / statCounts.all) * 100) : 0}
+          />
+        </div>
+        <div onClick={() => setStatusFilter('rejected')} className="cursor-pointer">
+          <StatCard
+            title="Rejected"
+            value={statCounts.rejected}
+            icon={ErrorProfileIcon}
+            badge="Declined"
+            badgeColor="text-rose-700 bg-rose-50 border-rose-200"
+            chartType="ring"
+            percentage={statCounts.all > 0 ? Math.round((statCounts.rejected / statCounts.all) * 100) : 0}
+          />
+        </div>
       </div>
 
       {/* ── FILTER TABS & SEARCH BAR ─────────────────────────────────────────── */}
-      <div className="bg-white border border-[#E8EEF4] rounded-[20px] p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
-        {/* Status Tab Switcher: { approved, pending, rejected, all } */}
-        <div className="flex p-1 bg-slate-100 rounded-xl gap-1 w-full sm:w-auto overflow-x-auto">
+      <div className="bg-white border border-[#E8EEF4] rounded-[20px] p-3.5 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
+        {/* Status Tab Switcher: { pending, approved, rejected, all } */}
+        <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 scrollbar-none">
           {(
             [
-              { id: 'approved', label: 'Approved', count: statCounts.approved },
-              { id: 'pending', label: 'Pending', count: statCounts.pending },
-              { id: 'rejected', label: 'Rejected', count: statCounts.rejected },
-              { id: 'all', label: 'All', count: statCounts.all },
+              { id: 'pending', label: 'Pending Review', count: statCounts.pending, icon: ClockIcon },
+              { id: 'approved', label: 'Approved', count: statCounts.approved, icon: CheckCircleIcon },
+              { id: 'rejected', label: 'Rejected', count: statCounts.rejected, icon: ErrorProfileIcon },
+              { id: 'all', label: 'All Requests', count: statCounts.all, icon: GroupIcon },
             ] as const
-          ).map(({ id, label, count }) => {
+          ).map(({ id, label, count, icon: IconComponent }) => {
             const isActive = statusFilter === id;
             return (
               <button
                 key={id}
                 type="button"
                 onClick={() => setStatusFilter(id)}
-                className={`flex-1 sm:flex-initial px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                className={`cursor-pointer whitespace-nowrap transition-all ${
                   isActive
-                    ? 'bg-white text-slate-900 shadow-2xs font-extrabold'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-[#1E1F24] text-white px-5 py-2.5 rounded-full text-xs font-bold shadow-xs flex items-center gap-2'
+                    : 'bg-white text-[#464853] border border-[#E8EEF4] hover:bg-[#F8FAFC] px-5 py-2.5 rounded-full text-xs font-semibold shadow-2xs flex items-center gap-2'
                 }`}
               >
+                <IconComponent className={`w-3.5 h-3.5 ${isActive ? 'text-[#01B075]' : 'text-[#8C90A0]'}`} />
                 <span>{label}</span>
                 <span
-                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
-                    isActive ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-700'
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                    isActive ? 'bg-white/20 text-white' : 'bg-[#F4F6F8] text-[#464853]'
                   }`}
                 >
                   {count}
@@ -383,19 +355,19 @@ export const SupervisorRegularizationView: React.FC<SupervisorRegularizationView
 
         {/* Search Input */}
         <div className="relative w-full sm:w-72">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <SearchIcon className="w-4 h-4 text-[#8C90A0] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search worker, site, reason..."
-            className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/10 transition-all shadow-2xs"
+            className="w-full pl-10 pr-8 py-2 text-xs bg-white border border-[#E8EEF4] rounded-full text-[#1E1F24] placeholder-[#8C90A0] focus:outline-none focus:border-[#01B075] focus:ring-1 focus:ring-[#01B075] shadow-2xs transition-all font-medium"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold p-0.5"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold p-0.5"
             >
               ✕
             </button>
@@ -406,12 +378,12 @@ export const SupervisorRegularizationView: React.FC<SupervisorRegularizationView
       {/* ── REGULARIZATION TABLE ────────────────────────────────────────────── */}
       {loading ? (
         <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-400 text-xs shadow-xs">
-          <RefreshCw className="w-5 h-5 animate-spin mx-auto text-[#12A66A] mb-2" />
+          <RotateCwIcon className="w-5 h-5 animate-spin mx-auto text-[#01B075] mb-2" />
           <span>Loading regularization requests...</span>
         </div>
       ) : filteredRequests.length === 0 ? (
         <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-500 shadow-xs space-y-2">
-          <ShieldCheck className="w-12 h-12 text-emerald-500 mx-auto mb-2" />
+          <SecuritySafeIcon className="w-12 h-12 text-[#01B075] mx-auto mb-2" />
           <p className="font-bold text-slate-900 text-base">
             No {statusFilter !== 'all' ? statusFilter : ''} regularization requests
           </p>
@@ -467,7 +439,7 @@ export const SupervisorRegularizationView: React.FC<SupervisorRegularizationView
                       {/* 2. Work Date */}
                       <td className="py-3 px-4 whitespace-nowrap text-xs font-semibold text-slate-800">
                         <div className="flex items-center gap-1.5">
-                          <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <CalenderIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                           <span>{item.workDate}</span>
                         </div>
                       </td>
@@ -475,7 +447,7 @@ export const SupervisorRegularizationView: React.FC<SupervisorRegularizationView
                       {/* 3. Worksite */}
                       <td className="py-3 px-4 text-xs font-semibold text-slate-800 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
-                          <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <Building1Icon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                           <span>{item.worksiteName || 'Assigned Site'}</span>
                         </div>
                       </td>
@@ -527,7 +499,7 @@ export const SupervisorRegularizationView: React.FC<SupervisorRegularizationView
                             rel="noopener noreferrer"
                             className="text-indigo-600 hover:text-indigo-800 text-[10px] font-semibold inline-flex items-center gap-1 underline mt-0.5"
                           >
-                            <ExternalLink className="w-3 h-3" />
+                            <ArrowUpRightIcon className="w-3 h-3" />
                             <span>Evidence</span>
                           </a>
                         )}
@@ -578,7 +550,7 @@ export const SupervisorRegularizationView: React.FC<SupervisorRegularizationView
                                 aria-label="Approve"
                                 className="w-8 h-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105 disabled:opacity-50"
                               >
-                                <Check className="w-4 h-4 stroke-[2.5]" />
+                                <CheckIcon className="w-4 h-4" />
                               </button>
                               <button
                                 type="button"
@@ -588,7 +560,7 @@ export const SupervisorRegularizationView: React.FC<SupervisorRegularizationView
                                 aria-label="Reject"
                                 className="w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105 disabled:opacity-50"
                               >
-                                <X className="w-4 h-4 stroke-[2.5]" />
+                                <CloseIcon className="w-4 h-4" />
                               </button>
                             </>
                           ) : (
@@ -628,7 +600,7 @@ export const SupervisorRegularizationView: React.FC<SupervisorRegularizationView
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-slate-900 m-0 flex items-center gap-2">
-                <XCircle className="w-5 h-5 text-rose-600" />
+                <CloseCircleIcon className="w-5 h-5 text-rose-600" />
                 Reject Regularization Request
               </h3>
               <button
@@ -636,7 +608,7 @@ export const SupervisorRegularizationView: React.FC<SupervisorRegularizationView
                 onClick={() => setRejectModalOpen(false)}
                 className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
               >
-                <X className="w-5 h-5" />
+                <CloseIcon className="w-5 h-5" />
               </button>
             </div>
 

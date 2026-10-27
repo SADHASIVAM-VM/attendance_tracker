@@ -1,5 +1,5 @@
 import * as React from "react"
-import { ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react"
+import { ChevronLeftIcon, ChevronRightIcon, MoreHorizontalIcon } from "@astraicons/react/linear"
 import { cn } from "cn"
 import { buttonVariants } from "./button"
 
@@ -73,7 +73,7 @@ function PaginationPrevious({
       className={cn("gap-1 pl-2 pr-2.5", className)}
       {...props}
     >
-      <ChevronLeft className="h-4 w-4" />
+      <ChevronLeftIcon className="h-4 w-4" />
       <span className="hidden sm:inline">{label}</span>
     </PaginationLink>
   )
@@ -91,7 +91,7 @@ function PaginationNext({
       {...props}
     >
       <span className="hidden sm:inline">{label}</span>
-      <ChevronRight className="h-4 w-4" />
+      <ChevronRightIcon className="h-4 w-4" />
     </PaginationLink>
   )
 }
@@ -107,7 +107,7 @@ function PaginationEllipsis({
       className={cn("flex h-8 w-8 items-center justify-center text-slate-400", className)}
       {...props}
     >
-      <MoreHorizontal className="h-4 w-4" />
+      <MoreHorizontalIcon className="h-4 w-4" />
       <span className="sr-only">More pages</span>
     </span>
   )

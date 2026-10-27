@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { apiRequest } from '../../lib/api';
 import {
-  AlertTriangle,
-  Clock,
-  FileEdit,
-  XCircle,
-  ArrowRight,
-  Check,
-  X,
-  CheckCircle2,
-  RefreshCw,
-  ExternalLink,
-} from 'lucide-react';
+  ErrorProfileIcon,
+  ClockIcon,
+  EditProfileIcon,
+  CloseCircleIcon,
+  ArrowRightIcon,
+  CheckIcon,
+  CloseIcon,
+  CheckCircleIcon,
+  RotateCwIcon,
+  ArrowUpRightIcon,
+} from '@astraicons/react/linear';
 
 interface AttendanceExceptionsSectionProps {
   worksiteId?: string;
@@ -137,7 +137,7 @@ export const AttendanceExceptionsSection: React.FC<AttendanceExceptionsSectionPr
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
-            <AlertTriangle className="w-5 h-5 stroke-[2.5]" />
+            <ErrorProfileIcon className="w-5 h-5 stroke-[2.5]" />
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -162,13 +162,13 @@ export const AttendanceExceptionsSection: React.FC<AttendanceExceptionsSectionPr
           className="text-xs font-bold text-[#12A66A] hover:underline flex items-center gap-1 cursor-pointer shrink-0 self-end sm:self-auto"
         >
           <span>Open Exceptions Center</span>
-          <ArrowRight className="w-4 h-4" />
+          <ArrowRightIcon className="w-4 h-4" />
         </button>
       </div>
 
       {actionSuccess && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold flex items-center gap-2 animate-in fade-in">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <CheckCircleIcon className="w-4 h-4 text-emerald-600 shrink-0" />
           <span>{actionSuccess}</span>
         </div>
       )}
@@ -184,7 +184,7 @@ export const AttendanceExceptionsSection: React.FC<AttendanceExceptionsSectionPr
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
           }`}
         >
-          <Clock className="w-3.5 h-3.5 text-amber-600" />
+          <ClockIcon className="w-3.5 h-3.5 text-amber-600" />
           <span>Missing Attendance</span>
           {pendingMissingCases.length > 0 && (
             <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-200 text-amber-950 font-black">
@@ -202,7 +202,7 @@ export const AttendanceExceptionsSection: React.FC<AttendanceExceptionsSectionPr
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
           }`}
         >
-          <FileEdit className="w-3.5 h-3.5 text-blue-600" />
+          <EditProfileIcon className="w-3.5 h-3.5 text-blue-600" />
           <span>Pending Regularisation</span>
           {pendingRegs.length > 0 && (
             <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-blue-200 text-blue-950 font-black">
@@ -220,7 +220,7 @@ export const AttendanceExceptionsSection: React.FC<AttendanceExceptionsSectionPr
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
           }`}
         >
-          <XCircle className="w-3.5 h-3.5 text-rose-600" />
+          <CloseCircleIcon className="w-3.5 h-3.5 text-rose-600" />
           <span>Rejected Regularisation</span>
           {rejectedRegs.length > 0 && (
             <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-rose-200 text-rose-950 font-black">
@@ -233,7 +233,7 @@ export const AttendanceExceptionsSection: React.FC<AttendanceExceptionsSectionPr
       {/* Content for Selected Category */}
       {loading ? (
         <div className="py-8 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-          <RefreshCw className="w-4 h-4 animate-spin text-[#12A66A]" />
+          <RotateCwIcon className="w-4 h-4 animate-spin text-[#12A66A]" />
           <span>Loading exception category...</span>
         </div>
       ) : (
@@ -244,7 +244,7 @@ export const AttendanceExceptionsSection: React.FC<AttendanceExceptionsSectionPr
               {yesterdayPendingCount > 0 && (
                 <div className="p-2.5 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <ErrorProfileIcon className="w-4 h-4 text-amber-600 shrink-0" />
                     <span className="font-semibold">
                       {yesterdayPendingCount} unresolved missing attendance record{yesterdayPendingCount > 1 ? 's' : ''} carried over from yesterday.
                     </span>
@@ -256,7 +256,7 @@ export const AttendanceExceptionsSection: React.FC<AttendanceExceptionsSectionPr
               {pendingMissingCases.length === 0 ? (
                 <div className="p-6 text-center bg-[#F8FAFC] border border-[#E8EEF4] rounded-xl space-y-1">
                   <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
-                    <CheckCircle2 className="w-4 h-4" />
+                    <CheckCircleIcon className="w-4 h-4" />
                   </div>
                   <p className="text-xs font-bold text-slate-700">No Missing Attendance Cases</p>
                   <p className="text-[11px] text-slate-500">
@@ -309,7 +309,7 @@ export const AttendanceExceptionsSection: React.FC<AttendanceExceptionsSectionPr
                           onClick={() => handleQuickMissingDecision(c.id, 'APPROVED')}
                           className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
                         >
-                          <Check className="w-3 h-3" />
+                          <CheckIcon className="w-3 h-3" />
                           <span>Excuse</span>
                         </button>
                         <button
@@ -317,7 +317,7 @@ export const AttendanceExceptionsSection: React.FC<AttendanceExceptionsSectionPr
                           onClick={() => handleQuickMissingDecision(c.id, 'REJECTED')}
                           className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1"
                         >
-                          <X className="w-3 h-3" />
+                          <CloseIcon className="w-3 h-3" />
                           <span>Unexcused</span>
                         </button>
                       </div>
@@ -344,7 +344,7 @@ export const AttendanceExceptionsSection: React.FC<AttendanceExceptionsSectionPr
               {pendingRegs.length === 0 ? (
                 <div className="p-6 text-center bg-[#F8FAFC] border border-[#E8EEF4] rounded-xl space-y-1">
                   <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
-                    <CheckCircle2 className="w-4 h-4" />
+                    <CheckCircleIcon className="w-4 h-4" />
                   </div>
                   <p className="text-xs font-bold text-slate-700">No Pending Regularisations</p>
                   <p className="text-[11px] text-slate-500">
@@ -379,7 +379,7 @@ export const AttendanceExceptionsSection: React.FC<AttendanceExceptionsSectionPr
                           onClick={() => handleQuickRegDecision(r.id, 'APPROVE')}
                           className="px-2.5 py-1 rounded-lg bg-[#12A66A] hover:bg-[#0E8F5B] text-white text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
                         >
-                          <Check className="w-3 h-3" />
+                          <CheckIcon className="w-3 h-3" />
                           <span>Approve</span>
                         </button>
                         <button
@@ -387,7 +387,7 @@ export const AttendanceExceptionsSection: React.FC<AttendanceExceptionsSectionPr
                           onClick={() => handleQuickRegDecision(r.id, 'REJECT')}
                           className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1"
                         >
-                          <X className="w-3 h-3" />
+                          <CloseIcon className="w-3 h-3" />
                           <span>Reject</span>
                         </button>
                       </div>
@@ -447,7 +447,7 @@ export const AttendanceExceptionsSection: React.FC<AttendanceExceptionsSectionPr
                         onClick={() => onNavigateToExceptions('rejected-regularisation')}
                         className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 text-[11px] font-bold hover:bg-slate-50 transition-colors cursor-pointer self-end sm:self-auto shrink-0 flex items-center gap-1"
                       >
-                        <ExternalLink className="w-3 h-3 text-slate-400" />
+                        <ArrowUpRightIcon className="w-3 h-3 text-slate-400" />
                         <span>Audit Record</span>
                       </button>
                     </div>

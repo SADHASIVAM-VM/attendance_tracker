@@ -2,18 +2,16 @@ import React, { useState } from 'react';
 import { SupervisorWorkerAttendance } from '../../types/supervisor';
 import { StatusPill } from './StatusPill';
 import {
-  X,
-  Check,
-  MapPin,
-  Clock,
-  AlertTriangle,
-  ZoomIn,
-  ShieldCheck,
-  FileText,
-  User,
-  RotateCcw,
-  LogOut,
-} from 'lucide-react';
+  CloseIcon,
+  CheckIcon,
+  LocationIcon,
+  ClockIcon,
+  ErrorProfileIcon,
+  SearchZoomInIcon,
+  SecuritySafeIcon,
+  NoteTextIcon,
+  Logout2Icon,
+} from '@astraicons/react/linear';
 
 interface ReviewSheetProps {
   worker: SupervisorWorkerAttendance | null;
@@ -144,7 +142,7 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = ({
               onClick={onClose}
               className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
             >
-              <X className="w-5 h-5" />
+              <CloseIcon className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -155,7 +153,7 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = ({
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-[#111827] flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-[#12A66A]" />
+                <SecuritySafeIcon className="w-4 h-4 text-[#12A66A]" />
                 Selfie Verification Proofs
               </span>
               <span className="text-[11px] text-[#64748B]">Tap photo to zoom</span>
@@ -181,7 +179,7 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = ({
                   </span>
                 </div>
                 <div className="absolute top-2 right-2 bg-black/50 backdrop-blur-xs p-1 rounded-full text-white opacity-80 group-hover:opacity-100">
-                  <ZoomIn className="w-3.5 h-3.5" />
+                  <SearchZoomInIcon className="w-3.5 h-3.5" />
                 </div>
               </div>
 
@@ -208,12 +206,12 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = ({
                       </span>
                     </div>
                     <div className="absolute top-2 right-2 bg-black/50 backdrop-blur-xs p-1 rounded-full text-white opacity-80 group-hover:opacity-100">
-                      <ZoomIn className="w-3.5 h-3.5" />
+                      <SearchZoomInIcon className="w-3.5 h-3.5" />
                     </div>
                   </>
                 ) : (
                   <div className="text-center p-3">
-                    <Clock className="w-6 h-6 text-slate-300 mx-auto mb-1" />
+                    <ClockIcon className="w-6 h-6 text-slate-300 mx-auto mb-1" />
                     <span className="text-xs font-bold text-slate-500 block">In Progress</span>
                     <span className="text-[10px] text-slate-400">Shift not yet punched out</span>
                   </div>
@@ -248,7 +246,7 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = ({
           <div className="bg-white border border-[#E8EEF4] rounded-[14px] p-3.5 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-[#111827] flex items-center gap-1.5">
-                <MapPin className="w-4 h-4 text-[#12A66A]" />
+                <LocationIcon className="w-4 h-4 text-[#12A66A]" />
                 Location & Geofence Audit
               </span>
               <span
@@ -268,12 +266,12 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = ({
 
             {worker.isWithinRadius ? (
               <div className="flex items-center gap-2 p-2 bg-[#F0FDF4] rounded-[10px] text-xs text-[#166534]">
-                <ShieldCheck className="w-4 h-4 flex-shrink-0 text-[#12A66A]" />
+                <SecuritySafeIcon className="w-4 h-4 flex-shrink-0 text-[#12A66A]" />
                 <span>Worker verified within the authorized 100m geofence perimeter.</span>
               </div>
             ) : (
               <div className="flex items-center gap-2 p-2 bg-[#FEF2F2] rounded-[10px] text-xs text-[#991B1B]">
-                <AlertTriangle className="w-4 h-4 flex-shrink-0 text-[#DC2626]" />
+                <ErrorProfileIcon className="w-4 h-4 flex-shrink-0 text-[#DC2626]" />
                 <span>Flagged: Worker punched {worker.distanceMeters}m away from site.</span>
               </div>
             )}
@@ -283,7 +281,7 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = ({
           {(worker.note || worker.decisionNote) && (
             <div className="bg-slate-50 border border-[#E8EEF4] rounded-[14px] p-3 space-y-1">
               <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
-                <FileText className="w-3.5 h-3.5 text-slate-400" />
+                <NoteTextIcon className="w-3.5 h-3.5 text-slate-400" />
                 Notes & Comments
               </span>
               {worker.note && (
@@ -300,7 +298,7 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = ({
             <div className="p-4 bg-[#FFF5F5] border border-rose-200 rounded-[16px] space-y-3 animate-in fade-in duration-150">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-[#DC2626] flex items-center gap-1.5">
-                  <AlertTriangle className="w-4 h-4" />
+                  <ErrorProfileIcon className="w-4 h-4" />
                   Select Reason for Rejection
                 </span>
                 <button
@@ -364,7 +362,7 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = ({
         <div className="p-4 border-t border-[#E8EEF4] bg-white sticky bottom-0 inset-x-0 space-y-2.5">
           {!isCurrentMonth ? (
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-[14px] text-xs text-amber-900 flex items-start gap-2.5 shadow-xs">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <ErrorProfileIcon className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div>
                 <p className="font-bold text-amber-950 m-0">Non-Current Month Record ({worker.date ? worker.date.substring(0, 7) : 'Prior'})</p>
                 <p className="mt-0.5 text-[11px] text-amber-800 m-0">
@@ -381,7 +379,7 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = ({
                   onClick={() => setShowClockOutModal(true)}
                   className="w-full py-2.5 px-4 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-[14px] text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
                 >
-                  <LogOut className="w-4 h-4 text-amber-700" />
+                  <Logout2Icon className="w-4 h-4 text-amber-700" />
                   <span>Clock Out Worker (Assisted Punch)</span>
                 </button>
               )}
@@ -396,7 +394,7 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = ({
                     }}
                     className="flex-1 py-3 border-2 border-[#DC2626] hover:bg-rose-50 text-[#DC2626] rounded-[14px] text-xs font-bold transition-all active:scale-98 flex items-center justify-center gap-1.5 cursor-pointer"
                   >
-                    <X className="w-4 h-4 stroke-[2.5]" />
+                    <CloseIcon className="w-4 h-4 stroke-[2.5]" />
                     Reject Attendance
                   </button>
 
@@ -405,7 +403,7 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = ({
                     onClick={() => onApprove(worker)}
                     className="flex-1 py-3 bg-[#12A66A] hover:bg-[#0E8F5B] text-white rounded-[14px] text-xs font-bold transition-all active:scale-98 flex items-center justify-center gap-1.5 shadow-md shadow-[#12A66A]/20 cursor-pointer"
                   >
-                    <Check className="w-4 h-4 stroke-[2.5]" />
+                    <CheckIcon className="w-4 h-4 stroke-[2.5]" />
                     Approve Attendance
                   </button>
                 </div>
@@ -426,7 +424,7 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = ({
           <div className="w-full max-w-md bg-white rounded-3xl p-6 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
             <div className="flex items-center gap-3 pb-2 border-b border-slate-100">
               <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center font-bold">
-                <LogOut className="w-5 h-5" />
+                <Logout2Icon className="w-5 h-5" />
               </div>
               <div>
                 <h3 className="text-base font-extrabold text-slate-900 leading-tight">
@@ -516,7 +514,7 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = ({
             onClick={() => setZoomedPhoto(null)}
             className="absolute top-4 right-4 text-white/80 hover:text-white p-2 rounded-full bg-white/10 backdrop-blur-md"
           >
-            <X className="w-6 h-6" />
+            <CloseIcon className="w-6 h-6" />
           </button>
           <img
             src={zoomedPhoto}

@@ -8,7 +8,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from './pagination';
-import { ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon } from '@astraicons/react/linear';
 
 export interface PaginationMetadata {
   total: number;
@@ -116,7 +116,7 @@ export const DataTablePagination: React.FC<DataTablePaginationProps> = ({
                 className="hidden sm:inline-flex px-2"
                 title="First page"
               >
-                <ChevronsLeft className="h-4 w-4" />
+                <ChevronDoubleLeftIcon className="h-4 w-4" />
               </PaginationLink>
             </PaginationItem>
 
@@ -163,7 +163,7 @@ export const DataTablePagination: React.FC<DataTablePaginationProps> = ({
                 className="hidden sm:inline-flex px-2"
                 title="Last page"
               >
-                <ChevronsRight className="h-4 w-4" />
+                <ChevronDoubleRightIcon className="h-4 w-4" />
               </PaginationLink>
             </PaginationItem>
           </PaginationContent>

@@ -1,34 +1,72 @@
-@import url('https://fonts.googleapis.com/css2?family=Onest:wght@100..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Maison Neue Typography Definitions */
+@font-face {
+  font-family: 'Maison Neue';
+  src: local('Maison Neue'), local('MaisonNeue-Book'), local('MaisonNeue'), local('MaisonNeue-Regular');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Maison Neue';
+  src: local('Maison Neue Medium'), local('MaisonNeue-Medium');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Maison Neue';
+  src: local('Maison Neue Demi'), local('MaisonNeue-Demi'), local('MaisonNeue-SemiBold');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Maison Neue';
+  src: local('Maison Neue Bold'), local('MaisonNeue-Bold');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
 
 :root {
-  /* FreshCart Visual Style Design Tokens */
-  --primary: #12A66A;
-  --primary-dark: #0E8F5B;
-  --primary-soft: #E6F7EF;
-  --primary-mint: #A8EBCB;
-  --bg-page: #F1F6FC;
+  /* Brand Tokens: Maison Neue + Reference Hex Colors */
+  --primary: #01B075;
+  --primary-dark: #018F5F;
+  --primary-soft: #E6F7F1;
+  --primary-mint: #76D4B4;
+  --primary-mint-bg: #E9F8F2;
+  
+  --dark: #1E1F24;
+  --dark-surface: #26282E;
+  --slate: #464853;
+  --slate-muted: #71737D;
+  --slate-light: #94A3B8;
+
+  --bg-page: #F4F6F8;
   --bg-card: #FFFFFF;
   --border: #E8EEF4;
-  --text-strong: #111827;
-  --text-muted: #6B7280;
+  --border-subtle: #F1F4F8;
+  --text-strong: #1E1F24;
+  --text-muted: #464853;
 
-  --success: #12A66A;
+  --success: #01B075;
   --warning: #F59E0B;
-  --danger: #E5484D;
+  --danger: #EF4444;
 
-  --font-sans: 'Plus Jakarta Sans', 'Onest', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Maison Neue', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', Consolas, monospace;
 
   /* Geometry & Shadows */
   --radius-card: 20px;
   --radius-btn: 12px;
   --radius-pill: 9999px;
-  --shadow-soft: 0 4px 20px -2px rgba(18, 166, 106, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.02);
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.02), 0 6px 16px rgba(17, 24, 39, 0.03);
-  --shadow-hover: 0 8px 24px rgba(18, 166, 106, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-soft: 0 4px 20px -2px rgba(1, 176, 117, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.02);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.02), 0 6px 16px rgba(30, 31, 36, 0.03);
+  --shadow-hover: 0 8px 24px rgba(1, 176, 117, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
 
   font-family: var(--font-sans);
   color-scheme: light;
@@ -173,4 +211,61 @@ body {
   to {
     width: 0%;
   }
+}
+
+/* Reference UI Specification Classes */
+.ref-table-card {
+  background-color: #FFFFFF;
+  border: 1px solid #EDF2F7;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.02);
+  transition: all 0.15s ease-in-out;
+}
+.ref-table-card:hover {
+  box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.04);
+  border-color: #E2E8F0;
+}
+
+.ref-pill-tab-active {
+  background-color: #1E1F24;
+  color: #FFFFFF;
+  border-radius: 9999px;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(30, 31, 36, 0.12);
+}
+
+.ref-pill-tab-inactive {
+  background-color: #FFFFFF;
+  color: #464853;
+  border: 1px solid #E2E8F0;
+  border-radius: 9999px;
+  font-weight: 500;
+}
+.ref-pill-tab-inactive:hover {
+  background-color: #F8FAFC;
+  color: #1E1F24;
+}
+
+.ref-btn-primary {
+  background-color: #01B075;
+  color: #FFFFFF;
+  border-radius: 9999px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 18px;
+  transition: all 0.15s ease-in-out;
+}
+.ref-btn-primary:hover {
+  background-color: #018F5F;
+  box-shadow: 0 4px 12px rgba(1, 176, 117, 0.25);
+}
+
+.ref-sidebar-parent-active {
+  background-color: #01B075 !important;
+  color: #FFFFFF !important;
+  border-radius: 14px;
+  box-shadow: 0 4px 14px -2px rgba(1, 176, 117, 0.35);
 }
