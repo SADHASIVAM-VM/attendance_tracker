@@ -52,7 +52,7 @@ export const SupervisorAttendanceAuditView: React.FC = () => {
       const supList = uList.filter(
         (u: any) =>
           Array.isArray(u.roles) &&
-          (u.roles.includes('SUPERVISOR') || u.roles.includes('ADMIN') || u.roles.includes('SUPER_ADMIN'))
+          (u.roles.includes('SUPERVISOR') || u.roles.includes('ADMIN'))
       );
       setSupervisors(supList);
     } catch (err) {

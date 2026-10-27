@@ -51,6 +51,16 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = ({
   const [clockOutSubmitting, setClockOutSubmitting] = useState<boolean>(false);
   const [clockOutError, setClockOutError] = useState<string>('');
 
+  const currentMonthStr = React.useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }, []);
+
+  const isCurrentMonth = React.useMemo(() => {
+    if (!worker?.date) return true;
+    return worker.date.substring(0, 7) === currentMonthStr;
+  }, [worker?.date, currentMonthStr]);
+
   if (!isOpen || !worker) return null;
 
   const handleConfirmReject = () => {
@@ -352,46 +362,60 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = ({
 
         {/* Sticky Action Bar */}
         <div className="p-4 border-t border-[#E8EEF4] bg-white sticky bottom-0 inset-x-0 space-y-2.5">
-          {/* If worker is clocked in and not clocked out, show Clock Out Worker button */}
-          {worker.clockInTime && !worker.clockOutTime && onClockOutWorker && (
-            <button
-              type="button"
-              onClick={() => setShowClockOutModal(true)}
-              className="w-full py-2.5 px-4 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-[14px] text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
-            >
-              <LogOut className="w-4 h-4 text-amber-700" />
-              <span>Clock Out Worker (Assisted Punch)</span>
-            </button>
-          )}
-
-          {/* Approve / Reject buttons displayed ONLY when status is PENDING */}
-          {worker.status === 'PENDING' ? (
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowRejectForm(!showRejectForm);
-                }}
-                className="flex-1 py-3 border-2 border-[#DC2626] hover:bg-rose-50 text-[#DC2626] rounded-[14px] text-xs font-bold transition-all active:scale-98 flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <X className="w-4 h-4 stroke-[2.5]" />
-                Reject Attendance
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onApprove(worker)}
-                className="flex-1 py-3 bg-[#12A66A] hover:bg-[#0E8F5B] text-white rounded-[14px] text-xs font-bold transition-all active:scale-98 flex items-center justify-center gap-1.5 shadow-md shadow-[#12A66A]/20 cursor-pointer"
-              >
-                <Check className="w-4 h-4 stroke-[2.5]" />
-                Approve Attendance
-              </button>
+          {!isCurrentMonth ? (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-[14px] text-xs text-amber-900 flex items-start gap-2.5 shadow-xs">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-amber-950 m-0">Non-Current Month Record ({worker.date ? worker.date.substring(0, 7) : 'Prior'})</p>
+                <p className="mt-0.5 text-[11px] text-amber-800 m-0">
+                  Supervisors can only edit current month's records ({currentMonthStr}). Prior month modifications must use the Worker Regularisation or Admin Attendance Correction workflow.
+                </p>
+              </div>
             </div>
           ) : (
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-[14px] flex items-center justify-between text-xs">
-              <span className="font-semibold text-slate-700">Attendance Decision Recorded</span>
-              <StatusPill status={worker.status} size="sm" />
-            </div>
+            <>
+              {/* If worker is clocked in and not clocked out, show Clock Out Worker button */}
+              {worker.clockInTime && !worker.clockOutTime && onClockOutWorker && (
+                <button
+                  type="button"
+                  onClick={() => setShowClockOutModal(true)}
+                  className="w-full py-2.5 px-4 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-[14px] text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                >
+                  <LogOut className="w-4 h-4 text-amber-700" />
+                  <span>Clock Out Worker (Assisted Punch)</span>
+                </button>
+              )}
+
+              {/* Approve / Reject buttons displayed ONLY when status is PENDING */}
+              {worker.status === 'PENDING' ? (
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowRejectForm(!showRejectForm);
+                    }}
+                    className="flex-1 py-3 border-2 border-[#DC2626] hover:bg-rose-50 text-[#DC2626] rounded-[14px] text-xs font-bold transition-all active:scale-98 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <X className="w-4 h-4 stroke-[2.5]" />
+                    Reject Attendance
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => onApprove(worker)}
+                    className="flex-1 py-3 bg-[#12A66A] hover:bg-[#0E8F5B] text-white rounded-[14px] text-xs font-bold transition-all active:scale-98 flex items-center justify-center gap-1.5 shadow-md shadow-[#12A66A]/20 cursor-pointer"
+                  >
+                    <Check className="w-4 h-4 stroke-[2.5]" />
+                    Approve Attendance
+                  </button>
+                </div>
+              ) : (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-[14px] flex items-center justify-between text-xs">
+                  <span className="font-semibold text-slate-700">Attendance Decision Recorded</span>
+                  <StatusPill status={worker.status} size="sm" />
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

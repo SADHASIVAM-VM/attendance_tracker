@@ -2,6 +2,7 @@ import { getDb } from '../database/db.js';
 import { auditLogs } from '../database/schema.js';
 
 export interface AuditLogParams {
+  tx?: any;
   orgId?: any;
   actorId?: any;
   actorNameSnapshot?: string;
@@ -22,10 +23,12 @@ export interface AuditLogParams {
  * Centralized Actor-Based Audit Logging Service.
  * Snapshots actor name & role from authenticated session (never trusting client parameters),
  * sets server-generated timestamps, and persists state before & after values.
+ * If `tx` is provided in params, the insert runs within the transaction and propagates errors
+ * so the enclosing transaction can roll back on failure.
  */
 export async function logAuditEvent(params: AuditLogParams) {
-  try {
-    const db = await getDb();
+  const execute = async () => {
+    const dbClient = params.tx || (await getDb());
 
     // Derive actor context securely from Express request if provided
     let derivedActorId = params.actorId || null;
@@ -54,7 +57,7 @@ export async function logAuditEvent(params: AuditLogParams) {
     const resolvedUa = Array.isArray(derivedUa) ? derivedUa[0] : derivedUa;
     const resolvedEntityId = Array.isArray(params.entityId) ? params.entityId[0] : params.entityId;
 
-    await db.insert(auditLogs).values({
+    await dbClient.insert(auditLogs).values({
       orgId: params.orgId || (params.req?.user?.orgId ?? null),
       actorId: derivedActorId,
       actorNameSnapshot: derivedActorName ? String(derivedActorName).slice(0, 255) : null,
@@ -69,8 +72,17 @@ export async function logAuditEvent(params: AuditLogParams) {
       beforeValues: params.beforeValues ? JSON.stringify(params.beforeValues) : null,
       afterValues: params.afterValues ? JSON.stringify(params.afterValues) : null,
     });
-  } catch (error) {
-    console.error('Failed to write audit log:', error);
+  };
+
+  if (params.tx) {
+    // In a transaction: throw on failure so transaction rolls back
+    await execute();
+  } else {
+    try {
+      await execute();
+    } catch (error) {
+      console.error('Failed to write audit log:', error);
+    }
   }
 }
 

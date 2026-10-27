@@ -1,10 +1,29 @@
 import bcrypt from 'bcryptjs';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import pg from 'pg'
+import pg from 'pg';
+import { eq } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import dotenv from 'dotenv';
 dotenv.config();
-import { organizations, users, userRoles, worksites, leaveTypes, siteAssignments, siteAssignmentWorkers } from '../schema.js';
+import { organizations, users, userRoles, roles, worksites, leaveTypes, siteAssignments, siteAssignmentWorkers } from '../schema.js';
+
+export const STANDARD_5_ROLES = [
+  { name: 'ADMIN', description: 'System administrator with full operations, approvals, and configuration control' },
+  { name: 'SUPERVISOR', description: 'Field and site supervisor managing team clock-ins, rosters, and daily approvals' },
+  { name: 'ENGINEER', description: 'Site engineer responsible for technical oversight, worksite execution, and asset tracking' },
+  { name: 'ACCOUNTANT', description: 'Finance and payroll accountant managing wages, allowances, expenses, and reconciliation' },
+  { name: 'WORKER', description: 'Field workforce personnel executing site tasks and logging daily attendance' },
+] as const;
+
+export async function seedRolesIfMissing(db: any) {
+  for (const r of STANDARD_5_ROLES) {
+    const existing = await db.select().from(roles).where(eq(roles.name, r.name)).limit(1);
+    if (existing.length === 0) {
+      await db.insert(roles).values(r);
+      console.log(`✅ Seeded role: ${r.name}`);
+    }
+  }
+}
 
 export async function seedDatabase() {
   try {
@@ -15,12 +34,73 @@ export async function seedDatabase() {
 
     const db = drizzle(pool, { schema });
 
-    console.log('🌱 Seeding database...');
+    console.log('🌱 Checking and seeding database roles & workforce...');
+
+    // 1. Ensure all 5 system roles exist in DB
+    await seedRolesIfMissing(db);
+
+    // Normalize any legacy SUPER_ADMIN to ADMIN
+    await db.update(userRoles).set({ role: 'ADMIN' }).where(eq(userRoles.role, 'SUPER_ADMIN'));
 
     // Check if organization already exists
     const existingOrgs = await db.select().from(organizations).limit(1);
     if (existingOrgs.length > 0) {
-      console.log('Database already has seeded organization, skipping initial seed.');
+      const org = existingOrgs[0];
+      const passwordHash = await bcrypt.hash('Password123!', 10);
+
+      // Ensure Engineer user exists
+      const existingEngineers = await db.select().from(userRoles).where(eq(userRoles.role, 'ENGINEER')).limit(1);
+      if (existingEngineers.length === 0) {
+        const [engUser] = await db.insert(users).values({
+          orgId: org.id,
+          employeeCode: 'ENG001',
+          email: 'engineer@enterprise.com',
+          fullName: 'David Chen (Site Engineer)',
+          passwordHash,
+          phone: '+1 555-0107',
+          personalEmail: 'david.chen.eng@gmail.com',
+          dob: '1989-07-19',
+          age: 37,
+          gender: 'Male',
+          bloodGroup: 'O+',
+          currentAddress: 'Tech Corridor Block 4, Industrial Area',
+          emergencyContactName: 'Grace Chen (Sister)',
+          emergencyContactPhone: '+1 555-9007',
+          photoUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&q=80',
+          employmentType: 'full-time',
+          isActive: true,
+        }).returning();
+        await db.insert(userRoles).values({ userId: engUser.id, role: 'ENGINEER' });
+        console.log('✅ Seeded Engineer user: engineer@enterprise.com');
+      }
+
+      // Ensure Accountant user exists
+      const existingAccountants = await db.select().from(userRoles).where(eq(userRoles.role, 'ACCOUNTANT')).limit(1);
+      if (existingAccountants.length === 0) {
+        const [accUser] = await db.insert(users).values({
+          orgId: org.id,
+          employeeCode: 'ACC001',
+          email: 'accountant@enterprise.com',
+          fullName: 'Nandini Roy (Payroll Accountant)',
+          passwordHash,
+          phone: '+1 555-0108',
+          personalEmail: 'nandini.roy.fin@gmail.com',
+          dob: '1991-03-12',
+          age: 35,
+          gender: 'Female',
+          bloodGroup: 'A+',
+          currentAddress: 'Finance Office Suite 200, HQ',
+          emergencyContactName: 'Sunil Roy (Spouse)',
+          emergencyContactPhone: '+1 555-9008',
+          photoUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=300&q=80',
+          employmentType: 'full-time',
+          isActive: true,
+        }).returning();
+        await db.insert(userRoles).values({ userId: accUser.id, role: 'ACCOUNTANT' });
+        console.log('✅ Seeded Accountant user: accountant@enterprise.com');
+      }
+
+      console.log('✅ All 5 roles and corresponding personnel verified in database.');
       return;
     }
 
@@ -158,12 +238,54 @@ export async function seedDatabase() {
       isActive: true,
     }).returning();
 
-    // 3. Assign Roles
+    const [engineerUser] = await db.insert(users).values({
+      orgId: org.id,
+      employeeCode: 'ENG001',
+      email: 'engineer@enterprise.com',
+      fullName: 'David Chen (Site Engineer)',
+      passwordHash,
+      phone: '+1 555-0107',
+      personalEmail: 'david.chen.eng@gmail.com',
+      dob: '1989-07-19',
+      age: 37,
+      gender: 'Male',
+      bloodGroup: 'O+',
+      currentAddress: 'Tech Corridor Block 4, Industrial Area',
+      emergencyContactName: 'Grace Chen (Sister)',
+      emergencyContactPhone: '+1 555-9007',
+      photoUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&q=80',
+      employmentType: 'full-time',
+      isActive: true,
+    }).returning();
+
+    const [accountantUser] = await db.insert(users).values({
+      orgId: org.id,
+      employeeCode: 'ACC001',
+      email: 'accountant@enterprise.com',
+      fullName: 'Nandini Roy (Payroll Accountant)',
+      passwordHash,
+      phone: '+1 555-0108',
+      personalEmail: 'nandini.roy.fin@gmail.com',
+      dob: '1991-03-12',
+      age: 35,
+      gender: 'Female',
+      bloodGroup: 'A+',
+      currentAddress: 'Finance Office Suite 200, HQ',
+      emergencyContactName: 'Sunil Roy (Spouse)',
+      emergencyContactPhone: '+1 555-9008',
+      photoUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=300&q=80',
+      employmentType: 'full-time',
+      isActive: true,
+    }).returning();
+
+    // 3. Assign 5 System Roles
     await db.insert(userRoles).values([
-      { userId: superAdminUser.id, role: 'SUPER_ADMIN' },
+      { userId: superAdminUser.id, role: 'ADMIN' },
       { userId: adminUser.id, role: 'ADMIN' },
       { userId: supervisor1.id, role: 'SUPERVISOR' },
       { userId: supervisor2.id, role: 'SUPERVISOR' },
+      { userId: engineerUser.id, role: 'ENGINEER' },
+      { userId: accountantUser.id, role: 'ACCOUNTANT' },
       { userId: worker1.id, role: 'WORKER' },
       { userId: worker2.id, role: 'WORKER' },
     ]);

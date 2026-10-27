@@ -12,6 +12,7 @@ import {
   payrollAdjustments,
   attendanceExceptions,
   organizations,
+  approvalActions,
 } from '../database/schema.js';
 import { eq, and, desc, sql, or, ne, inArray } from 'drizzle-orm';
 import { logAuditEvent } from '../utils/audit.js';
@@ -617,6 +618,10 @@ export async function approveRegularization(req: Request, res: Response): Promis
 
   const sessionUpdates: any = {
     status: 'APPROVED',
+    notes: decisionReason,
+    actionBy: reviewer.id,
+    currentApproverId: reviewer.id,
+    rejectionReason: null,
     approvedAt: now,
     approvalSource: 'SUPERVISOR_REGULARIZATION',
     updatedAt: now,
@@ -638,6 +643,23 @@ export async function approveRegularization(req: Request, res: Response): Promis
     .update(attendanceSessions)
     .set(sessionUpdates)
     .where(eq(attendanceSessions.id as any, adjustment.sessionId as any));
+
+  // Record immutable approval action
+  await db.insert(approvalActions).values({
+    sessionId: session.id,
+    workerId: session.workerId,
+    workDate: session.workDate,
+    previousStatus: session.status,
+    newStatus: 'APPROVED',
+    action: 'REGULARIZATION_APPROVED',
+    actionType: 'REGULARIZATION_APPROVED',
+    reviewerId: reviewer.id,
+    actorRole: reviewer.roles[0] || 'SUPERVISOR',
+    regularizationId: adjustment.id,
+    note: decisionReason,
+    reason: decisionReason,
+    performedAt: now,
+  });
 
   // Resolve any open missing clock-in or absence exception for this worker and date
   await db
@@ -774,6 +796,24 @@ export async function rejectRegularization(req: Request, res: Response): Promise
       updatedAt: now,
     })
     .where(eq(attendanceAdjustmentRequests.id as any, id as any));
+
+  if (session) {
+    await db.insert(approvalActions).values({
+      sessionId: session.id,
+      workerId: session.workerId,
+      workDate: session.workDate,
+      previousStatus: session.status,
+      newStatus: session.status,
+      action: 'REGULARIZATION_REJECTED',
+      actionType: 'REGULARIZATION_REJECTED',
+      reviewerId: reviewer.id,
+      actorRole: reviewer.roles[0] || 'SUPERVISOR',
+      regularizationId: adjustment.id,
+      note: decisionReason,
+      reason: decisionReason,
+      performedAt: now,
+    });
+  }
 
   // Notify requester
   await db.insert(notifications).values({

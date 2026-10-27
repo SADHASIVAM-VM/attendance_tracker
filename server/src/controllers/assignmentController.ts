@@ -33,6 +33,101 @@ const cancelAssignmentSchema = z.object({
   reason: z.string().min(3),
 });
 
+export async function getActiveWorkerConflicts(
+  db: any,
+  orgId: string,
+  targetWorksiteId: string,
+  workerIds: string[],
+  excludeAssignmentId?: string
+) {
+  if (!workerIds || workerIds.length === 0) return [];
+
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  // Find active assignments for these workers on a DIFFERENT worksite
+  const activeWorkerRows = await db
+    .select({
+      workerId: siteAssignmentWorkers.workerId,
+      workerName: users.fullName,
+      employeeCode: users.employeeCode,
+      assignmentId: siteAssignments.id,
+      groupName: siteAssignments.groupName,
+      shiftName: siteAssignments.shiftName,
+      workDate: siteAssignments.workDate,
+      carryForward: siteAssignments.carryForward,
+      status: siteAssignments.status,
+      worksiteId: worksites.id,
+      worksiteName: worksites.name,
+      worksiteCode: worksites.code,
+    })
+    .from(siteAssignmentWorkers)
+    .innerJoin(siteAssignments, eq(siteAssignmentWorkers.assignmentId, siteAssignments.id))
+    .innerJoin(worksites, eq(siteAssignments.worksiteId, worksites.id))
+    .innerJoin(users, eq(siteAssignmentWorkers.workerId, users.id))
+    .where(
+      and(
+        eq(siteAssignments.orgId as any, orgId as any),
+        inArray(siteAssignmentWorkers.workerId as any, workerIds as any),
+        sql`${siteAssignments.status} NOT IN ('CANCELLED', 'COMPLETED')`,
+        excludeAssignmentId ? sql`${siteAssignments.id} != ${excludeAssignmentId}` : sql`1=1`,
+        sql`${siteAssignments.worksiteId} != ${targetWorksiteId}`
+      )
+    );
+
+  // If assignment is not carryForward and workDate < todayStr, its scheduled duration has ended
+  const conflicts = activeWorkerRows.filter((row: any) => {
+    const isCarry = row.carryForward !== false;
+    const workDateStr = String(row.workDate).split('T')[0];
+    if (!isCarry && workDateStr < todayStr) {
+      return false;
+    }
+    return true;
+  });
+
+  return conflicts;
+}
+
+export async function getWorkerAllocations(req: Request, res: Response): Promise<any> {
+  const db = await getDb();
+  const orgId = req.user!.orgId;
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  const activeWorkerRows = await db
+    .select({
+      workerId: siteAssignmentWorkers.workerId,
+      workerName: users.fullName,
+      employeeCode: users.employeeCode,
+      assignmentId: siteAssignments.id,
+      groupName: siteAssignments.groupName,
+      shiftName: siteAssignments.shiftName,
+      workDate: siteAssignments.workDate,
+      carryForward: siteAssignments.carryForward,
+      status: siteAssignments.status,
+      worksiteId: worksites.id,
+      worksiteName: worksites.name,
+      worksiteCode: worksites.code,
+    })
+    .from(siteAssignmentWorkers)
+    .innerJoin(siteAssignments, eq(siteAssignmentWorkers.assignmentId, siteAssignments.id))
+    .innerJoin(worksites, eq(siteAssignments.worksiteId, worksites.id))
+    .innerJoin(users, eq(siteAssignmentWorkers.workerId, users.id))
+    .where(
+      and(
+        eq(siteAssignments.orgId as any, orgId as any),
+        sql`${siteAssignments.status} NOT IN ('CANCELLED', 'COMPLETED')`
+      )
+    );
+
+  const activeAllocations = activeWorkerRows.filter((row: any) => {
+    const isCarry = row.carryForward !== false;
+    const workDateStr = String(row.workDate).split('T')[0];
+    if (!isCarry && workDateStr < todayStr) return false;
+    return true;
+  });
+
+  return res.json(activeAllocations);
+}
+
 export async function getAssignments(req: Request, res: Response): Promise<any> {
   const db = await getDb();
   const orgId = req.user!.orgId;
@@ -277,6 +372,19 @@ export async function createAssignment(req: Request, res: Response): Promise<any
   const groupName = data.groupName?.trim() || data.shiftName?.trim() || 'General Group';
   const shiftName = data.shiftName?.trim() || data.groupName?.trim() || 'Standard Shift';
 
+  // Check if any worker is actively assigned to another worksite
+  if (data.workerIds.length > 0) {
+    const conflicts = await getActiveWorkerConflicts(db, orgId, data.worksiteId, data.workerIds);
+    if (conflicts.length > 0) {
+      const c = conflicts[0];
+      return res.status(409).json({
+        error: 'WORKER_ALREADY_ASSIGNED',
+        message: `Worker "${c.workerName}" (${c.employeeCode}) is already assigned to worksite "${c.worksiteName}" (${c.worksiteCode}). A worker cannot be assigned to another worksite until they are removed from their current worksite, the worksite assignment is cancelled, or the worksite duration is completed.`,
+        conflicts,
+      });
+    }
+  }
+
   const shouldPublish = data.publishImmediately !== false;
   const carryForward = data.carryForward !== false;
 
@@ -339,6 +447,19 @@ export async function updateAssignmentWorkers(req: Request, res: Response): Prom
 
   if (!assignment) {
     return res.status(404).json({ error: 'ASSIGNMENT_NOT_FOUND', message: 'Assignment not found' });
+  }
+
+  // Check if any added worker is actively assigned to another worksite
+  if (workerIds.length > 0) {
+    const conflicts = await getActiveWorkerConflicts(db, orgId, assignment.worksiteId, workerIds, id);
+    if (conflicts.length > 0) {
+      const c = conflicts[0];
+      return res.status(409).json({
+        error: 'WORKER_ALREADY_ASSIGNED',
+        message: `Worker "${c.workerName}" (${c.employeeCode}) is already assigned to worksite "${c.worksiteName}" (${c.worksiteCode}). A worker cannot be assigned to another worksite until they are removed from their current worksite, the worksite assignment is cancelled, or the worksite duration is completed.`,
+        conflicts,
+      });
+    }
   }
 
   await db.delete(siteAssignmentWorkers).where(eq(siteAssignmentWorkers.assignmentId as any, id as any));
@@ -443,6 +564,47 @@ export async function cancelAssignment(req: Request, res: Response): Promise<any
     entityType: 'SITE_ASSIGNMENT',
     entityId: id,
     afterValues: { reason },
+    ipAddress: req.ip as any,
+  });
+
+  return res.json(updated);
+}
+
+export async function completeAssignment(req: Request, res: Response): Promise<any> {
+  const { id } = req.params;
+  const db = await getDb();
+  const orgId = req.user!.orgId;
+
+  const [assignment] = await db
+    .select()
+    .from(siteAssignments)
+    .where(and(eq(siteAssignments.id as any, id as any), eq(siteAssignments.orgId as any, orgId as any)))
+    .limit(1);
+
+  if (!assignment) {
+    return res.status(404).json({ error: 'ASSIGNMENT_NOT_FOUND', message: 'Assignment not found' });
+  }
+
+  if (assignment.status === 'CANCELLED') {
+    return res.status(400).json({ error: 'ALREADY_CANCELLED', message: 'Cancelled assignment cannot be marked completed' });
+  }
+
+  const [updated] = await db
+    .update(siteAssignments)
+    .set({
+      status: 'COMPLETED',
+      updatedAt: new Date(),
+    })
+    .where(eq(siteAssignments.id as any, id as any))
+    .returning();
+
+  await logAuditEvent({
+    orgId,
+    actorId: req.user!.id,
+    action: 'COMPLETE_ASSIGNMENT',
+    entityType: 'SITE_ASSIGNMENT',
+    entityId: id,
+    afterValues: { status: 'COMPLETED' },
     ipAddress: req.ip as any,
   });
 

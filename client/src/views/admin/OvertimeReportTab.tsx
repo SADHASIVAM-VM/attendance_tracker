@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiRequest, downloadFile } from '../../lib/api';
 import { StatCard } from '../../components/common/StatCard';
+import { DataTablePagination } from '../../components/ui/data-table-pagination';
 import {
   Clock,
   CheckCircle,
@@ -25,6 +26,8 @@ export const OvertimeReportTab: React.FC = () => {
   const [endDate, setEndDate] = useState<string>('');
   const [worksiteId, setWorksiteId] = useState<string>('');
   const [otStatus, setOtStatus] = useState<string>('');
+  const [page, setPage] = useState<number>(1);
+  const [limit, setLimit] = useState<number>(10);
 
   useEffect(() => {
     loadWorksites();
@@ -250,7 +253,9 @@ export const OvertimeReportTab: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                data.workerSummaries.map((w: any) => (
+                data.workerSummaries
+                  .slice((page - 1) * limit, page * limit)
+                  .map((w: any) => (
                   <tr key={w.workerId} className="hover:bg-slate-50/50 transition-colors">
                     <td className="py-3 px-4 font-bold text-slate-900">{w.workerName}</td>
                     <td className="py-3 px-4 font-mono text-xs text-slate-500">{w.employeeCode || '—'}</td>
@@ -274,6 +279,25 @@ export const OvertimeReportTab: React.FC = () => {
             </tbody>
           </table>
         </div>
+
+        {data?.workerSummaries?.length > 0 && (
+          <DataTablePagination
+            metadata={{
+              total: data.workerSummaries.length,
+              page,
+              limit,
+              offset: (page - 1) * limit,
+              totalPages: Math.ceil(data.workerSummaries.length / limit),
+            }}
+            onPageChange={(p) => setPage(p)}
+            onLimitChange={(l) => {
+              setLimit(l);
+              setPage(1);
+            }}
+            pageSizeOptions={[10, 25, 50]}
+            isLoading={loading}
+          />
+        )}
       </div>
 
       {/* Site Summaries Table */}

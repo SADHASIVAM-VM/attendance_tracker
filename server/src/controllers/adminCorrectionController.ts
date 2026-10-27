@@ -525,6 +525,10 @@ export async function approveAdminCorrection(req: Request, res: Response): Promi
   // 3. Atomically update session and request
   const sessionUpdates: any = {
     status: 'APPROVED',
+    notes: reviewNote,
+    actionBy: admin.id,
+    currentApproverId: admin.id,
+    rejectionReason: null,
     approvedAt: now,
     approvalSource: 'ADMIN_OVERRIDE',
     exceptionStatus: 'CORRECTION_APPLIED',
@@ -562,11 +566,18 @@ export async function approveAdminCorrection(req: Request, res: Response): Promi
     .where(eq(attendanceAdjustmentRequests.id as any, id as any))
     .returning();
 
-  // 5. Insert approval action
+  // 5. Insert approval action (Immutable Attendance Audit History)
   await db.insert(approvalActions).values({
     sessionId: session.id,
+    workerId: session.workerId,
+    workDate: session.workDate,
+    previousStatus: session.status,
+    newStatus: 'APPROVED',
     action: 'ADMIN_CORRECTION_APPROVED',
+    actionType: 'ADMIN_CORRECTION_APPROVED',
     reviewerId: admin.id,
+    actorRole: admin.roles[0] || 'ADMIN',
+    regularizationId: request.id,
     note: reviewNote,
     reason: request.reason,
     performedAt: now,
@@ -693,12 +704,19 @@ export async function rejectAdminCorrection(req: Request, res: Response): Promis
     .where(eq(attendanceAdjustmentRequests.id as any, id as any))
     .returning();
 
-  // 2. Insert approval action
+  // 2. Insert approval action (Immutable Attendance Audit History)
   if (session) {
     await db.insert(approvalActions).values({
       sessionId: session.id,
+      workerId: session.workerId,
+      workDate: session.workDate,
+      previousStatus: session.status,
+      newStatus: session.status,
       action: 'ADMIN_CORRECTION_REJECTED',
+      actionType: 'ADMIN_CORRECTION_REJECTED',
       reviewerId: admin.id,
+      actorRole: admin.roles[0] || 'ADMIN',
+      regularizationId: request.id,
       note: reason,
       reason,
       performedAt: now,
@@ -1113,7 +1131,7 @@ export async function sendOverdueReminder(req: Request, res: Response): Promise<
   const [session] = await db
     .select()
     .from(attendanceSessions)
-    .where(and(eq(attendanceSessions.id, id), eq(attendanceSessions.orgId, orgId)))
+    .where(and(eq(attendanceSessions.id, String(id)), eq(attendanceSessions.orgId, orgId)))
     .limit(1);
 
   if (!session) {
@@ -1176,7 +1194,7 @@ export async function escalateOverdueApproval(req: Request, res: Response): Prom
   const [session] = await db
     .select()
     .from(attendanceSessions)
-    .where(and(eq(attendanceSessions.id, id), eq(attendanceSessions.orgId, orgId)))
+    .where(and(eq(attendanceSessions.id, String(id)), eq(attendanceSessions.orgId, orgId)))
     .limit(1);
 
   if (!session) {
@@ -1194,7 +1212,7 @@ export async function escalateOverdueApproval(req: Request, res: Response): Prom
       currentApproverId: newApprover,
       updatedAt: now,
     })
-    .where(eq(attendanceSessions.id, id))
+    .where(eq(attendanceSessions.id, String(id)))
     .returning();
 
   // Record approval action / transfer

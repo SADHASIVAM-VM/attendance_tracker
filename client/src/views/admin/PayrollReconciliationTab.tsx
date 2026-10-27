@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiRequest, downloadFile } from '../../lib/api';
 import { StatCard } from '../../components/common/StatCard';
+import { DataTablePagination } from '../../components/ui/data-table-pagination';
 import {
   DollarSign,
   Lock,
@@ -40,6 +41,8 @@ export const PayrollReconciliationTab: React.FC = () => {
   const [adjType, setAdjType] = useState<string>('HOURS_ADDITION');
   const [adjAmountOrMinutes, setAdjAmountOrMinutes] = useState<string>('');
   const [adjReason, setAdjReason] = useState<string>('');
+  const [workerPage, setWorkerPage] = useState<number>(1);
+  const [workerLimit, setWorkerLimit] = useState<number>(10);
 
   useEffect(() => {
     loadPeriods();
@@ -394,7 +397,9 @@ export const PayrollReconciliationTab: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    workers.map((w: any) => (
+                    workers
+                      .slice((workerPage - 1) * workerLimit, workerPage * workerLimit)
+                      .map((w: any) => (
                       <tr key={w.workerId} className="hover:bg-slate-50/50 transition-colors">
                         <td className="py-3 px-4 font-bold text-slate-900">
                           {w.workerName}
@@ -441,6 +446,25 @@ export const PayrollReconciliationTab: React.FC = () => {
                 </tbody>
               </table>
             </div>
+
+            {workers.length > 0 && (
+              <DataTablePagination
+                metadata={{
+                  total: workers.length,
+                  page: workerPage,
+                  limit: workerLimit,
+                  offset: (workerPage - 1) * workerLimit,
+                  totalPages: Math.ceil(workers.length / workerLimit),
+                }}
+                onPageChange={(p) => setWorkerPage(p)}
+                onLimitChange={(l) => {
+                  setWorkerLimit(l);
+                  setWorkerPage(1);
+                }}
+                pageSizeOptions={[10, 25, 50]}
+                isLoading={loadingRec}
+              />
+            )}
           </div>
 
           {/* Payroll Adjustments Audit Ledger */}

@@ -10,7 +10,7 @@ import {
   users,
   organizations,
 } from '../database/schema.js';
-import { eq, and, sql, desc } from 'drizzle-orm';
+import { eq, and, or, sql, desc, isNull } from 'drizzle-orm';
 import { logAuditEvent } from '../utils/audit.js';
 
 // Input Schemas
@@ -19,7 +19,7 @@ const supervisorClockInSchema = z.object({
   date: z.string().optional(),
   latitude: z.number().min(-90).max(90).nullable().optional(),
   longitude: z.number().min(-180).max(180).nullable().optional(),
-  reportedAccuracyMeters: z.number().positive().nullable().optional(),
+  reportedAccuracyMeters: z.number().nonnegative().nullable().optional(),
   photoObjectKey: z.string().optional(),
   idempotencyKey: z.string().optional(),
   clientDeviceInfo: z.string().optional(),
@@ -31,7 +31,7 @@ const supervisorLocationSwitchSchema = z.object({
   date: z.string().optional(),
   latitude: z.number().min(-90).max(90).nullable().optional(),
   longitude: z.number().min(-180).max(180).nullable().optional(),
-  reportedAccuracyMeters: z.number().positive().nullable().optional(),
+  reportedAccuracyMeters: z.number().nonnegative().nullable().optional(),
   clientDeviceInfo: z.string().optional(),
 });
 
@@ -40,7 +40,7 @@ const supervisorClockOutSchema = z.object({
   date: z.string().optional(),
   latitude: z.number().min(-90).max(90).nullable().optional(),
   longitude: z.number().min(-180).max(180).nullable().optional(),
-  reportedAccuracyMeters: z.number().positive().nullable().optional(),
+  reportedAccuracyMeters: z.number().nonnegative().nullable().optional(),
   photoObjectKey: z.string().optional(),
   clientDeviceInfo: z.string().optional(),
 });
@@ -671,20 +671,55 @@ export async function supervisorClockOut(req: Request, res: Response): Promise<a
       : null;
 
   // 1. Fetch active session
-  const [session] = await db
-    .select()
-    .from(attendanceSessions)
-    .where(
-      rawSessionId
-        ? and(eq(attendanceSessions.id as any, rawSessionId as any), eq(attendanceSessions.workerId, supervisorId))
-        : and(
-            eq(attendanceSessions.workerId, supervisorId),
-            eq(attendanceSessions.orgId, orgId),
-            sql`DATE(${attendanceSessions.workDate}) = ${todayStr}`
-          )
-    )
-    .orderBy(desc(attendanceSessions.createdAt))
-    .limit(1);
+  let session: any = null;
+
+  if (rawSessionId) {
+    const [foundById] = await db
+      .select()
+      .from(attendanceSessions)
+      .where(
+        and(
+          eq(attendanceSessions.id as any, rawSessionId as any),
+          eq(attendanceSessions.workerId, supervisorId)
+        )
+      )
+      .limit(1);
+    session = foundById;
+  }
+
+  // Fallback 1: Find currently open shift (clockOutTime IS NULL)
+  if (!session) {
+    const [openSession] = await db
+      .select()
+      .from(attendanceSessions)
+      .where(
+        and(
+          eq(attendanceSessions.workerId, supervisorId),
+          eq(attendanceSessions.orgId, orgId),
+          isNull(attendanceSessions.clockOutTime)
+        )
+      )
+      .orderBy(desc(attendanceSessions.createdAt))
+      .limit(1);
+    session = openSession;
+  }
+
+  // Fallback 2: Find by work date
+  if (!session) {
+    const [byDateSession] = await db
+      .select()
+      .from(attendanceSessions)
+      .where(
+        and(
+          eq(attendanceSessions.workerId, supervisorId),
+          eq(attendanceSessions.orgId, orgId),
+          sql`DATE(${attendanceSessions.workDate}) = ${todayStr}`
+        )
+      )
+      .orderBy(desc(attendanceSessions.createdAt))
+      .limit(1);
+    session = byDateSession;
+  }
 
   if (!session) {
     return res.status(404).json({
@@ -792,19 +827,34 @@ export async function getActiveSession(req: Request, res: Response): Promise<any
   const targetDate = String(req.query.date || new Date().toISOString().split('T')[0]);
   const now = new Date();
 
-  // Fetch today's session
-  const [session] = await db
+  // Fetch today's session: Check for open active shift first
+  let [session] = await db
     .select()
     .from(attendanceSessions)
     .where(
       and(
         eq(attendanceSessions.workerId, supervisorId),
         eq(attendanceSessions.orgId, orgId),
-        sql`DATE(${attendanceSessions.workDate}) = ${targetDate}`
+        isNull(attendanceSessions.clockOutTime)
       )
     )
     .orderBy(desc(attendanceSessions.createdAt))
     .limit(1);
+
+  if (!session) {
+    [session] = await db
+      .select()
+      .from(attendanceSessions)
+      .where(
+        and(
+          eq(attendanceSessions.workerId, supervisorId),
+          eq(attendanceSessions.orgId, orgId),
+          sql`DATE(${attendanceSessions.workDate}) = ${targetDate}`
+        )
+      )
+      .orderBy(desc(attendanceSessions.createdAt))
+      .limit(1);
+  }
 
   if (!session) {
     const assignedLocations = await getSupervisorAssignedLocationsHelper(

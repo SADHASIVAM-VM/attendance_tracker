@@ -50,7 +50,7 @@ export interface SupervisorWorkerAttendance {
   shiftName?: string;
 }
 
-export type LeaveFilter = 'Today' | 'Pending' | 'Approved' | 'Rejected';
+export type LeaveFilter = 'Today' | 'Pending' | 'Approved' | 'Rejected' | 'Revoked';
 
 export interface WorkerLeaveItem {
   id: string;
@@ -58,15 +58,22 @@ export interface WorkerLeaveItem {
   workerName: string;
   workerAvatar: string;
   workerRole: string;
-  leaveType: 'Casual Leave' | 'Sick Leave' | 'Privilege Leave' | 'Emergency';
+  leaveType: string;
   startDate: string;
   endDate: string;
   daysCount: number;
   reason: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'REVOKED' | 'CANCELLED';
   isApprovedByAdmin: boolean;
   appliedOn: string;
   worksiteId: string;
+  decisionNote?: string;
+  decidedAt?: string;
+  revokedAt?: string;
+  revokedBy?: string;
+  revokedByName?: string;
+  revocationReason?: string;
+  reviewerName?: string;
 }
 
 export type SpendCategory = 'Materials' | 'Food' | 'Transport' | 'Worker payment' | 'Other';
@@ -149,5 +156,5 @@ export interface MissingClockInCase {
   resolvedAt?: string | null;
 }
 
-export type SupervisorTabId = 'home' | 'attendance' | 'leaves' | 'spend' | 'history' | 'profile';
+export type SupervisorTabId = 'home' | 'attendance' | 'regularization' | 'leaves' | 'spend' | 'history' | 'profile' | 'exceptions' | 'attendance-exceptions';
 

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { apiRequest } from '../../lib/api';
 import { StatusBadge } from '../../components/common/StatusBadge';
+import { DataTablePagination } from '../../components/ui/data-table-pagination';
 import {
   FileEdit,
   CheckCircle2,
@@ -29,11 +31,29 @@ interface SupervisorRegularizationViewProps {
 export const SupervisorRegularizationView: React.FC<SupervisorRegularizationViewProps> = ({
   currentWorksite,
 }) => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const qStatus = (searchParams.get('status') || 'pending').toLowerCase() as RegularizationFilter;
+  const statusFilter: RegularizationFilter = ['approved', 'pending', 'rejected', 'all'].includes(qStatus)
+    ? qStatus
+    : 'pending';
+
+  const setStatusFilter = (st: RegularizationFilter) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('status', st);
+      return next;
+    });
+    setPage(1);
+  };
+
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [statusFilter, setStatusFilter] = useState<RegularizationFilter>('pending');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  // Pagination fixed at default 10 per page
+  const [page, setPage] = useState<number>(1);
+  const [limit, setLimit] = useState<number>(10);
 
   // Rejection Modal State
   const [rejectModalOpen, setRejectModalOpen] = useState<boolean>(false);
@@ -107,6 +127,17 @@ export const SupervisorRegularizationView: React.FC<SupervisorRegularizationView
       return true;
     });
   }, [requests, statusFilter, searchQuery]);
+
+  const paginatedRequests = useMemo(() => {
+    const start = (page - 1) * limit;
+    return filteredRequests.slice(start, start + limit);
+  }, [filteredRequests, page, limit]);
+
+  const formatPunchTime = (timeStr?: string | null) => {
+    if (!timeStr) return null;
+    const d = new Date(timeStr);
+    return isNaN(d.getTime()) ? timeStr : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
 
   // Approve handler
   const handleApprove = async (id: string, workerName: string) => {
@@ -372,19 +403,11 @@ export const SupervisorRegularizationView: React.FC<SupervisorRegularizationView
         </div>
       </div>
 
-      {/* ── REGULARIZATION CARDS GRID ────────────────────────────────────────── */}
+      {/* ── REGULARIZATION TABLE ────────────────────────────────────────────── */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div
-              key={i}
-              className="bg-white rounded-2xl border border-slate-200 p-5 space-y-3 animate-pulse"
-            >
-              <div className="h-4 w-32 bg-slate-200 rounded" />
-              <div className="h-16 bg-slate-100 rounded-xl" />
-              <div className="h-8 bg-slate-200 rounded-xl" />
-            </div>
-          ))}
+        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-400 text-xs shadow-xs">
+          <RefreshCw className="w-5 h-5 animate-spin mx-auto text-[#12A66A] mb-2" />
+          <span>Loading regularization requests...</span>
         </div>
       ) : filteredRequests.length === 0 ? (
         <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-500 shadow-xs space-y-2">
@@ -399,154 +422,203 @@ export const SupervisorRegularizationView: React.FC<SupervisorRegularizationView
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredRequests.map((item) => {
-            const isPending = item.status === 'PENDING';
-            const isApproved = item.status === 'APPROVED';
-            const isRejected = item.status === 'REJECTED';
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[11px] font-bold uppercase tracking-wider">
+                <tr>
+                  <th className="py-3 px-4">Worker</th>
+                  <th className="py-3 px-4">Work Date</th>
+                  <th className="py-3 px-4">Worksite</th>
+                  <th className="py-3 px-4">Correction Type</th>
+                  <th className="py-3 px-4">Requested Times</th>
+                  <th className="py-3 px-4">Worker Justification</th>
+                  <th className="py-3 px-4">Supervisor Notes</th>
+                  <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {paginatedRequests.map((item) => {
+                  const isPending = item.status === 'PENDING';
 
-            return (
-              <div
-                key={item.id}
-                className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs hover:border-slate-300 transition-all space-y-3.5 flex flex-col justify-between"
-              >
-                {/* Header: Worker Name + Emp ID + Status Badge */}
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <h3 className="font-bold text-slate-900 text-base m-0 flex items-center gap-1.5">
-                      {item.workerName}
-                    </h3>
-                    <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500">
-                      <span className="font-mono font-semibold text-slate-700">{item.employeeCode}</span>
-                      <span>•</span>
-                      <span className="flex items-center gap-1">
-                        <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                        {item.worksiteName}
-                      </span>
-                    </div>
-                  </div>
-                  <StatusBadge status={item.status} />
-                </div>
+                  return (
+                    <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
+                      {/* 1. Worker */}
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={
+                              item.workerAvatar ||
+                              `https://ui-avatars.com/api/?name=${encodeURIComponent(item.workerName || 'Worker')}&background=0D8ABC&color=fff`
+                            }
+                            alt={item.workerName}
+                            className="w-8 h-8 rounded-xl object-cover border border-slate-200 shrink-0"
+                          />
+                          <div>
+                            <span className="font-bold text-slate-900 block leading-tight">{item.workerName}</span>
+                            <span className="text-[11px] font-mono text-slate-400">
+                              {item.employeeCode || 'EMP-NA'}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
 
-                {/* Details Box: Work Date, Correction Type, Timestamps */}
-                <div className="space-y-2 text-xs bg-slate-50 p-3.5 rounded-xl border border-slate-100">
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-500 font-medium">Work Date:</span>
-                    <span className="font-bold text-slate-900 flex items-center gap-1">
-                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                      {item.workDate}
-                    </span>
-                  </div>
+                      {/* 2. Work Date */}
+                      <td className="py-3 px-4 whitespace-nowrap text-xs font-semibold text-slate-800">
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span>{item.workDate}</span>
+                        </div>
+                      </td>
 
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-500 font-medium">Correction Type:</span>
-                    <span className="font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
-                      {(item.correctionType || 'INCORRECT_HOURS').replace(/_/g, ' ')}
-                    </span>
-                  </div>
+                      {/* 3. Worksite */}
+                      <td className="py-3 px-4 text-xs font-semibold text-slate-800 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span>{item.worksiteName || 'Assigned Site'}</span>
+                        </div>
+                      </td>
 
-                  <div className="border-t border-slate-200/80 pt-2 space-y-1.5">
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-500">Proposed Clock In:</span>
-                      <span className="font-semibold text-indigo-900 tabular-nums">
-                        {item.proposedClockInTime
-                          ? new Date(item.proposedClockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                          : 'Unchanged'}
-                        {item.originalClockInTime && (
-                          <span className="text-slate-400 text-[11px] ml-1.5 font-normal">
-                            (was {new Date(item.originalClockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
-                          </span>
+                      {/* 4. Correction Type */}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-purple-50 text-purple-800 border border-purple-200">
+                          {(item.correctionType || 'OTHER').replace(/_/g, ' ')}
+                        </span>
+                      </td>
+
+                      {/* 5. Requested Times */}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <div className="space-y-0.5 text-xs font-mono">
+                          <div>
+                            <span className="text-slate-400 text-[10px] uppercase font-sans mr-1">In:</span>
+                            <span className="font-semibold text-emerald-700">
+                              {formatPunchTime(item.proposedClockInTime) || 'Unchanged'}
+                            </span>
+                            {item.originalClockInTime && (
+                              <span className="text-slate-400 text-[10px] ml-1 font-normal font-sans">
+                                (was {formatPunchTime(item.originalClockInTime)})
+                              </span>
+                            )}
+                          </div>
+                          <div>
+                            <span className="text-slate-400 text-[10px] uppercase font-sans mr-1">Out:</span>
+                            <span className="font-semibold text-blue-700">
+                              {formatPunchTime(item.proposedClockOutTime) || 'Unchanged'}
+                            </span>
+                            {item.originalClockOutTime && (
+                              <span className="text-slate-400 text-[10px] ml-1 font-normal font-sans">
+                                (was {formatPunchTime(item.originalClockOutTime)})
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* 6. Worker Justification */}
+                      <td className="py-3 px-4 max-w-xs text-xs">
+                        <span className="text-slate-800 font-medium block truncate" title={item.reason}>
+                          {item.reason || '—'}
+                        </span>
+                        {item.supportingEvidenceUrl && (
+                          <a
+                            href={item.supportingEvidenceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-indigo-600 hover:text-indigo-800 text-[10px] font-semibold inline-flex items-center gap-1 underline mt-0.5"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            <span>Evidence</span>
+                          </a>
                         )}
-                      </span>
-                    </div>
+                      </td>
 
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-500">Proposed Clock Out:</span>
-                      <span className="font-semibold text-indigo-900 tabular-nums">
-                        {item.proposedClockOutTime
-                          ? new Date(item.proposedClockOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                          : 'Unchanged'}
-                        {item.originalClockOutTime && (
-                          <span className="text-slate-400 text-[11px] ml-1.5 font-normal">
-                            (was {new Date(item.originalClockOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
-                          </span>
+                      {/* 7. Supervisor Notes */}
+                      <td className="py-3 px-4 max-w-xs text-xs">
+                        {item.reviewNote ? (
+                          <div className="space-y-0.5">
+                            <span className="text-slate-800 font-medium block truncate" title={item.reviewNote}>
+                              {item.reviewNote}
+                            </span>
+                            {item.reviewedAt && (
+                              <span className="text-[10px] text-slate-400 font-mono block">
+                                {new Date(item.reviewedAt).toLocaleDateString([], {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                })}
+                                {' • '}
+                                {new Date(item.reviewedAt).toLocaleTimeString([], {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-300 font-normal">—</span>
                         )}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                      </td>
 
-                {/* Worker Justification */}
-                <div className="text-xs p-3 bg-amber-50/80 rounded-xl border border-amber-200/60 text-amber-950">
-                  <span className="font-bold block text-[10px] uppercase tracking-wider text-amber-800">
-                    Worker Justification
-                  </span>
-                  <p className="mt-1 font-medium leading-relaxed">{item.reason}</p>
-                </div>
+                      {/* 8. Status */}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <StatusBadge status={item.status} />
+                      </td>
 
-                {/* Evidence Link if provided */}
-                {item.supportingEvidenceUrl && (
-                  <div className="text-xs">
-                    <a
-                      href={item.supportingEvidenceUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-indigo-600 hover:text-indigo-800 font-semibold inline-flex items-center gap-1 underline"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      View Supporting Document / Evidence
-                    </a>
-                  </div>
-                )}
+                      {/* 9. Actions */}
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {isPending ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleApprove(item.id, item.workerName)}
+                                disabled={isSubmitting}
+                                title="Approve"
+                                aria-label="Approve"
+                                className="w-8 h-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105 disabled:opacity-50"
+                              >
+                                <Check className="w-4 h-4 stroke-[2.5]" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openRejectModal(item)}
+                                disabled={isSubmitting}
+                                title="Reject"
+                                aria-label="Reject"
+                                className="w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105 disabled:opacity-50"
+                              >
+                                <X className="w-4 h-4 stroke-[2.5]" />
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-slate-300 font-normal">—</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
-                {/* Reviewer Note (if already decided) */}
-                {(isApproved || isRejected) && item.reviewNote && (
-                  <div
-                    className={`text-xs p-3 rounded-xl border ${
-                      isApproved
-                        ? 'bg-emerald-50 border-emerald-100 text-emerald-950'
-                        : 'bg-rose-50 border-rose-100 text-rose-950'
-                    }`}
-                  >
-                    <span className="font-bold block text-[10px] uppercase tracking-wider">
-                      Supervisor Decision Note
-                    </span>
-                    <p className="mt-1">{item.reviewNote}</p>
-                    {item.reviewedAt && (
-                      <span className="text-[10px] opacity-75 mt-1 block">
-                        Reviewed on {new Date(item.reviewedAt).toLocaleString()}
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {/* Action Buttons for Pending */}
-                {isPending && (
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      type="button"
-                      disabled={isSubmitting}
-                      onClick={() => handleApprove(item.id, item.workerName)}
-                      className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-colors"
-                    >
-                      <Check className="w-4 h-4" />
-                      Approve Correction
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={isSubmitting}
-                      onClick={() => openRejectModal(item)}
-                      className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-colors"
-                    >
-                      <X className="w-4 h-4" />
-                      Reject
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          <DataTablePagination
+            metadata={{
+              total: filteredRequests.length,
+              page,
+              limit,
+              offset: (page - 1) * limit,
+              totalPages: Math.ceil(filteredRequests.length / limit) || 1,
+            }}
+            onPageChange={(p) => setPage(p)}
+            onLimitChange={(l) => {
+              setLimit(l);
+              setPage(1);
+            }}
+            pageSizeOptions={[10, 25, 50]}
+            isLoading={loading}
+          />
         </div>
       )}
 

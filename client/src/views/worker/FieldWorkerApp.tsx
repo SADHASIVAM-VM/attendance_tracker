@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest, uploadPhotoRequest } from '../../lib/api';
 import { calculateHaversineDistance } from '../../lib/geo';
@@ -45,9 +46,21 @@ import {
 
 export const FieldWorkerApp: React.FC = () => {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  // Tab navigation
-  const [activeTab, setActiveTab] = useState<'clock-in' | 'attendance' | 'leaves' | 'profile'>('clock-in');
+  // Derive active tab from current route path
+  const activeTab: 'clock-in' | 'attendance' | 'leaves' | 'profile' = useMemo(() => {
+    const p = location.pathname.toLowerCase();
+    if (p.includes('/attendance')) return 'attendance';
+    if (p.includes('/leaves')) return 'leaves';
+    if (p.includes('/profile')) return 'profile';
+    return 'clock-in';
+  }, [location.pathname]);
+
+  const handleTabClick = (tab: 'clock-in' | 'attendance' | 'leaves' | 'profile') => {
+    navigate(`/worker/${tab}`);
+  };
 
   // Preferences & Accessibility
   const [language, setLanguage] = useState<LanguageCode>(() => {
@@ -899,7 +912,7 @@ export const FieldWorkerApp: React.FC = () => {
                 shiftStartTime: selectedAssignment?.shiftStartTime,
                 shiftEndTime: selectedAssignment?.shiftEndTime,
               }}
-              onNavigateToday={() => setActiveTab('clock-in')}
+              onNavigateToday={() => handleTabClick('clock-in')}
             />
           </div>
         )}
@@ -1033,7 +1046,7 @@ export const FieldWorkerApp: React.FC = () => {
               <button
                 key={id}
                 type="button"
-                onClick={() => setActiveTab(id as any)}
+                onClick={() => handleTabClick(id as any)}
                 className={`flex flex-col items-center gap-0.5 min-w-0 flex-1 py-1 rounded-2xl transition-all cursor-pointer ${
                   isActive ? 'text-[#12A66A]' : 'text-[#94A3B8] hover:text-slate-600'
                 }`}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { MissingClockInCase, AttendanceFlagStatus } from '../../types/supervisor';
 import {
   AlertTriangle,
@@ -17,8 +17,10 @@ import {
   X,
   Phone,
   Info,
+  FileEdit,
 } from 'lucide-react';
 import { apiRequest } from '../../lib/api';
+import { DataTablePagination } from '../ui/data-table-pagination';
 
 interface MissingClockInManagerProps {
   cases: MissingClockInCase[];
@@ -42,10 +44,14 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
 
-  const openReviewModal = (item: MissingClockInCase) => {
+  // Pagination fixed at default 10 per page
+  const [page, setPage] = useState<number>(1);
+  const [limit, setLimit] = useState<number>(10);
+
+  const openReviewModal = (item: MissingClockInCase, initialDecision?: AttendanceFlagStatus) => {
     setSelectedCaseForReview(item);
-    setFlagDecision(item.flagStatus || 'APPROVED');
-    setFlagReason(item.reason || 'Transit / Traffic Delay');
+    setFlagDecision(initialDecision || item.flagStatus || 'APPROVED');
+    setFlagReason(item.reason || (initialDecision === 'REJECTED' ? 'Unexcused Absence' : 'Transit / Traffic Delay'));
     setCustomReason('');
     setFlagNote(item.note || '');
   };
@@ -67,9 +73,11 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
         setIsSubmitting(false);
         return;
       }
-      await apiRequest(`/attendance/missing-clock-ins/${selectedCaseForReview.id}/flag`, {
+      await apiRequest(`/attendance/missing-clock-ins/${selectedCaseForReview.id}/resolve`, {
         method: 'POST',
         body: JSON.stringify({
+          action: flagDecision === 'APPROVED' ? 'MARK_PRESENT' : flagDecision === 'REJECTED' ? 'MARK_ABSENT' : 'KEEP_PENDING',
+          decision: flagDecision === 'APPROVED' ? 'PRESENT' : flagDecision === 'REJECTED' ? 'ABSENT' : 'PENDING',
           status: flagDecision,
           reason: finalReason,
           note: flagNote.trim() || undefined,
@@ -87,19 +95,38 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
     }
   };
 
-  const filteredCases = cases.filter((c) => {
-    if (filter === 'ALL') return true;
-    if (filter === 'RESOLVED') return c.resolvedByClockIn;
-    if (filter === 'PENDING_REVIEW') return c.flagStatus === 'PENDING_REVIEW' && !c.resolvedByClockIn;
-    if (filter === 'APPROVED') return c.flagStatus === 'APPROVED';
-    if (filter === 'REJECTED') return c.flagStatus === 'REJECTED';
-    return true;
-  });
+  // Filter cases to strictly ONLY today's missing date
+  const todayOnlyCases = useMemo(() => {
+    return cases.filter((c) => {
+      if (c.isYesterday) return false;
+      if (c.workDate) {
+        const wDate = c.workDate.split('T')[0];
+        if (selectedDate && wDate !== selectedDate) return false;
+      }
+      return true;
+    });
+  }, [cases, selectedDate]);
 
-  const pendingReviewCount = cases.filter((c) => c.flagStatus === 'PENDING_REVIEW' && !c.resolvedByClockIn).length;
-  const approvedCount = cases.filter((c) => c.flagStatus === 'APPROVED').length;
-  const rejectedCount = cases.filter((c) => c.flagStatus === 'REJECTED').length;
-  const resolvedCount = cases.filter((c) => c.resolvedByClockIn).length;
+  const filteredCases = useMemo(() => {
+    return todayOnlyCases.filter((c) => {
+      if (filter === 'ALL') return true;
+      if (filter === 'RESOLVED') return c.resolvedByClockIn;
+      if (filter === 'PENDING_REVIEW') return c.flagStatus === 'PENDING_REVIEW' && !c.resolvedByClockIn;
+      if (filter === 'APPROVED') return c.flagStatus === 'APPROVED';
+      if (filter === 'REJECTED') return c.flagStatus === 'REJECTED';
+      return true;
+    });
+  }, [todayOnlyCases, filter]);
+
+  const paginatedCases = useMemo(() => {
+    const start = (page - 1) * limit;
+    return filteredCases.slice(start, start + limit);
+  }, [filteredCases, page, limit]);
+
+  const pendingReviewCount = todayOnlyCases.filter((c) => c.flagStatus === 'PENDING_REVIEW' && !c.resolvedByClockIn).length;
+  const approvedCount = todayOnlyCases.filter((c) => c.flagStatus === 'APPROVED').length;
+  const rejectedCount = todayOnlyCases.filter((c) => c.flagStatus === 'REJECTED').length;
+  const resolvedCount = todayOnlyCases.filter((c) => c.resolvedByClockIn).length;
 
   return (
     <div className="space-y-4 animate-in fade-in duration-150">
@@ -111,7 +138,7 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
         <div className="flex-1 text-xs">
           <h4 className="font-bold text-amber-900 text-sm">Supervisor Missing Clock-In Review</h4>
           <p className="text-amber-700 mt-0.5 leading-relaxed">
-            Workers listed here have not clocked in past their scheduled start time + 15 min grace period, with no approved leave on file.
+            Workers listed here have not clocked in past their scheduled start time + 15 min grace period for today ({selectedDate}), with no approved leave on file.
             Supervisors review these cases to flag explanations as <strong>Approved</strong> or <strong>Rejected</strong>.
           </p>
           <div className="mt-2 text-[11px] font-semibold text-amber-800 bg-amber-100/60 rounded-lg p-2 border border-amber-200 inline-block">
@@ -136,15 +163,7 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
         <div className="bg-white border border-[#E8EEF4] rounded-[16px] p-3 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 mb-1">
-            <span className="text-[11px] font-semibold">Pending Review</span>
-            <HelpCircle className="w-3.5 h-3.5 text-amber-500" />
-          </div>
-          <div className="text-xl font-bold text-slate-900">{pendingReviewCount}</div>
-        </div>
-
-        <div className="bg-white border border-[#E8EEF4] rounded-[16px] p-3 shadow-xs">
-          <div className="flex items-center justify-between text-slate-500 mb-1">
-            <span className="text-[11px] font-semibold">Approved Flags</span>
+            <span className="text-[11px] font-semibold">Approve</span>
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
           </div>
           <div className="text-xl font-bold text-slate-900">{approvedCount}</div>
@@ -152,7 +171,7 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
 
         <div className="bg-white border border-[#E8EEF4] rounded-[16px] p-3 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 mb-1">
-            <span className="text-[11px] font-semibold">Rejected Flags</span>
+            <span className="text-[11px] font-semibold">Absent</span>
             <XCircle className="w-3.5 h-3.5 text-rose-500" />
           </div>
           <div className="text-xl font-bold text-slate-900">{rejectedCount}</div>
@@ -160,7 +179,15 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
 
         <div className="bg-white border border-[#E8EEF4] rounded-[16px] p-3 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 mb-1">
-            <span className="text-[11px] font-semibold">Resolved Later</span>
+            <span className="text-[11px] font-semibold">Pending</span>
+            <HelpCircle className="w-3.5 h-3.5 text-amber-500" />
+          </div>
+          <div className="text-xl font-bold text-slate-900">{pendingReviewCount}</div>
+        </div>
+
+        <div className="bg-white border border-[#E8EEF4] rounded-[16px] p-3 shadow-xs">
+          <div className="flex items-center justify-between text-slate-500 mb-1">
+            <span className="text-[11px] font-semibold">Clocked In Later</span>
             <Clock className="w-3.5 h-3.5 text-blue-500" />
           </div>
           <div className="text-xl font-bold text-slate-900">{resolvedCount}</div>
@@ -170,10 +197,10 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
       {/* ── Filter Chips ────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
         {[
-          { id: 'ALL', label: 'All Cases', count: cases.length },
-          { id: 'PENDING_REVIEW', label: 'Needs Review', count: pendingReviewCount },
-          { id: 'APPROVED', label: 'Approved Flags', count: approvedCount },
-          { id: 'REJECTED', label: 'Rejected Flags', count: rejectedCount },
+          { id: 'ALL', label: 'All Cases', count: todayOnlyCases.length },
+          { id: 'APPROVED', label: 'Approve', count: approvedCount },
+          { id: 'REJECTED', label: 'Absent', count: rejectedCount },
+          { id: 'PENDING_REVIEW', label: 'Pending', count: pendingReviewCount },
           { id: 'RESOLVED', label: 'Clocked In Later', count: resolvedCount },
         ].map((tab) => {
           const isSelected = filter === tab.id;
@@ -181,7 +208,10 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
             <button
               key={tab.id}
               type="button"
-              onClick={() => setFilter(tab.id as any)}
+              onClick={() => {
+                setFilter(tab.id as any);
+                setPage(1);
+              }}
               className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
                 isSelected
                   ? 'bg-slate-900 text-white shadow-xs'
@@ -201,168 +231,233 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
         })}
       </div>
 
-      {/* ── List of Missing Clock-In Cases ───────────────────────────────────── */}
+      {/* ── Table of Missing Clock-In Cases ───────────────────────────────────── */}
       {isLoading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((n) => (
-            <div key={n} className="bg-white border border-[#E8EEF4] rounded-[16px] p-4 animate-pulse h-28" />
-          ))}
+        <div className="bg-white border border-[#E8EEF4] rounded-[18px] p-10 text-center text-slate-400 text-xs">
+          <Clock className="w-6 h-6 animate-spin mx-auto text-[#12A66A] mb-2" />
+          <span>Evaluating today's missing clock-ins...</span>
         </div>
       ) : filteredCases.length === 0 ? (
         <div className="p-10 text-center bg-white border border-[#E8EEF4] rounded-[20px] shadow-xs space-y-2">
           <div className="w-11 h-11 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
             <CheckCircle2 className="w-5 h-5" />
           </div>
-          <h4 className="text-sm font-bold text-slate-800">No Missing Clock-Ins</h4>
+          <h4 className="text-sm font-bold text-slate-800">No Missing Clock-Ins For Today</h4>
           <p className="text-xs text-slate-500 max-w-sm mx-auto">
-            All assigned workers have either clocked in, have approved leave, or their shift grace period has not yet expired for this date.
+            All assigned workers for today have either clocked in, have approved leave, or their shift grace period has not yet expired.
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {filteredCases.map((item) => {
-            const isResolved = item.resolvedByClockIn;
-            const hasPendingLeave = item.leaveStatus === 'PENDING_LEAVE';
+        <div className="bg-white rounded-2xl border border-[#E8EEF4] shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[11px] font-bold uppercase tracking-wider">
+                <tr>
+                  <th className="py-3 px-4">Worker</th>
+                  <th className="py-3 px-4">Missed Date</th>
+                  <th className="py-3 px-4">Worksite</th>
+                  <th className="py-3 px-4">Notes</th>
+                  <th className="py-3 px-4">Resolved Date</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {paginatedCases.map((item) => {
+                  const isResolved = item.resolvedByClockIn;
+                  const isPending = item.flagStatus === 'PENDING_REVIEW' && !isResolved;
+                  const missedDateObj = item.workDate ? new Date(item.workDate) : new Date(selectedDate);
+                  const missedDateFormatted = isNaN(missedDateObj.getTime())
+                    ? selectedDate
+                    : missedDateObj.toLocaleDateString('en-GB', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                      });
+                  const resolvedTimestamp = item.resolvedAt || item.reviewedAt;
 
-            return (
-              <div
-                key={item.id}
-                className="bg-white border border-[#E8EEF4] hover:border-slate-300 rounded-[18px] p-4 shadow-xs transition-all flex flex-col justify-between gap-3"
-              >
-                {/* Header: Worker Details & Status Pill */}
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
-                      {item.workerAvatar || item.avatar ? (
-                        <img src={item.workerAvatar || item.avatar} alt={item.workerName} className="w-full h-full object-cover" />
-                      ) : (
-                        <User className="w-5 h-5 text-slate-400" />
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-sm font-bold text-slate-900 truncate">{item.workerName}</h4>
-                        {(item.workerCode || item.employeeCode) && (
-                          <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-                            {item.workerCode || item.employeeCode}
+                  return (
+                    <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
+                      {/* 1. Worker */}
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
+                            {item.workerAvatar || item.avatar ? (
+                              <img src={item.workerAvatar || item.avatar} alt={item.workerName} className="w-full h-full object-cover" />
+                            ) : (
+                              <User className="w-4 h-4 text-slate-400" />
+                            )}
+                          </div>
+                          <div>
+                            <span className="font-bold text-slate-900 block leading-tight">{item.workerName}</span>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              {(item.workerCode || item.employeeCode) && (
+                                <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1 rounded">
+                                  {item.workerCode || item.employeeCode}
+                                </span>
+                              )}
+                              <span className="text-[10px] text-slate-400">
+                                {item.workerRole || item.employmentType || 'Worker'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* 2. Missed Date */}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5 text-xs text-slate-800 font-medium">
+                          <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span>{missedDateFormatted}</span>
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 ml-1">
+                            Today
                           </span>
+                        </div>
+                      </td>
+
+                      {/* 3. Worksite */}
+                      <td className="py-3 px-4 text-xs font-semibold text-slate-800">
+                        <div className="flex items-center gap-1.5">
+                          <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span>{item.worksiteName || '—'}</span>
+                        </div>
+                      </td>
+
+                      {/* 4. Notes */}
+                      <td className="py-3 px-4 max-w-xs text-xs">
+                        {item.reason || item.note ? (
+                          <div className="space-y-0.5">
+                            {item.reason && (
+                              <span className="font-semibold text-slate-800 block truncate" title={item.reason}>
+                                {item.reason}
+                              </span>
+                            )}
+                            {item.note && (
+                              <span className="text-[11px] text-slate-500 italic block truncate" title={item.note}>
+                                "{item.note}"
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-300 font-normal">—</span>
                         )}
-                      </div>
-                      <p className="text-[11px] text-slate-500 truncate">{item.workerRole || item.employmentType || 'Field Worker'}</p>
-                    </div>
-                  </div>
+                      </td>
 
-                  {/* Flag Status Pill */}
-                  <div className="shrink-0 text-right">
-                    {item.flagStatus === 'APPROVED' && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        <CheckCircle2 className="w-3 h-3" />
-                        Flag: Approved
-                      </span>
-                    )}
-                    {item.flagStatus === 'REJECTED' && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                        <XCircle className="w-3 h-3" />
-                        Flag: Rejected
-                      </span>
-                    )}
-                    {item.flagStatus === 'PENDING_REVIEW' && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                        <HelpCircle className="w-3 h-3" />
-                        Pending Review
-                      </span>
-                    )}
-                  </div>
-                </div>
+                      {/* 5. Resolved Date */}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        {resolvedTimestamp || isResolved ? (
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1.5 text-xs text-slate-800 font-semibold font-mono">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>
+                                {resolvedTimestamp
+                                  ? new Date(resolvedTimestamp).toLocaleDateString('en-GB', {
+                                      day: '2-digit',
+                                      month: 'short',
+                                      year: 'numeric',
+                                    })
+                                  : 'Clocked In'}
+                              </span>
+                            </div>
+                            {resolvedTimestamp && (
+                              <span className="text-[10px] text-slate-500 font-mono block pl-5">
+                                {new Date(resolvedTimestamp).toLocaleTimeString([], {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                                {item.reviewedByName || item.reviewerName ? ` by ${item.reviewedByName || item.reviewerName}` : ''}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-300 font-normal">—</span>
+                        )}
+                      </td>
 
-                {/* Shift & Elapsed Info */}
-                <div className="bg-slate-50 rounded-[12px] p-2.5 text-xs space-y-1.5 border border-slate-100">
-                  <div className="flex items-center justify-between text-slate-700 font-medium">
-                    <span className="flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-slate-400" />
-                      {item.shiftName} ({item.shiftStartTime})
-                    </span>
-                    <span className="font-bold text-amber-700 bg-amber-100/70 px-2 py-0.5 rounded text-[10px]">
-                      {item.timeElapsedFormatted || item.elapsedLabel || 'Past Grace Period'}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-[11px] text-slate-500">
-                    <span className="flex items-center gap-1">
-                      <Building2 className="w-3 h-3" />
-                      {item.worksiteName}
-                    </span>
-                    <span>Grace: {item.gracePeriodMinutes}m</span>
-                  </div>
-                </div>
+                      {/* 6. Actions */}
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {isPending ? (
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => openReviewModal(item, 'APPROVED')}
+                                className="w-8 h-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105"
+                                title="Approve"
+                                aria-label="Approve"
+                              >
+                                <Check className="w-4 h-4 stroke-[2.5]" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openReviewModal(item, 'REJECTED')}
+                                className="w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105"
+                                title="Absent / Reject"
+                                aria-label="Absent"
+                              >
+                                <X className="w-4 h-4 stroke-[2.5]" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openReviewModal(item, 'PENDING_REVIEW')}
+                                className="w-8 h-8 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105"
+                                title="Keep Pending"
+                                aria-label="Pending"
+                              >
+                                <Clock className="w-4 h-4 stroke-[2.5] text-amber-600" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${
+                                  item.flagStatus === 'APPROVED'
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                    : item.flagStatus === 'REJECTED'
+                                    ? 'bg-rose-50 text-rose-800 border-rose-200'
+                                    : 'bg-amber-50 text-amber-800 border-amber-200'
+                                }`}
+                              >
+                                {item.flagStatus === 'APPROVED'
+                                  ? 'Flag: Approve'
+                                  : item.flagStatus === 'REJECTED'
+                                  ? 'Flag: Absent'
+                                  : 'Flag: Pending'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => openReviewModal(item)}
+                                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 cursor-pointer"
+                                title="Update Flag"
+                                aria-label="Update Flag"
+                              >
+                                <FileEdit className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
-                {/* Pending Leave Banner if applied */}
-                {hasPendingLeave && (
-                  <div className="p-2 rounded-[10px] bg-purple-50 border border-purple-200 text-purple-700 text-[11px] font-medium flex items-center gap-1.5">
-                    <Info className="w-3.5 h-3.5 shrink-0 text-purple-600" />
-                    <span>Worker has submitted a leave request pending approval.</span>
-                  </div>
-                )}
-
-                {/* Resolved Later Banner */}
-                {isResolved && (
-                  <div className="p-2 rounded-[10px] bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-medium flex items-center justify-between">
-                    <span className="flex items-center gap-1">
-                      <Check className="w-3.5 h-3.5 text-emerald-600" />
-                      Worker punched in later. Historical flag preserved.
-                    </span>
-                    {item.resolvedAt && (
-                      <span className="text-[10px] text-emerald-600 tabular-nums">
-                        {new Date(item.resolvedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {/* Existing Review Explanation / Notes if set */}
-                {(item.reason || item.note) && (
-                  <div className="text-[11px] text-slate-600 bg-white border border-slate-200/80 rounded-[10px] p-2 space-y-0.5">
-                    {item.reason && (
-                      <div className="font-semibold text-slate-800">
-                        Reason: <span className="font-normal">{item.reason}</span>
-                      </div>
-                    )}
-                    {item.note && (
-                      <div className="italic text-slate-500">
-                        "{item.note}"
-                      </div>
-                    )}
-                    {(item.reviewedByName || item.reviewerName) && (
-                      <div className="text-[10px] text-slate-400 pt-0.5">
-                        Reviewed by {item.reviewedByName || item.reviewerName}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Actions */}
-                <div className="pt-1 flex items-center justify-between gap-2">
-                  {item.workerPhone ? (
-                    <a
-                      href={`tel:${item.workerPhone}`}
-                      className="px-2.5 py-1.5 rounded-[10px] border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1 transition-colors"
-                    >
-                      <Phone className="w-3 h-3 text-slate-400" />
-                      <span>Call</span>
-                    </a>
-                  ) : <div />}
-
-                  <button
-                    type="button"
-                    onClick={() => openReviewModal(item)}
-                    className="px-3.5 py-1.5 rounded-[10px] bg-[#12A66A] hover:bg-[#0E8F5B] text-white text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    <span>{item.flagStatus === 'PENDING_REVIEW' ? 'Review & Flag' : 'Update Flag'}</span>
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+          <DataTablePagination
+            metadata={{
+              total: filteredCases.length,
+              page,
+              limit,
+              offset: (page - 1) * limit,
+              totalPages: Math.ceil(filteredCases.length / limit) || 1,
+            }}
+            onPageChange={(p) => setPage(p)}
+            onLimitChange={(l) => {
+              setLimit(l);
+              setPage(1);
+            }}
+            pageSizeOptions={[10, 25, 50]}
+          />
         </div>
       )}
 
@@ -413,7 +508,7 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
                         : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                     }`}
                   >
-                    Approved
+                    Approve
                   </button>
                   <button
                     type="button"
@@ -424,7 +519,7 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
                         : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                     }`}
                   >
-                    Rejected
+                    Absent
                   </button>
                   <button
                     type="button"
@@ -435,7 +530,7 @@ export const MissingClockInManager: React.FC<MissingClockInManagerProps> = ({
                         : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                     }`}
                   >
-                    Pending Review
+                    Pending
                   </button>
                 </div>
               </div>

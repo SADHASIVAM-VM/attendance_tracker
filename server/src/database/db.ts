@@ -52,10 +52,32 @@ export async function getDb() {
           UPDATE site_assignments SET carry_forward = true WHERE carry_forward IS NULL;
 
           ALTER TABLE attendance_sessions ADD COLUMN IF NOT EXISTS current_approver_id UUID REFERENCES users(id);
+          ALTER TABLE attendance_sessions ADD COLUMN IF NOT EXISTS action_by UUID REFERENCES users(id);
+          ALTER TABLE attendance_sessions ADD COLUMN IF NOT EXISTS notes TEXT;
           ALTER TABLE attendance_sessions ADD COLUMN IF NOT EXISTS is_escalated BOOLEAN DEFAULT false;
           ALTER TABLE attendance_sessions ADD COLUMN IF NOT EXISTS escalated_at TIMESTAMP WITH TIME ZONE;
           ALTER TABLE attendance_sessions ADD COLUMN IF NOT EXISTS escalation_reason TEXT;
           ALTER TABLE attendance_sessions ADD COLUMN IF NOT EXISTS exception_status VARCHAR(50) DEFAULT 'NONE';
+
+          ALTER TABLE approval_actions ADD COLUMN IF NOT EXISTS worker_id UUID REFERENCES users(id);
+          ALTER TABLE approval_actions ADD COLUMN IF NOT EXISTS work_date DATE;
+          ALTER TABLE approval_actions ADD COLUMN IF NOT EXISTS previous_status VARCHAR(50);
+          ALTER TABLE approval_actions ADD COLUMN IF NOT EXISTS new_status VARCHAR(50);
+          ALTER TABLE approval_actions ADD COLUMN IF NOT EXISTS action_type VARCHAR(50);
+          ALTER TABLE approval_actions ADD COLUMN IF NOT EXISTS actor_role VARCHAR(50);
+          ALTER TABLE approval_actions ADD COLUMN IF NOT EXISTS regularization_id UUID REFERENCES attendance_adjustment_requests(id);
+
+          -- Safe canonical status normalization (6 canonical statuses: APPROVED, REJECTED, ABSENT, MISSING, PENDING, LEAVE)
+          UPDATE attendance_sessions SET status = 'APPROVED' WHERE status IN ('Approved', 'approved', 'PRESENT', 'present');
+          UPDATE attendance_sessions SET status = 'REJECTED' WHERE status IN ('Rejected', 'rejected');
+          UPDATE attendance_sessions SET status = 'ABSENT' WHERE status IN ('Absent', 'absent', 'UNEXCUSED_ABSENCE');
+          UPDATE attendance_sessions SET status = 'MISSING' WHERE status IN ('Missing', 'missing', 'MISSING_CLOCK_IN');
+          UPDATE attendance_sessions SET status = 'PENDING' WHERE status IN ('Pending', 'pending');
+          UPDATE attendance_sessions SET status = 'LEAVE' WHERE status IN ('Leave', 'leave', 'ON_LEAVE');
+
+          -- Backfill legacy records missing action_by or notes
+          UPDATE attendance_sessions SET action_by = COALESCE(current_approver_id, supervisor_snapshot_id) WHERE action_by IS NULL;
+          UPDATE attendance_sessions SET notes = COALESCE(rejection_reason, auto_approval_reason, 'Initial attendance record') WHERE notes IS NULL;
 
           ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS current_approver_id UUID REFERENCES users(id);
           ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS is_escalated BOOLEAN DEFAULT false;
@@ -66,6 +88,9 @@ export async function getDb() {
           ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;
           ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP WITH TIME ZONE;
           ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS cancelled_by UUID REFERENCES users(id);
+          ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS revocation_reason TEXT;
+          ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMP WITH TIME ZONE;
+          ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS revoked_by UUID REFERENCES users(id);
 
           ALTER TABLE attendance_adjustment_requests ADD COLUMN IF NOT EXISTS current_approver_id UUID REFERENCES users(id);
           ALTER TABLE attendance_adjustment_requests ADD COLUMN IF NOT EXISTS correction_type VARCHAR(50) DEFAULT 'INCORRECT_HOURS';
@@ -184,6 +209,27 @@ export async function getDb() {
 
           CREATE INDEX IF NOT EXISTS idx_payroll_periods_org ON payroll_periods(org_id, start_date, end_date);
           CREATE INDEX IF NOT EXISTS idx_payroll_adjustments_period ON payroll_adjustments(payroll_period_id);
+
+          -- Roles Master Table & System Roles Seeding ({ ADMIN, SUPERVISOR, ENGINEER, ACCOUNTANT, WORKER })
+          CREATE TABLE IF NOT EXISTS roles (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            name VARCHAR(50) NOT NULL UNIQUE,
+            description TEXT,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+          );
+
+          INSERT INTO roles (name, description) VALUES
+            ('ADMIN', 'System administrator with full operations, approvals, and configuration control'),
+            ('SUPERVISOR', 'Field and site supervisor managing team clock-ins, rosters, and daily approvals'),
+            ('ENGINEER', 'Site engineer responsible for technical oversight, worksite execution, and asset tracking'),
+            ('ACCOUNTANT', 'Finance and payroll accountant managing wages, allowances, expenses, and reconciliation'),
+            ('WORKER', 'Field workforce personnel executing site tasks and logging daily attendance')
+          ON CONFLICT (name) DO UPDATE SET description = EXCLUDED.description;
+
+          -- Clean up any unrelated roles and normalize legacy roles
+          DELETE FROM roles WHERE name NOT IN ('ADMIN', 'SUPERVISOR', 'ENGINEER', 'ACCOUNTANT', 'WORKER');
+          UPDATE user_roles SET role = 'ADMIN' WHERE role = 'SUPER_ADMIN';
+          DELETE FROM user_roles WHERE role NOT IN ('ADMIN', 'SUPERVISOR', 'ENGINEER', 'ACCOUNTANT', 'WORKER');
         `);
       } catch (migrationErr) {
         console.warn('Note on schema column check:', migrationErr);

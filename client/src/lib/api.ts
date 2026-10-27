@@ -31,10 +31,23 @@ export async function apiRequest<T = any>(
 
   const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
+  let body = options.body;
+  if (
+    body &&
+    typeof body === 'object' &&
+    !(body instanceof FormData) &&
+    !(body instanceof Blob) &&
+    !(body instanceof URLSearchParams) &&
+    !(body instanceof ArrayBuffer)
+  ) {
+    body = JSON.stringify(body);
+  }
+
   let response: Response;
   try {
     response = await fetch(url, {
       ...options,
+      body,
       headers,
     });
   } catch (err: any) {

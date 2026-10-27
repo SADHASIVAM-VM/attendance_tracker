@@ -27,6 +27,10 @@ import {
   Sparkles,
   Info,
   Repeat,
+  Sun,
+  Mail,
+  Ban,
+  User,
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -35,9 +39,6 @@ const MONTH_NAMES = [
 ];
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-// Preset sample group names for quick 1-click selection
-const SUGGESTED_GROUPS = ['Delhi', 'Chennai', 'Salem', 'Mumbai', 'Bangalore', 'Hyderabad', 'Kolkata', 'Pune'];
 
 export const RosterPlannerView: React.FC = () => {
   // Current real-world date
@@ -57,6 +58,7 @@ export const RosterPlannerView: React.FC = () => {
   // Assignments data for current month & selected date
   const [monthAssignments, setMonthAssignments] = useState<any[]>([]);
   const [dateAssignments, setDateAssignments] = useState<any[]>([]);
+  const [workerAllocations, setWorkerAllocations] = useState<any[]>([]);
 
   // Metadata dropdowns
   const [worksites, setWorksites] = useState<any[]>([]);
@@ -91,7 +93,7 @@ export const RosterPlannerView: React.FC = () => {
   const [cancelAssignmentId, setCancelAssignmentId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState<string>('');
 
-  // Initial load of master metadata (sites, supervisors, workers)
+  // Initial load of master metadata (sites, supervisors, workers, allocations)
   useEffect(() => {
     loadMasterData();
   }, []);
@@ -106,11 +108,21 @@ export const RosterPlannerView: React.FC = () => {
     loadDateAssignments(selectedDate);
   }, [selectedDate]);
 
+  const loadWorkerAllocations = async () => {
+    try {
+      const data = await apiRequest('/assignments/worker-allocations');
+      setWorkerAllocations(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      console.error('Failed to load worker allocations:', err);
+    }
+  };
+
   const loadMasterData = async () => {
     try {
-      const [sitesRes, usersRes] = await Promise.all([
+      const [sitesRes, usersRes, allocationsRes] = await Promise.all([
         apiRequest('/worksites'),
         apiRequest('/users'),
+        apiRequest('/assignments/worker-allocations').catch(() => []),
       ]);
 
       const sitesList = Array.isArray(sitesRes) ? sitesRes : (sitesRes?.data || []);
@@ -123,6 +135,7 @@ export const RosterPlannerView: React.FC = () => {
 
       setSupervisors(sups);
       setAllWorkers(wrks);
+      setWorkerAllocations(Array.isArray(allocationsRes) ? allocationsRes : []);
 
       if (activeSites.length > 0) setWorksiteId(activeSites[0].id);
       if (sups.length > 0) setSupervisorId(sups[0].id);
@@ -298,8 +311,13 @@ export const RosterPlannerView: React.FC = () => {
   };
 
   const handleSelectAllWorkers = () => {
-    const activeWrkIds = allWorkers.map((w) => w.id);
-    setSelectedWorkerIds(activeWrkIds);
+    const availableWrkIds = allWorkers
+      .filter((w) => {
+        const alloc = workerAllocations.find((a) => a.workerId === w.id);
+        return !alloc || alloc.worksiteId === worksiteId;
+      })
+      .map((w) => w.id);
+    setSelectedWorkerIds(availableWrkIds);
   };
 
   const handleDeselectAllWorkers = () => {
@@ -350,6 +368,7 @@ export const RosterPlannerView: React.FC = () => {
       await Promise.all([
         loadDateAssignments(selectedDate),
         loadMonthAssignments(currentYear, currentMonth),
+        loadWorkerAllocations(),
       ]);
     } catch (err: any) {
       toast.error(err.message || 'Failed to update workers');
@@ -407,10 +426,11 @@ export const RosterPlannerView: React.FC = () => {
       setCreateModalOpen(false);
       setSelectedWorkerIds([]);
 
-      // Reload assignments for current date and month
+      // Reload assignments and allocations
       await Promise.all([
         loadDateAssignments(selectedDate),
         loadMonthAssignments(currentYear, currentMonth),
+        loadWorkerAllocations(),
       ]);
     } catch (err: any) {
       const errorMsg = err.message || 'Failed to create group assignment';
@@ -418,6 +438,33 @@ export const RosterPlannerView: React.FC = () => {
       toast.error(errorMsg);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Complete Assignment / Worksite Duration
+  const handleCompleteAssignment = async (id: string, name: string) => {
+    if (
+      !window.confirm(
+        `Mark worksite duration completed for "${name}"?\n\nThis will finish the worksite duration and immediately release all assigned workers so they can be assigned to other worksites.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await apiRequest(`/assignments/${id}/complete`, { method: 'POST' });
+      const successMsg = `Worksite duration for "${name}" completed! All assigned workers have been released.`;
+      setMessage({ text: successMsg, type: 'success' });
+      toast.success(successMsg);
+      await Promise.all([
+        loadDateAssignments(selectedDate),
+        loadMonthAssignments(currentYear, currentMonth),
+        loadWorkerAllocations(),
+      ]);
+    } catch (err: any) {
+      const errorMsg = err.message || 'Failed to complete worksite duration';
+      setMessage({ text: errorMsg, type: 'error' });
+      toast.error(errorMsg);
     }
   };
 
@@ -474,15 +521,18 @@ export const RosterPlannerView: React.FC = () => {
         method: 'POST',
         body: JSON.stringify({ reason: cancelReason }),
       });
-      setMessage({ text: 'Group assignment cancelled.', type: 'success' });
+      setMessage({ text: 'Group assignment cancelled. Assigned workers have been released.', type: 'success' });
+      toast.success('Group assignment cancelled. Assigned workers released.');
       setCancelModalOpen(false);
       setCancelReason('');
       await Promise.all([
         loadDateAssignments(selectedDate),
         loadMonthAssignments(currentYear, currentMonth),
+        loadWorkerAllocations(),
       ]);
     } catch (err: any) {
       setMessage({ text: err.message || 'Cancellation failed', type: 'error' });
+      toast.error(err.message || 'Cancellation failed');
     }
   };
 
@@ -725,10 +775,10 @@ export const RosterPlannerView: React.FC = () => {
                             <div
                               key={a.id}
                               className={`text-[10px] truncate px-1.5 py-0.5 rounded-md font-medium border flex items-center justify-between gap-1 ${a.status === 'PUBLISHED'
-                                  ? isCarried
-                                    ? 'bg-blue-50/90 border-blue-200 text-blue-900'
-                                    : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
-                                  : 'bg-amber-50/80 border-amber-200 text-amber-900'
+                                ? isCarried
+                                  ? 'bg-blue-50/90 border-blue-200 text-blue-900'
+                                  : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+                                : 'bg-amber-50/80 border-amber-200 text-amber-900'
                                 }`}
                             >
                               <span className="truncate font-semibold flex items-center gap-1">
@@ -842,24 +892,6 @@ export const RosterPlannerView: React.FC = () => {
             </div>
           </div>
 
-          {/* Quick Suggested Group Chips for 1-click addition */}
-          <div className="bg-slate-100/80 rounded-2xl p-3.5 border border-slate-200 flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold text-slate-600 flex items-center gap-1.5 mr-1">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-              Quick Add Regional Group:
-            </span>
-            {SUGGESTED_GROUPS.map((city) => (
-              <button
-                key={city}
-                onClick={() => handleOpenAddGroupModal(city)}
-                className="px-3 py-1 bg-white hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 hover:border-indigo-200 transition-all cursor-pointer shadow-2xs flex items-center gap-1"
-              >
-                <Plus className="w-3 h-3 text-slate-400" />
-                {city}
-              </button>
-            ))}
-          </div>
-
           {/* Summary Metric Cards for this Date */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
@@ -922,159 +954,368 @@ export const RosterPlannerView: React.FC = () => {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              {dateAssignments.map((a) => (
-                <div
-                  key={a.id}
-                  className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4 flex flex-col justify-between"
-                >
-                  <div>
-                    {/* Header: Group Name & Status */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-xs font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-0.5 rounded-lg flex items-center gap-1">
-                            <Building2 className="w-3.5 h-3.5" />
-                            {a.groupName || a.shiftName || 'Group'}
-                          </span>
-                          <StatusBadge status={a.status} />
-                          {a.carryForward !== false && (
-                            <span
-                              className={`text-[11px] font-semibold px-2 py-0.5 rounded-lg flex items-center gap-1 border ${a.isCarriedForward || a.workDate !== selectedDate
-                                  ? 'bg-blue-50 text-blue-800 border-blue-200'
-                                  : 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                }`}
-                            >
-                              <Repeat className="w-3 h-3" />
-                              {a.isCarriedForward || a.workDate !== selectedDate
-                                ? `Carried Forward (${String(a.workDate).split('T')[0]})`
-                                : 'Daily Carry-Forward'}
-                            </span>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+              {dateAssignments.map((a) => {
+                const workerCount = a.workers?.length || 0;
+                const isCarried =
+                  a.isCarriedForward ||
+                  (a.carryForward !== false && a.workDate !== selectedDate);
+
+                const statusStyles =
+                  a.status === "PUBLISHED"
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+                    : a.status === "DRAFT"
+                      ? "bg-amber-50 text-amber-700 border-amber-100"
+                      : a.status === "COMPLETED"
+                        ? "bg-blue-50 text-blue-700 border-blue-100"
+                        : "bg-rose-50 text-rose-700 border-rose-100";
+
+                const statusDot =
+                  a.status === "PUBLISHED"
+                    ? "bg-emerald-500"
+                    : a.status === "DRAFT"
+                      ? "bg-amber-500"
+                      : a.status === "COMPLETED"
+                        ? "bg-blue-500"
+                        : "bg-rose-500";
+
+                return (
+                  <div
+                    key={a.id}
+                    className="min-w-0 rounded-2xl border border-slate-200
+                   bg-white p-4 shadow-sm transition-shadow
+                   hover:shadow-md space-y-3.5"
+                  >
+                    {/* Header */}
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center
+                          justify-center rounded-xl
+                          bg-indigo-50 text-indigo-600">
+                        <Building2 className="h-5 w-5" />
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <h2 className="truncate text-base font-semibold
+                           tracking-tight text-slate-900">
+                          {a.worksiteName}
+                        </h2>
+
+                        <p className="mt-1 flex min-w-0 items-center gap-1
+                          text-xs text-slate-500">
+                          <MapPin className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{a.worksiteAddress}</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Status badges */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="inline-flex items-center gap-1.5 rounded-full
+                           border border-sky-100 bg-sky-50 px-2.5 py-1
+                           text-[11px] font-medium text-sky-700">
+                        <Sun className="h-3.5 w-3.5" />
+                        {a.groupName || a.shiftName || "Morning Shift"}
+                      </span>
+
+                      <span
+                        className={`inline-flex items-center gap-1.5 rounded-full
+                        border px-2.5 py-1 text-[11px] font-medium
+                        ${statusStyles}`}
+                      >
+                        <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
+                        {a.status === "PUBLISHED"
+                          ? "Published"
+                          : a.status === "DRAFT"
+                            ? "Draft"
+                            : a.status === "COMPLETED"
+                              ? "Completed"
+                              : "Cancelled"}
+                      </span>
+
+                      {a.carryForward !== false && (
+                        <span className="inline-flex items-center gap-1 rounded-full
+                             border border-indigo-100 bg-indigo-50
+                             px-2.5 py-1 text-[11px] font-medium
+                             text-indigo-700">
+                          <CalendarIcon className="h-3.5 w-3.5" />
+                          {isCarried
+                            ? `Carried · ${String(a.workDate).split("T")[0]}`
+                            : "Carry-forward"}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Carry-forward notice */}
+                    {isCarried &&
+                      a.status !== "CANCELLED" &&
+                      a.status !== "COMPLETED" && (
+                        <div className="flex items-start gap-2.5 rounded-xl
+                            border border-sky-100 bg-sky-50/70 p-3">
+                          <CalendarIcon className="mt-0.5 h-4 w-4 shrink-0
+                                       text-sky-600" />
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-sky-900">
+                              Carried forward from{" "}
+                              {String(a.workDate).split("T")[0]}
+                            </p>
+                            <p className="mt-1 text-[11px] leading-relaxed
+                              text-slate-600">
+                              Location, supervisor and {workerCount} assigned{" "}
+                              {workerCount === 1 ? "worker" : "workers"} continue
+                              daily until cancelled.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                    {/* Cancelled notice */}
+                    {a.status === "CANCELLED" && (
+                      <div className="flex items-start gap-2.5 rounded-xl
+                          border border-rose-100 bg-rose-50/70 p-3">
+                        <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-rose-800">
+                            Assignment Group Cancelled
+                          </p>
+                          <p className="mt-1 text-[11px] text-rose-700">
+                            {a.cancellationReason ||
+                              "Daily carry-forward has been stopped."}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Completed notice */}
+                    {a.status === "COMPLETED" && (
+                      <div className="flex items-start gap-2.5 rounded-xl
+                          border border-emerald-100 bg-emerald-50/70 p-3">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0
+                                     text-emerald-600" />
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-emerald-800">
+                            Duration Completed
+                          </p>
+                          <p className="mt-1 text-[11px] text-emerald-700">
+                            Workforce released for new assignments.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Compact details */}
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {/* Supervisor */}
+                      <div className="flex min-w-0 items-start gap-2.5 rounded-xl
+                          border border-slate-100 bg-slate-50/70 p-3">
+                        <div className="flex h-8 w-8 shrink-0 items-center
+                            justify-center rounded-lg bg-indigo-50
+                            text-indigo-600">
+                          <User className="h-4 w-4" />
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[10px] font-medium uppercase
+                            tracking-wide text-slate-400">
+                            Supervisor
+                          </p>
+                          <p className="mt-0.5 truncate text-sm font-semibold
+                            text-slate-800">
+                            {a.supervisorName || "Unassigned"}
+                          </p>
+
+                          {a.supervisorEmail && (
+                            <p className="mt-1 flex min-w-0 items-center gap-1
+                              text-[11px] text-slate-500">
+                              <Mail className="h-3 w-3 shrink-0" />
+                              <span className="truncate">{a.supervisorEmail}</span>
+                            </p>
                           )}
                         </div>
-                        <h3 className="font-bold text-slate-900 text-lg mt-1.5 mb-0">
-                          {a.worksiteName}
-                        </h3>
-                        <span className="text-xs text-slate-500 flex items-center gap-1.5 mt-1">
-                          <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          {a.worksiteAddress}
-                        </span>
+                      </div>
 
-                        {/* Carried Forward Info Banner */}
-                        {(a.isCarriedForward || (a.carryForward !== false && a.workDate !== selectedDate)) && a.status !== 'CANCELLED' && (
-                          <div className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-200 text-blue-900 text-xs flex items-center gap-2 mt-2.5">
-                            <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
-                            <span>
-                              Carried forward from <strong>{String(a.workDate).split('T')[0]}</strong>. Location, supervisor, and all <strong>{a.workers?.length || 0}</strong> assigned workers carry forward daily until cancelled.
-                            </span>
+                      {/* Shift timing */}
+                      <div className="flex min-w-0 items-start gap-2.5 rounded-xl
+                          border border-emerald-100/80 bg-emerald-50/40 p-3">
+                        <div className="flex h-8 w-8 shrink-0 items-center
+                            justify-center rounded-lg bg-emerald-100
+                            text-emerald-700">
+                          <Clock className="h-4 w-4" />
+                        </div>
+
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-medium uppercase
+                            tracking-wide text-slate-400">
+                            Shift timing
+                          </p>
+                          <p className="mt-0.5 text-sm font-semibold
+                            text-slate-800">
+                            {a.shiftStartTime || "08:00"} – {a.shiftEndTime || "17:00"}
+                          </p>
+                          <p className="mt-1 flex items-center gap-1 text-[11px]
+                            text-slate-500">
+                            <MapPin className="h-3 w-3 shrink-0" />
+                            {a.worksiteRadius || 20}m geofence
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Assigned workforce */}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditWorkers(a)}
+                      className="flex w-full min-w-0 items-center gap-3 rounded-xl
+                     border border-slate-200 px-3 py-2.5 text-left
+                     transition-colors hover:border-indigo-200
+                     hover:bg-indigo-50/40"
+                    >
+                      <div className="flex h-9 w-9 shrink-0 items-center
+                          justify-center rounded-lg bg-indigo-50
+                          text-indigo-600">
+                        <Users className="h-4.5 w-4.5" />
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-slate-500">
+                          Assigned workforce
+                        </p>
+                        <p className="text-lg font-bold leading-tight text-slate-900">
+                          {workerCount}
+                          <span className="ml-1 text-xs font-normal text-slate-500">
+                            {workerCount === 1 ? "worker" : "workers"}
+                          </span>
+                        </p>
+                      </div>
+
+                      {/* Show up to 3 avatars, not all workers */}
+                      <div className="flex shrink-0 items-center">
+                        {a.workers?.slice(0, 3).map((w: any, idx: number) => (
+                          <div
+                            key={w.workerId || idx}
+                            title={`${w.fullName} (${w.employeeCode || ""})`}
+                            className="-ml-2 flex h-7 w-7 items-center
+                           justify-center rounded-full border-2
+                           border-white bg-indigo-100 text-indigo-700
+                           first:ml-0"
+                          >
+                            <User className="h-3.5 w-3.5" />
                           </div>
-                        )}
+                        ))}
 
-                        {/* Cancelled Banner */}
-                        {a.status === 'CANCELLED' && (
-                          <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs flex items-center gap-2 mt-2.5">
-                            <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                            <span>
-                              Cancelled: {a.cancellationReason || 'No reason provided'}
-                            </span>
-                          </div>
+                        {workerCount > 3 && (
+                          <span className="-ml-2 flex h-7 items-center rounded-full
+                               border-2 border-white bg-slate-100 px-2
+                               text-[10px] font-semibold text-slate-600">
+                            +{workerCount - 3}
+                          </span>
                         )}
                       </div>
-                    </div>
 
-                    {/* Metadata Box: Supervisor & Timings */}
-                    <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-3.5 rounded-xl border border-slate-100 mt-4">
-                      <div>
-                        <span className="text-slate-500 block text-[11px]">Assigned Supervisor</span>
-                        <span className="font-semibold text-slate-900 block mt-0.5">
-                          {a.supervisorName}
+                      <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+                    </button>
+
+                    {/* Footer: publication info and actions */}
+                    <div className="flex flex-col gap-3 border-t border-slate-100 pt-3">
+                      <div className="flex items-center gap-1.5 text-[11px]
+                          text-slate-500">
+                        <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+                        <span>
+                          {a.status === "COMPLETED"
+                            ? "Completed"
+                            : a.status === "CANCELLED"
+                              ? "Cancelled"
+                              : a.publishedAt
+                                ? `Published · ${new Date(a.publishedAt).toLocaleTimeString([], {
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                })}`
+                                : "Published · 4:00 PM"}
                         </span>
-                        <span className="text-[10px] text-slate-400">{a.supervisorEmail}</span>
                       </div>
-                      <div>
-                        <span className="text-slate-500 block text-[11px]">Shift Timing</span>
-                        <span className="font-semibold text-slate-900 flex items-center gap-1 mt-0.5">
-                          <Clock className="w-3.5 h-3.5 text-slate-400" />
-                          {a.shiftStartTime} - {a.shiftEndTime}
-                        </span>
-                        <span className="text-[10px] text-slate-400">
-                          Radius: {a.worksiteRadius || 20}m geofence
-                        </span>
-                      </div>
-                    </div>
 
-                    {/* Assigned Workers / Multi-select Users */}
-                    <div className="mt-4">
-                      <span className="text-xs font-semibold text-slate-700 block mb-2 flex items-center gap-1.5">
-                        <Users className="w-3.5 h-3.5 text-slate-500" />
-                        Assigned Users ({a.workers?.length || 0})
-                      </span>
-                      <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pr-1">
-                        {a.workers && a.workers.length > 0 ? (
-                          a.workers.map((w: any) => (
-                            <span
-                              key={w.workerId}
-                              className="inline-flex items-center gap-1 text-xs bg-slate-100 border border-slate-200 text-slate-700 px-2.5 py-1 rounded-lg font-medium"
-                            >
-                              <span className="w-4 h-4 rounded-full bg-slate-300 text-slate-700 text-[9px] font-bold flex items-center justify-center">
-                                {w.fullName?.charAt(0) || 'U'}
-                              </span>
-                              <span>{w.fullName}</span>
-                              <span className="text-[10px] text-slate-400  ">
-                                ({w.employeeCode})
-                              </span>
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-xs text-slate-400">No users attached to this group yet.</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Actions Bar */}
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-                    <span className="text-[11px] text-slate-400">
-                      {a.publishedAt
-                        ? `Published ${new Date(a.publishedAt).toLocaleTimeString()}`
-                        : 'Draft Roster'}
-                    </span>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      {a.status === 'DRAFT' && (
-                        <button
-                          onClick={() => handlePublish(a.id, a.groupName || a.shiftName)}
-                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs"
-                        >
-                          <Send className="w-3.5 h-3.5" />
-                          Publish Group
-                        </button>
-                      )}
-                      {a.status !== 'CANCELLED' && (
-                        <>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        {/* Publish */}
+                        {a.status === "DRAFT" && (
                           <button
+                            type="button"
+                            onClick={() =>
+                              handlePublish(a.id, a.groupName || a.shiftName)
+                            }
+                            className="inline-flex min-h-9 items-center justify-center
+                           gap-2 rounded-lg bg-indigo-600 px-3 py-2
+                           text-xs font-semibold text-white
+                           transition-colors hover:bg-indigo-700"
+                          >
+                            <Send className="h-4 w-4" />
+                            Publish Group
+                          </button>
+                        )}
+
+                        {/* Manage staff */}
+                        {a.status !== "CANCELLED" && (
+                          <button
+                            type="button"
                             onClick={() => handleOpenEditWorkers(a)}
-                            className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
+                            className="inline-flex min-h-9 items-center justify-center
+                           gap-2 rounded-lg border border-indigo-200
+                           bg-white px-3 py-2 text-xs font-semibold
+                           text-indigo-700 transition-colors
+                           hover:bg-indigo-50"
                           >
-                            <Users className="w-3.5 h-3.5" />
-                            Manage Staff ({a.workers?.length || 0})
+                            <Users className="h-4 w-4" />
+                            Manage Staff ({workerCount})
                           </button>
-                          <button
-                            onClick={() => {
-                              setCancelAssignmentId(a.id);
-                              setCancelModalOpen(true);
-                            }}
-                            className="px-3 py-1.5 text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-xl text-xs font-semibold cursor-pointer"
-                          >
-                            Cancel Group (Stop Carry-Forward)
-                          </button>
-                        </>
-                      )}
+                        )}
+
+                        {/* Complete */}
+                        {a.status !== "CANCELLED" &&
+                          a.status !== "COMPLETED" && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleCompleteAssignment(
+                                  a.id,
+                                  a.groupName || a.shiftName
+                                )
+                              }
+                              className="inline-flex min-h-9 items-center justify-center
+                             gap-2 rounded-lg border border-emerald-200
+                             bg-emerald-50 px-3 py-2 text-xs font-semibold
+                             text-emerald-700 transition-colors
+                             hover:bg-emerald-100"
+                            >
+                              <CheckCircle2 className="h-4 w-4" />
+                              Complete Duration
+                            </button>
+                          )}
+
+                        {/* Cancel */}
+                        {a.status !== "CANCELLED" &&
+                          a.status !== "COMPLETED" && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCancelAssignmentId(a.id);
+                                setCancelModalOpen(true);
+                              }}
+                              className="inline-flex min-h-9 items-center justify-center
+                             gap-2 rounded-lg border border-rose-200
+                             bg-white px-3 py-2 text-xs font-semibold
+                             text-rose-600 transition-colors
+                             hover:bg-rose-50"
+                            >
+                              <Ban className="h-4 w-4" />
+                              Cancel Group
+                            </button>
+                          )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
+
           )}
         </div>
       )}
@@ -1121,23 +1362,6 @@ export const RosterPlannerView: React.FC = () => {
               className="w-full text-xs p-2.5 rounded-xl border border-slate-200 focus:border-slate-400 focus:outline-none"
               required
             />
-            {/* Quick chips for Group Name */}
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              <span className="text-[10px] text-slate-400 self-center">Suggestions:</span>
-              {SUGGESTED_GROUPS.map((sug) => (
-                <button
-                  type="button"
-                  key={sug}
-                  onClick={() => setGroupName(sug)}
-                  className={`text-[11px] px-2 py-0.5 rounded-lg border transition-colors cursor-pointer ${groupName === sug
-                    ? 'bg-slate-900 text-white border-slate-900 font-bold'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border-slate-200'
-                    }`}
-                >
-                  {sug}
-                </button>
-              ))}
-            </div>
           </div>
 
           {/* FIELD 2: Location (Worksite) & FIELD 3: Assign Supervisor */}
@@ -1243,25 +1467,44 @@ export const RosterPlannerView: React.FC = () => {
               {filteredWorkersForModal.length > 0 ? (
                 filteredWorkersForModal.map((w) => {
                   const isChecked = selectedWorkerIds.includes(w.id);
+                  const allocation = workerAllocations.find((a) => a.workerId === w.id);
+                  const isAssignedToOtherSite = Boolean(allocation && allocation.worksiteId !== worksiteId);
+
                   return (
                     <label
                       key={w.id}
-                      className={`flex items-center justify-between p-2 rounded-lg text-xs cursor-pointer transition-colors ${isChecked
-                        ? 'bg-white font-semibold text-slate-900 shadow-2xs border border-slate-200'
-                        : 'text-slate-600 hover:bg-slate-100 border border-transparent'
+                      title={
+                        isAssignedToOtherSite
+                          ? `Assigned to worksite: ${allocation.worksiteName} (${allocation.worksiteCode}). Remove from that worksite or mark completed/cancelled first.`
+                          : undefined
+                      }
+                      className={`flex items-center justify-between p-2 rounded-lg text-xs transition-colors ${isAssignedToOtherSite
+                        ? 'bg-slate-100/80 opacity-60 cursor-not-allowed border border-slate-200'
+                        : isChecked
+                          ? 'bg-white font-semibold text-slate-900 shadow-2xs border border-slate-200 cursor-pointer'
+                          : 'text-slate-600 hover:bg-slate-100 border border-transparent cursor-pointer'
                         }`}
                     >
                       <div className="flex items-center gap-2.5">
                         <input
                           type="checkbox"
                           checked={isChecked}
-                          onChange={() => toggleWorker(w.id)}
-                          className="rounded text-slate-900 cursor-pointer"
+                          disabled={isAssignedToOtherSite}
+                          onChange={() => {
+                            if (!isAssignedToOtherSite) toggleWorker(w.id);
+                          }}
+                          className="rounded text-slate-900 cursor-pointer disabled:cursor-not-allowed"
                         />
                         <span>{w.fullName}</span>
-                        <span className="text-[10px] text-slate-400  ">
+                        <span className="text-[10px] text-slate-400">
                           ({w.employeeCode})
                         </span>
+                        {isAssignedToOtherSite && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                            <AlertCircle className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                            Assigned: {allocation.worksiteName} ({allocation.worksiteCode})
+                          </span>
+                        )}
                       </div>
                       <span className="text-[10px] text-slate-400">{w.email}</span>
                     </label>
@@ -1368,10 +1611,19 @@ export const RosterPlannerView: React.FC = () => {
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => setEditSelectedWorkerIds(allWorkers.map((w) => w.id))}
+                onClick={() => {
+                  const currentWorksiteId = editingAssignment?.worksiteId;
+                  const availableIds = allWorkers
+                    .filter((w) => {
+                      const alloc = workerAllocations.find((a) => a.workerId === w.id);
+                      return !alloc || alloc.assignmentId === editingAssignment?.id || alloc.worksiteId === currentWorksiteId;
+                    })
+                    .map((w) => w.id);
+                  setEditSelectedWorkerIds(availableIds);
+                }}
                 className="text-[11px] text-indigo-600 hover:underline font-semibold cursor-pointer"
               >
-                Select All
+                Select All Available
               </button>
               <span className="text-slate-300">|</span>
               <button
@@ -1399,23 +1651,46 @@ export const RosterPlannerView: React.FC = () => {
             {filteredWorkersForEditModal.length > 0 ? (
               filteredWorkersForEditModal.map((w) => {
                 const isChecked = editSelectedWorkerIds.includes(w.id);
+                const allocation = workerAllocations.find((a) => a.workerId === w.id);
+                const isAssignedToOtherSite = Boolean(
+                  allocation &&
+                  allocation.assignmentId !== editingAssignment?.id &&
+                  allocation.worksiteId !== editingAssignment?.worksiteId
+                );
+
                 return (
                   <label
                     key={w.id}
-                    className={`flex items-center justify-between p-2 rounded-lg text-xs cursor-pointer transition-colors ${isChecked
-                        ? 'bg-white font-semibold text-slate-900 shadow-2xs border border-slate-200'
-                        : 'text-slate-600 hover:bg-slate-100 border border-transparent'
+                    title={
+                      isAssignedToOtherSite
+                        ? `Assigned to worksite: ${allocation.worksiteName} (${allocation.worksiteCode}). Remove from that worksite or mark completed/cancelled first.`
+                        : undefined
+                    }
+                    className={`flex items-center justify-between p-2 rounded-lg text-xs transition-colors ${isAssignedToOtherSite
+                      ? 'bg-slate-100/80 opacity-60 cursor-not-allowed border border-slate-200'
+                      : isChecked
+                        ? 'bg-white font-semibold text-slate-900 shadow-2xs border border-slate-200 cursor-pointer'
+                        : 'text-slate-600 hover:bg-slate-100 border border-transparent cursor-pointer'
                       }`}
                   >
                     <div className="flex items-center gap-2.5">
                       <input
                         type="checkbox"
                         checked={isChecked}
-                        onChange={() => toggleEditWorker(w.id)}
-                        className="rounded text-slate-900 cursor-pointer"
+                        disabled={isAssignedToOtherSite}
+                        onChange={() => {
+                          if (!isAssignedToOtherSite) toggleEditWorker(w.id);
+                        }}
+                        className="rounded text-slate-900 cursor-pointer disabled:cursor-not-allowed"
                       />
                       <span>{w.fullName}</span>
                       <span className="text-[10px] text-slate-400">({w.employeeCode})</span>
+                      {isAssignedToOtherSite && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                          <AlertCircle className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                          Assigned: {allocation.worksiteName} ({allocation.worksiteCode})
+                        </span>
+                      )}
                     </div>
                     <span className="text-[10px] text-slate-400">{w.email}</span>
                   </label>

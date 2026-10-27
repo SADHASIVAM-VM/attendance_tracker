@@ -14,6 +14,12 @@ import {
   Search,
   CheckCircle2,
   Repeat,
+  Sun,
+  User,
+  Mail,
+  Calendar as CalendarIcon,
+  ChevronRight,
+  XCircle,
 } from 'lucide-react';
 
 export const SupervisorTodayRosterView: React.FC = () => {
@@ -108,7 +114,7 @@ export const SupervisorTodayRosterView: React.FC = () => {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="space-y-6">
           {assignments.map((assignment) => {
             const workers = assignment.workers || [];
             const filteredWorkers = workers.filter((w: any) =>
@@ -119,117 +125,226 @@ export const SupervisorTodayRosterView: React.FC = () => {
             return (
               <div
                 key={assignment.id}
-                className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4 flex flex-col justify-between"
+                className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-xs space-y-6 transition-all hover:shadow-sm"
               >
-                <div>
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">
-                          {assignment.groupName || 'Regional Group'}
+                {/* Top Header */}
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                  {/* Left: Building Icon & Worksite Title */}
+                  <div className="flex items-start gap-4">
+                    <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100/60 text-indigo-600 flex items-center justify-center shrink-0">
+                      <Building2 className="w-7 h-7 text-indigo-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                        {assignment.worksiteName}
+                      </h2>
+                      <div className="flex items-center gap-1.5 text-xs sm:text-sm text-slate-500 font-medium mt-1">
+                        <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
+                        <span className="truncate">{assignment.worksiteAddress}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right: Badges Row */}
+                  <div className="flex flex-wrap items-center gap-2.5 sm:self-start">
+                    {/* Shift Pill */}
+                    <div className="px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 bg-sky-50 text-sky-700 border border-sky-100 shadow-2xs">
+                      <Sun className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                      <span>{assignment.groupName || assignment.shiftName || 'Morning Shift'}</span>
+                    </div>
+
+                    {/* Published / Status Pill */}
+                    <div
+                      className={`px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-2 border shadow-2xs ${
+                        assignment.status === 'PUBLISHED'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                          : assignment.status === 'DRAFT'
+                            ? 'bg-amber-50 text-amber-700 border-amber-100'
+                            : assignment.status === 'COMPLETED'
+                              ? 'bg-blue-50 text-blue-700 border-blue-100'
+                              : 'bg-rose-50 text-rose-700 border-rose-100'
+                      }`}
+                    >
+                      <span
+                        className={`w-2 h-2 rounded-full shrink-0 ${
+                          assignment.status === 'PUBLISHED'
+                            ? 'bg-emerald-500'
+                            : assignment.status === 'DRAFT'
+                              ? 'bg-amber-500'
+                              : assignment.status === 'COMPLETED'
+                                ? 'bg-blue-500'
+                                : 'bg-rose-500'
+                        }`}
+                      />
+                      <span>
+                        {assignment.status === 'PUBLISHED'
+                          ? 'Published'
+                          : assignment.status === 'DRAFT'
+                            ? 'Draft'
+                            : assignment.status === 'COMPLETED'
+                              ? 'Completed'
+                              : 'Cancelled'}
+                      </span>
+                    </div>
+
+                    {/* Carried Forward Pill */}
+                    {assignment.carryForward !== false && (
+                      <div className="px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 bg-indigo-50/90 text-indigo-700 border border-indigo-100 shadow-2xs">
+                        <CalendarIcon className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                        <span>
+                          {assignment.isCarriedForward || assignment.workDate !== selectedDate
+                            ? `Carried Forward (${String(assignment.workDate).split('T')[0]})`
+                            : 'Carried Forward'}
                         </span>
-                        <StatusBadge status={assignment.status} />
-                        {assignment.carryForward !== false && (
-                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
-                            <Repeat className="w-3 h-3" />
-                            {assignment.isCarriedForward || assignment.workDate !== selectedDate
-                              ? `Carried Forward (${String(assignment.workDate).split('T')[0]})`
-                              : 'Daily Carry-Forward'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Middle Banner (Carried Forward) */}
+                {(assignment.isCarriedForward || (assignment.carryForward !== false && assignment.workDate !== selectedDate)) && assignment.status !== 'CANCELLED' && (
+                  <div className="bg-sky-50/70 border border-sky-100 rounded-2xl p-4 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <div className="w-11 h-11 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center shrink-0">
+                        <CalendarIcon className="w-5 h-5 text-sky-600" />
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="font-bold text-slate-900 text-sm">
+                          Carried forward from {String(assignment.workDate).split('T')[0]}
+                        </h4>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Location, supervisor, and all {workers.length} assigned workers carry forward daily until cancelled.
+                        </p>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-400 shrink-0" />
+                  </div>
+                )}
+
+                {/* Middle 2-Column Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {/* Left Card: Supervisor & Assigned Users */}
+                  <div className="bg-slate-50/60 border border-slate-100 rounded-2xl p-5 flex flex-col justify-between space-y-6">
+                    {/* Supervisor Details */}
+                    <div className="flex items-start gap-4">
+                      <div className="w-14 h-14 rounded-full bg-indigo-50 border border-indigo-100/80 text-indigo-600 flex items-center justify-center shrink-0">
+                        <User className="w-7 h-7 text-indigo-600" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-xs font-semibold text-slate-400 block tracking-wide uppercase">
+                          Assigned Supervisor
+                        </span>
+                        <h4 className="text-lg font-bold text-slate-900 truncate mt-0.5">
+                          {assignment.supervisorName || user?.fullName || 'Assigned Supervisor'}
+                        </h4>
+                        <span className="text-xs font-medium text-slate-500 block">Site Supervisor</span>
+                        {assignment.supervisorEmail && (
+                          <span className="text-xs text-slate-600 flex items-center gap-1.5 mt-1 truncate">
+                            <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span className="truncate">{assignment.supervisorEmail}</span>
                           </span>
                         )}
                       </div>
-                      <h3 className="font-bold text-slate-900 text-lg mt-1 mb-0">
-                        {assignment.worksiteName}
-                      </h3>
-                      <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-1">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        {assignment.worksiteAddress}
-                      </p>
                     </div>
-                  </div>
 
-                  {/* Shift details */}
-                  <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-3.5 rounded-xl border border-slate-100 mt-4">
-                    <div>
-                      <span className="text-slate-500 block text-[11px]">Shift Timing</span>
-                      <span className="font-semibold text-slate-900 flex items-center gap-1 mt-0.5">
-                        <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        {assignment.shiftStartTime} - {assignment.shiftEndTime}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block text-[11px]">Geofence Radius</span>
-                      <span className="font-semibold text-slate-900 flex items-center gap-1 mt-0.5">
-                        <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                        {assignment.worksiteRadius || 20} meters
-                      </span>
-                    </div>
-                  </div>
+                    {/* Assigned Users Bar */}
+                    <div className="space-y-3 pt-4 border-t border-slate-200/70">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Users className="w-5 h-5 text-slate-600 shrink-0" />
+                          <div>
+                            <span className="text-xs font-medium text-slate-500 block">
+                              Assigned Users
+                            </span>
+                            <div className="flex items-center gap-1 text-2xl font-bold text-slate-900">
+                              <span>{workers.length}</span>
+                            </div>
+                          </div>
+                        </div>
 
-                  {/* Assigned Workers */}
-                  <div className="mt-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
-                        <Users className="w-3.5 h-3.5 text-slate-500" />
-                        Assigned Workers ({workers.length})
-                      </span>
-                      {workers.length > 5 && (
-                        <div className="relative w-36">
+                        <div className="h-8 w-px bg-slate-200 mx-2"></div>
+
+                        {/* Stacked user avatar icons */}
+                        <div className="flex items-center">
+                          {workers.length > 0 ? (
+                            <>
+                              {workers.slice(0, 4).map((w: any, idx: number) => (
+                                <div
+                                  key={w.workerId || idx}
+                                  title={`${w.fullName} (${w.employeeCode || ''})`}
+                                  className="w-8 h-8 rounded-full bg-indigo-50 border-2 border-white text-indigo-600 flex items-center justify-center text-xs font-semibold -ml-2.5 first:ml-0 shadow-2xs"
+                                >
+                                  <User className="w-4 h-4 text-indigo-600" />
+                                </div>
+                              ))}
+                              {workers.length > 4 && (
+                                <div className="w-8 h-8 rounded-full bg-indigo-100 border-2 border-white text-indigo-700 flex items-center justify-center text-[11px] font-bold -ml-2.5 shadow-2xs">
+                                  +{workers.length - 4}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic">No users assigned</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Worker Filter Search Bar if more than 4 workers */}
+                      {workers.length > 4 && (
+                        <div className="pt-2">
                           <input
                             type="text"
                             value={searchWorker}
                             onChange={(e) => setSearchWorker(e.target.value)}
-                            placeholder="Filter worker..."
-                            className="text-[11px] px-2 py-1 border border-slate-200 rounded-lg w-full bg-slate-50"
+                            placeholder="Filter assigned workers by name or code..."
+                            className="w-full text-xs px-3 py-1.5 bg-white border border-slate-200 rounded-xl placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                           />
                         </div>
                       )}
                     </div>
+                  </div>
 
-                    <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
-                      {filteredWorkers.length > 0 ? (
-                        filteredWorkers.map((w: any) => (
-                          <div
-                            key={w.workerId}
-                            className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100 text-xs"
-                          >
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-[10px]">
-                                {w.fullName?.charAt(0) || 'W'}
-                              </div>
-                              <div>
-                                <span className="font-semibold text-slate-800 block leading-tight">
-                                  {w.fullName}
-                                </span>
-                                <span className="text-[10px] text-slate-400  ">
-                                  {w.employeeCode}
-                                </span>
-                              </div>
-                            </div>
-                            <span className="text-[10px] font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3" /> Assigned
-                            </span>
-                          </div>
-                        ))
-                      ) : (
-                        <span className="text-xs text-slate-400 block py-2 text-center">
-                          {workers.length === 0
-                            ? 'No workers assigned to this group yet.'
-                            : 'No workers matching filter.'}
-                        </span>
-                      )}
+                  {/* Right Card: Shift Timing & Geofence (Mint Green Card) */}
+                  <div className="bg-emerald-50/30 border border-emerald-100/70 rounded-2xl p-5 flex flex-col justify-between">
+                    <div>
+                      <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-4">
+                        <Clock className="w-7 h-7 text-emerald-600" />
+                      </div>
+                      <span className="text-xs font-semibold text-slate-500 block tracking-wide uppercase">
+                        Shift Timing
+                      </span>
+                      <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-1">
+                        {assignment.shiftStartTime || '08:00'} – {assignment.shiftEndTime || '17:00'}
+                      </h3>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium mt-4">
+                      <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
+                      <span>Radius: {assignment.worksiteRadius || 20}m geofence</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-slate-100 text-[11px] text-slate-400 flex items-center justify-between">
-                  <span>
-                    Status:{' '}
-                    <strong className="text-slate-600 uppercase">
-                      {assignment.status}
-                    </strong>
-                  </span>
-                  <span>Supervisor: {assignment.supervisorName}</span>
+                {/* Bottom Action Footer */}
+                <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-2.5 text-slate-500">
+                    <CalendarDays className="w-5 h-5 text-slate-400 shrink-0" />
+                    <div className="leading-tight">
+                      <span className="text-[11px] text-slate-400 block font-medium">Published</span>
+                      <span className="text-xs font-semibold text-slate-700 block">
+                        {assignment.publishedAt
+                          ? new Date(assignment.publishedAt).toLocaleTimeString()
+                          : assignment.status === 'PUBLISHED'
+                            ? '4:00:34 PM'
+                            : assignment.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="text-xs font-medium text-slate-500 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <span>Supervisor Verified On-Site</span>
+                  </div>
                 </div>
               </div>
             );

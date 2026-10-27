@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate, useLocation, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../lib/api';
 import {
@@ -13,10 +14,13 @@ import {
 import { SupervisorHomeTab } from './SupervisorHomeTab';
 import { SupervisorAttendanceTab } from './SupervisorAttendanceTab';
 import { SupervisorLeavesTab } from './SupervisorLeavesTab';
+import { SupervisorMyLeaveTab } from './SupervisorMyLeaveTab';
 import { SupervisorSpendTab } from './SupervisorSpendTab';
 import { SupervisorHistoryTab } from './SupervisorHistoryTab';
 import { SupervisorProfileTab } from './SupervisorProfileTab';
 import { SupervisorRegularizationView } from './SupervisorRegularizationView';
+import { AttendanceExceptionsView } from '../common/AttendanceExceptionsView';
+import { SupervisorAppShell } from '../../components/layout/SupervisorAppShell';
 import {
   Home,
   UserCheck,
@@ -59,7 +63,27 @@ const getLocalTodayDateString = (): string => {
 
 export const SupervisorApp: React.FC = () => {
   const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<SupervisorTabId>('home');
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Derive active tab from current route path
+  const activeTab: SupervisorTabId = useMemo(() => {
+    const p = location.pathname.toLowerCase();
+    if (p.includes('/attendance-exceptions') || p.includes('/exceptions')) return 'attendance-exceptions';
+    if (p.includes('/regularization')) return 'regularization';
+    if (p.includes('/attendance')) return 'attendance';
+    if (p.includes('/leaves')) return 'leaves';
+    if (p.includes('/spend')) return 'spend';
+    if (p.includes('/history')) return 'history';
+    if (p.includes('/profile')) return 'profile';
+    if (p.includes('/home')) return 'home';
+    return 'attendance';
+  }, [location.pathname]);
+
+  const handleTabClick = (tabId: SupervisorTabId) => {
+    navigate(`/supervisor/${tabId}`);
+  };
+
   const [worksitesList, setWorksitesList] = useState<SupervisorWorksite[]>([]);
   const [selectedWorksite, setSelectedWorksite] = useState<SupervisorWorksite>(DEFAULT_FALLBACK_WORKSITE);
   const [attendanceDate, setAttendanceDate] = useState<string>(() => {
@@ -239,24 +263,26 @@ export const SupervisorApp: React.FC = () => {
     return workers.map((w) => ({ id: w.workerId, name: w.name }));
   }, [workers]);
 
-  // Fetch pending leaves
+  // Fetch team leaves (pending, approved, rejected, revoked)
   const loadPendingLeaves = useCallback(async () => {
     try {
-      const res = await apiRequest<any[]>('/leave/requests/pending').catch(() => []);
+      const res = await apiRequest<any[]>('/leave/requests/team').catch(() =>
+        apiRequest<any[]>('/leave/requests/pending').catch(() => [])
+      );
       if (Array.isArray(res)) {
         const mappedLeaves: WorkerLeaveItem[] = res.map((l: any) => ({
           id: l.id,
-          workerId: l.userId,
-          workerName: l.userName || 'Assigned Worker',
-          workerRole: l.userRole || 'Field Worker',
-          workerAvatar: l.userAvatar,
-          leaveType: l.leaveType || 'Casual Leave',
+          workerId: l.userId || l.workerId,
+          workerName: l.workerName || l.userName || 'Assigned Worker',
+          workerRole: l.requesterRole || l.userRole || 'Field Worker',
+          workerAvatar: l.workerPhoto || l.userAvatar,
+          leaveType: l.leaveTypeName || l.leaveType || 'Casual Leave',
           startDate: String(l.startDate).split('T')[0],
           endDate: String(l.endDate).split('T')[0],
           daysCount: Number(l.totalDays || 1),
           reason: l.reason || '',
           status: l.status || 'PENDING',
-          isApprovedByAdmin: l.isApprovedByAdmin || false,
+          isApprovedByAdmin: l.reviewerRole === 'ADMIN' || l.reviewerRole === 'SUPER_ADMIN' || (l.decisionNote && l.decisionNote.includes('Administrator')),
           appliedOn: l.createdAt
             ? new Date(l.createdAt).toLocaleDateString('en-US', {
                 day: 'numeric',
@@ -265,11 +291,18 @@ export const SupervisorApp: React.FC = () => {
               })
             : 'Today',
           worksiteId: l.worksiteId || selectedWorksite?.id,
+          decisionNote: l.decisionNote,
+          decidedAt: l.decidedAt,
+          revokedAt: l.revokedAt,
+          revokedBy: l.revokedBy,
+          revokedByName: l.revokedByName,
+          revocationReason: l.revocationReason,
+          reviewerName: l.reviewerName,
         }));
         setLeaves(mappedLeaves);
       }
     } catch (err) {
-      console.error('Error loading pending leaves:', err);
+      console.error('Error loading team leaves:', err);
     }
   }, [selectedWorksite?.id]);
 
@@ -277,7 +310,7 @@ export const SupervisorApp: React.FC = () => {
   useEffect(() => {
     const loadSupervisorData = async () => {
       try {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getLocalTodayDateString();
         // 1. Fetch site assignments for today
         const assignmentsData = await apiRequest<any[]>(`/assignments?date=${todayStr}`).catch(() => []);
         let assignedWs: SupervisorWorksite | null = null;
@@ -547,11 +580,11 @@ export const SupervisorApp: React.FC = () => {
   };
 
   // Action: Supervisor approves worker leave request
-  const handleApproveLeave = async (leaveId: string) => {
+  const handleApproveLeave = async (leaveId: string, note?: string) => {
     try {
       await apiRequest(`/leave/requests/${leaveId}/approve`, {
         method: 'POST',
-        body: JSON.stringify({ decisionNote: 'Approved by supervisor' }),
+        body: JSON.stringify({ decisionNote: note || 'Approved by supervisor' }),
       });
     } catch {
       // offline fallback or demo mode
@@ -559,20 +592,14 @@ export const SupervisorApp: React.FC = () => {
     setLeaves((prev) =>
       prev.map((l) =>
         l.id === leaveId
-          ? { ...l, status: 'APPROVED', isApprovedByAdmin: false }
+          ? { ...l, status: 'APPROVED', isApprovedByAdmin: false, decisionNote: note || 'Approved by supervisor' }
           : l
       )
     );
   };
 
   // Action: Supervisor rejects worker leave request
-  const handleRejectLeave = async (leaveId: string) => {
-    const reason = window.prompt(
-      'Optional reason for rejecting this leave request:',
-      'Site operational demands and scheduling constraints'
-    );
-    if (reason === null) return; // user cancelled
-
+  const handleRejectLeave = async (leaveId: string, reason?: string) => {
     try {
       await apiRequest(`/leave/requests/${leaveId}/reject`, {
         method: 'POST',
@@ -584,7 +611,7 @@ export const SupervisorApp: React.FC = () => {
     setLeaves((prev) =>
       prev.map((l) =>
         l.id === leaveId
-          ? { ...l, status: 'REJECTED', isApprovedByAdmin: false }
+          ? { ...l, status: 'REJECTED', isApprovedByAdmin: false, decisionNote: reason || 'Rejected by supervisor' }
           : l
       )
     );
@@ -684,357 +711,273 @@ export const SupervisorApp: React.FC = () => {
   });
 
   return (
-    <div className="min-h-screen bg-[#F1F6FC] text-[#111827] flex flex-col font-sans select-none antialiased">
-      {/* 1. TOP HEADER (Responsive across mobile, tablet, and desktop) */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#E8EEF4] px-4 sm:px-8 py-3">
-        <div className=" w-full mx-auto flex items-center justify-between gap-4">
-          {/* Brand & Greeting */}
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#12A66A] text-white flex items-center justify-center font-bold text-sm shadow-xs flex-shrink-0">
-              <UserCheck className="w-5 h-5 stroke-[2.5]" />
-            </div>
-
-          </div>
-
-          {/* Desktop / Tablet Nav Tabs (hidden on mobile, visible on md+) */}
-          <div className="hidden md:flex items-center gap-1 bg-[#F1F6FC] p-1 rounded-full border border-[#E8EEF4]">
-            {(
-              [
-                { id: 'home', label: 'Home', icon: Home },
-                { id: 'attendance', label: 'Attendance', icon: UserCheck },
-                { id: 'regularization', label: 'Regularisation', icon: FileEdit },
-                { id: 'leaves', label: 'Leaves', icon: CalendarDays },
-                { id: 'spend', label: 'Spend', icon: Receipt },
-                { id: 'history', label: 'History', icon: History },
-                { id: 'profile', label: 'Profile', icon: User },
-              ] as const
-            ).map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setActiveTab(id)}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${activeTab === id
-                  ? 'bg-[#12A66A] text-white shadow-xs'
-                  : 'text-[#64748B] hover:text-[#111827]'
-                  }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                <span>{label}</span>
-              </button>
-            ))}
-          </div>
-
-          {/* Location Switcher & Utilities */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {/* Location Switcher Button */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setShowLocationPicker(!showLocationPicker)}
-                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-[#E6F7EF] hover:bg-[#C3F2DD] text-[#0E8F5B] text-xs font-bold transition-all cursor-pointer border border-[#12A66A]/20"
-              >
-                <Building2 className="w-3.5 h-3.5 flex-shrink-0" />
-                <span className="max-w-[110px] sm:max-w-[160px] truncate">
-                  {selectedWorksite.name ? selectedWorksite.name.split(' - ')[0] : 'Worksite'}
-                </span>
-                <ChevronDown className="w-3 h-3 text-[#12A66A]" />
-              </button>
-
-              {/* Location Switcher Dropdown Popover */}
-              {showLocationPicker && (
-                <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setShowLocationPicker(false)}
-                  />
-                  <div className="absolute right-0 top-10 z-50 w-72 bg-white rounded-[16px] shadow-2xl border border-[#E8EEF4] p-2 space-y-1 animate-in fade-in zoom-in-95 duration-100">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 py-1 block">
-                      Assigned Worksites
-                    </span>
-                    {worksitesList.length === 0 ? (
-                      <p className="px-3 py-2 text-xs text-slate-500">No worksites available</p>
-                    ) : (
-                      worksitesList.map((site) => {
-                        const isSelected = site.id === selectedWorksite.id;
-                        return (
-                          <button
-                            key={site.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedWorksite(site);
-                              setShowLocationPicker(false);
-                            }}
-                            className={`w-full p-2.5 rounded-[12px] text-left text-xs transition-colors flex items-start gap-2.5 ${isSelected
-                              ? 'bg-[#E6F7EF] text-[#0E8F5B] font-bold'
-                              : 'hover:bg-slate-50 text-slate-700'
-                              }`}
-                          >
-                            <Building2
-                              className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isSelected ? 'text-[#12A66A]' : 'text-slate-400'
-                                }`}
-                            />
-                            <div className="min-w-0">
-                              <span className="block truncate font-bold">{site.name}</span>
-                              <span className="block text-[10px] text-slate-400 truncate">
-                                {site.address}
-                              </span>
-                            </div>
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Live Sync / Refresh Roster Button */}
-            <button
-              type="button"
-              onClick={() => {
+    <SupervisorAppShell
+      worksitesList={worksitesList}
+      selectedWorksite={selectedWorksite}
+      onSelectWorksite={setSelectedWorksite}
+      onRefreshRoster={() => {
+        if (selectedWorksite?.id) {
+          loadRosterAndAttendance(selectedWorksite.id, attendanceDate);
+        }
+      }}
+      isLoadingRoster={isLoadingRoster}
+      workers={workers}
+      leaves={leaves}
+      isOffline={isOffline}
+      offlineQueueLength={offlineSyncQueue.length}
+      onSyncNow={handleSyncNow}
+    >
+      <Routes>
+        {/* Dashboard */}
+        <Route
+          path="home"
+          element={
+            <SupervisorHomeTab
+              workers={workers}
+              worksites={worksitesList}
+              selectedWorksite={selectedWorksite}
+              onSelectWorksite={setSelectedWorksite}
+              monthlySpendData={monthlySpend}
+              onNavigateTab={(tab) => handleTabClick(tab as any)}
+              onApproveWorker={handleApproveWorker}
+              onRejectWorker={handleRejectWorker}
+              onRefreshRoster={() => {
                 if (selectedWorksite?.id) {
                   loadRosterAndAttendance(selectedWorksite.id, attendanceDate);
                 }
               }}
-              title="Refresh Team Attendance Roster"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-white hover:bg-[#F8FAFC] text-slate-700 hover:text-[#12A66A] border border-[#E8EEF4] text-xs font-bold transition-all cursor-pointer shadow-2xs"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingRoster ? 'animate-spin text-[#12A66A]' : 'text-slate-500'}`} />
-              <span className="hidden sm:inline">Refresh</span>
-            </button>
+            />
+          }
+        />
+        <Route path="dashboard" element={<Navigate to="/supervisor/home" replace />} />
 
-            {/* Profile Avatar Quick Button */}
-            <button
-              type="button"
-              onClick={() => setActiveTab('profile')}
-              title="Supervisor Profile"
-              className={`flex items-center gap-1.5 px-2 py-1 rounded-full border transition-all cursor-pointer ${
-                activeTab === 'profile'
-                  ? 'bg-[#E6F7EF] border-[#12A66A] text-[#0E8F5B]'
-                  : 'bg-white hover:bg-slate-50 border-[#E8EEF4] text-slate-700'
-              }`}
-            >
-              <div className="w-6 h-6 rounded-full bg-[#12A66A]/10 text-[#12A66A] flex items-center justify-center font-bold text-[11px]">
-                {user?.fullName
-                  ? user.fullName
-                      .split(' ')
-                      .map((n) => n[0])
-                      .join('')
-                      .toUpperCase()
-                      .slice(0, 2)
-                  : 'SP'}
-              </div>
-              <span className="hidden lg:inline text-xs font-bold max-w-[90px] truncate">
-                {user?.fullName || 'Profile'}
-              </span>
-            </button>
+        {/* ── Attendance Nested Routes ── */}
+        {/* 1. Daily Attendance (combines Today's Attendance & Missing Attendance) */}
+        <Route
+          path="attendance/daily"
+          element={
+            <SupervisorAttendanceTab
+              workers={
+                selectedWorksite?.id
+                  ? workers.filter((w) => !w.worksiteId || w.worksiteId === selectedWorksite.id)
+                  : workers
+              }
+              selectedDate={attendanceDate}
+              onSelectDate={handleSelectAttendanceDate}
+              statistics={rosterStats || undefined}
+              isLoading={isLoadingRoster}
+              isError={isRosterError}
+              onRetry={() => loadRosterAndAttendance(selectedWorksite?.id, attendanceDate)}
+              onApproveWorker={handleApproveWorker}
+              onRejectWorker={handleRejectWorker}
+              onClockOutWorker={handleClockOutWorker}
+              onBulkApprove={handleBulkApprove}
+              onUndoLastAction={handleUndoLastAction}
+              undoAvailable={undoStack}
+              currentWorksite={selectedWorksite}
+              initialSection="today-attendance"
+            />
+          }
+        />
+        <Route
+          path="attendance/missing"
+          element={
+            <SupervisorAttendanceTab
+              workers={
+                selectedWorksite?.id
+                  ? workers.filter((w) => !w.worksiteId || w.worksiteId === selectedWorksite.id)
+                  : workers
+              }
+              selectedDate={attendanceDate}
+              onSelectDate={handleSelectAttendanceDate}
+              statistics={rosterStats || undefined}
+              isLoading={isLoadingRoster}
+              isError={isRosterError}
+              onRetry={() => loadRosterAndAttendance(selectedWorksite?.id, attendanceDate)}
+              onApproveWorker={handleApproveWorker}
+              onRejectWorker={handleRejectWorker}
+              onClockOutWorker={handleClockOutWorker}
+              onBulkApprove={handleBulkApprove}
+              onUndoLastAction={handleUndoLastAction}
+              undoAvailable={undoStack}
+              currentWorksite={selectedWorksite}
+              initialSection="missing-attendance"
+            />
+          }
+        />
+        <Route path="attendance" element={<Navigate to="/supervisor/attendance/daily" replace />} />
 
-            {/* Notification Bell */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setShowNotifications(!showNotifications)}
-                className="relative w-9 h-9 rounded-full bg-slate-50 hover:bg-slate-100 border border-[#E8EEF4] flex items-center justify-center text-slate-600 transition-colors cursor-pointer"
-              >
-                <Bell className="w-4 h-4" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#12A66A] ring-2 ring-white" />
-              </button>
+        {/* 2. Attendance Overrides */}
+        <Route
+          path="attendance/overrides"
+          element={
+            <SupervisorAttendanceTab
+              workers={
+                selectedWorksite?.id
+                  ? workers.filter((w) => !w.worksiteId || w.worksiteId === selectedWorksite.id)
+                  : workers
+              }
+              selectedDate={attendanceDate}
+              onSelectDate={handleSelectAttendanceDate}
+              statistics={rosterStats || undefined}
+              isLoading={isLoadingRoster}
+              isError={isRosterError}
+              onRetry={() => loadRosterAndAttendance(selectedWorksite?.id, attendanceDate)}
+              onApproveWorker={handleApproveWorker}
+              onRejectWorker={handleRejectWorker}
+              onClockOutWorker={handleClockOutWorker}
+              onBulkApprove={handleBulkApprove}
+              onUndoLastAction={handleUndoLastAction}
+              undoAvailable={undoStack}
+              currentWorksite={selectedWorksite}
+              initialSection="attendance-overrides"
+            />
+          }
+        />
 
-              {/* Notifications Popover */}
-              {showNotifications && (
-                <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setShowNotifications(false)}
-                  />
-                  <div className="absolute right-0 top-11 z-50 w-72 bg-white rounded-[18px] shadow-2xl border border-[#E8EEF4] p-3 space-y-2.5 animate-in fade-in zoom-in-95 duration-100">
-                    <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
-                      <span className="text-xs font-bold text-slate-900">Notifications</span>
-                      <span className="text-[10px] text-[#12A66A] font-bold">Live</span>
-                    </div>
+        {/* 3. Attendance History */}
+        <Route
+          path="attendance/history"
+          element={
+            <SupervisorAttendanceTab
+              workers={
+                selectedWorksite?.id
+                  ? workers.filter((w) => !w.worksiteId || w.worksiteId === selectedWorksite.id)
+                  : workers
+              }
+              selectedDate={attendanceDate}
+              onSelectDate={handleSelectAttendanceDate}
+              statistics={rosterStats || undefined}
+              isLoading={isLoadingRoster}
+              isError={isRosterError}
+              onRetry={() => loadRosterAndAttendance(selectedWorksite?.id, attendanceDate)}
+              onApproveWorker={handleApproveWorker}
+              onRejectWorker={handleRejectWorker}
+              onClockOutWorker={handleClockOutWorker}
+              onBulkApprove={handleBulkApprove}
+              onUndoLastAction={handleUndoLastAction}
+              undoAvailable={undoStack}
+              currentWorksite={selectedWorksite}
+              initialSection="attendance-history"
+            />
+          }
+        />
 
-                    <div className="space-y-2 text-xs">
-                      <div className="p-2 bg-[#E6F7EF] rounded-[10px] text-slate-700 space-y-0.5">
-                        <strong className="block text-[#0E8F5B] font-bold">
-                          Team Punch Approvals
-                        </strong>
-                        <span>{workers.filter((w) => w.status === 'PENDING').length} punches pending review.</span>
-                      </div>
-                      <div className="p-2 bg-slate-50 rounded-[10px] text-slate-700 space-y-0.5">
-                        <strong className="block text-slate-900 font-bold">Pending Leave Requests</strong>
-                        <span>{leaves.filter((l) => l.status === 'PENDING').length} leave requests awaiting decision.</span>
-                      </div>
-                    </div>
-                  </div>
-                </>
+        {/* Attendance Exceptions */}
+        <Route
+          path="attendance-exceptions"
+          element={
+            <AttendanceExceptionsView
+              isSupervisorView={true}
+              currentWorksite={selectedWorksite}
+            />
+          }
+        />
+        <Route
+          path="exceptions"
+          element={
+            <AttendanceExceptionsView
+              isSupervisorView={true}
+              currentWorksite={selectedWorksite}
+            />
+          }
+        />
+        <Route path="attendance/exceptions" element={<Navigate to="/supervisor/attendance-exceptions" replace />} />
+
+        {/* Regularisation */}
+        <Route
+          path="regularization"
+          element={<SupervisorRegularizationView currentWorksite={selectedWorksite} />}
+        />
+
+        {/* Leave Requests (Team Leaves) */}
+        <Route
+          path="leaves"
+          element={
+            <SupervisorLeavesTab
+              leaves={leaves.filter(
+                (l) => !l.worksiteId || !selectedWorksite?.id || l.worksiteId === selectedWorksite.id
               )}
-            </div>
+              onApproveLeave={handleApproveLeave}
+              onRejectLeave={handleRejectLeave}
+              onRefresh={loadPendingLeaves}
+            />
+          }
+        />
+        <Route path="leave-requests" element={<Navigate to="/supervisor/leaves" replace />} />
 
-            {/* Log Out */}
-            <button
-              type="button"
-              onClick={logout}
-              title="Sign Out"
-              className="flex w-9 h-9 rounded-full bg-[#F8FAFC] hover:bg-rose-50 hover:text-rose-600 text-slate-500 border border-[#E8EEF4] items-center justify-center transition-colors cursor-pointer"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+        {/* My Leave (Personal Leaves & Balances) */}
+        <Route
+          path="my-leave"
+          element={<SupervisorMyLeaveTab />}
+        />
 
-        {/* Offline Banner (if offline or items pending sync) */}
-        {(isOffline || offlineSyncQueue.length > 0) && (
-          <div className="max-w-6xl w-full mx-auto mt-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-[12px] flex items-center justify-between text-xs text-amber-900">
-            <div className="flex items-center gap-2">
-              <WifiOff className="w-4 h-4 text-amber-600 flex-shrink-0" />
-              <span>
-                <strong>Offline mode</strong> • {offlineSyncQueue.length} items will sync when online.
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={handleSyncNow}
-              className="text-[11px] font-bold text-amber-800 underline hover:text-amber-900 cursor-pointer"
-            >
-              Sync now
-            </button>
-          </div>
-        )}
-      </header>
+        {/* My Attendance (Personal Clock-in & Attendance Calendar) */}
+        <Route
+          path="my-attendance"
+          element={
+            <SupervisorAttendanceTab
+              workers={[]}
+              selectedDate={attendanceDate}
+              onSelectDate={handleSelectAttendanceDate}
+              onApproveWorker={() => {}}
+              onRejectWorker={() => {}}
+              onBulkApprove={() => {}}
+              currentWorksite={selectedWorksite}
+              initialSection="my-attendance"
+            />
+          }
+        />
 
-      {/* 2. MAIN RESPONSIVE CONTAINER (Matching Worker Design) */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6 pb-28 md:pb-12">
-        {activeTab === 'home' && (
-          <SupervisorHomeTab
-            workers={workers}
-            worksites={worksitesList}
-            selectedWorksite={selectedWorksite}
-            onSelectWorksite={setSelectedWorksite}
-            monthlySpendData={monthlySpend}
-            onNavigateTab={(tab) => setActiveTab(tab)}
-            onApproveWorker={handleApproveWorker}
-            onRejectWorker={handleRejectWorker}
-          />
-        )}
+        {/* Spend Ledger */}
+        <Route
+          path="spend"
+          element={
+            <SupervisorSpendTab
+              entries={spendEntries.filter(
+                (e) => !e.worksiteId || !selectedWorksite?.id || e.worksiteId === selectedWorksite.id
+              )}
+              yesterdayTotal={0}
+              monthlySpendData={monthlySpend}
+              categoryBreakdown={categoryBreakdown}
+              workersList={memoizedWorkersList}
+              currentWorksite={selectedWorksite}
+              onAddSpend={handleAddSpendEntry}
+              onEditSpend={handleEditSpendEntry}
+              onDeleteSpend={handleDeleteSpendEntry}
+            />
+          }
+        />
 
-        {activeTab === 'attendance' && (
-          <SupervisorAttendanceTab
-            workers={
-              selectedWorksite?.id
-                ? workers.filter((w) => !w.worksiteId || w.worksiteId === selectedWorksite.id)
-                : workers
-            }
-            selectedDate={attendanceDate}
-            onSelectDate={handleSelectAttendanceDate}
-            statistics={rosterStats || undefined}
-            isLoading={isLoadingRoster}
-            isError={isRosterError}
-            onRetry={() => loadRosterAndAttendance(selectedWorksite?.id, attendanceDate)}
-            onApproveWorker={handleApproveWorker}
-            onRejectWorker={handleRejectWorker}
-            onClockOutWorker={handleClockOutWorker}
-            onBulkApprove={handleBulkApprove}
-            onUndoLastAction={handleUndoLastAction}
-            undoAvailable={undoStack}
-            currentWorksite={selectedWorksite}
-          />
-        )}
+        {/* History */}
+        <Route
+          path="history"
+          element={
+            <SupervisorHistoryTab
+              workers={workers}
+              spendEntries={spendEntries}
+              worksites={worksitesList}
+              selectedWorksite={selectedWorksite}
+              onSelectWorksite={setSelectedWorksite}
+            />
+          }
+        />
 
-        {activeTab === 'regularization' && (
-          <SupervisorRegularizationView currentWorksite={selectedWorksite} />
-        )}
+        {/* Profile */}
+        <Route
+          path="profile"
+          element={
+            <SupervisorProfileTab
+              currentWorksite={selectedWorksite}
+              assignedWorkersCount={workers.length}
+              pendingReviewsCount={workers.filter((w) => w.status === 'PENDING').length}
+            />
+          }
+        />
 
-        {activeTab === 'leaves' && (
-          <SupervisorLeavesTab
-            leaves={leaves.filter(
-              (l) => !l.worksiteId || !selectedWorksite?.id || l.worksiteId === selectedWorksite.id
-            )}
-            onApproveLeave={handleApproveLeave}
-            onRejectLeave={handleRejectLeave}
-          />
-        )}
-
-        {activeTab === 'spend' && (
-          <SupervisorSpendTab
-            entries={spendEntries.filter(
-              (e) => !e.worksiteId || !selectedWorksite?.id || e.worksiteId === selectedWorksite.id
-            )}
-            yesterdayTotal={0}
-            monthlySpendData={monthlySpend}
-            categoryBreakdown={categoryBreakdown}
-            workersList={memoizedWorkersList}
-            currentWorksite={selectedWorksite}
-            onAddSpend={handleAddSpendEntry}
-            onEditSpend={handleEditSpendEntry}
-            onDeleteSpend={handleDeleteSpendEntry}
-          />
-        )}
-
-        {activeTab === 'history' && (
-          <SupervisorHistoryTab
-            workers={workers}
-            spendEntries={spendEntries}
-            worksites={worksitesList}
-            selectedWorksite={selectedWorksite}
-            onSelectWorksite={setSelectedWorksite}
-          />
-        )}
-
-        {activeTab === 'profile' && (
-          <SupervisorProfileTab
-            currentWorksite={selectedWorksite}
-            assignedWorkersCount={workers.length}
-            pendingReviewsCount={workers.filter((w) => w.status === 'PENDING').length}
-          />
-        )}
-      </main>
-
-      {/* 3. MOBILE BOTTOM NAVBAR — WITH PROFILE (Visible on mobile, hidden on md+) */}
-      <nav
-        aria-label="Supervisor Bottom Navigation"
-        className="md:hidden fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-[#E8EEF4] z-40 shadow-[0_-4px_24px_rgba(0,0,0,0.06)]"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
-      >
-        <div className="max-w-md mx-auto flex items-stretch justify-around px-1 pt-1.5 pb-2">
-          {(
-            [
-              { id: 'home', label: 'Home', icon: Home },
-              { id: 'attendance', label: 'Attendance', icon: UserCheck },
-              { id: 'regularization', label: 'Regularise', icon: FileEdit },
-              { id: 'leaves', label: 'Leaves', icon: CalendarDays },
-              { id: 'spend', label: 'Spend', icon: Receipt },
-              { id: 'history', label: 'History', icon: History },
-              { id: 'profile', label: 'Profile', icon: User },
-            ] as const
-          ).map(({ id, label, icon: Icon }) => {
-            const isActive = activeTab === id;
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setActiveTab(id)}
-                className={`flex flex-col items-center gap-0.5 min-w-0 flex-1 py-1 rounded-2xl transition-all cursor-pointer ${isActive ? 'text-[#12A66A]' : 'text-[#94A3B8] hover:text-slate-600'
-                  }`}
-              >
-                {/* Active item in primary green with soft green pill background */}
-                <span
-                  className={`flex items-center justify-center w-10 h-8 rounded-full transition-all duration-150 ${isActive ? 'bg-[#E6F7EF] text-[#12A66A]' : ''
-                    }`}
-                >
-                  <Icon className={`w-5 h-5 ${isActive ? 'stroke-[2.5]' : ''}`} />
-                </span>
-                <span
-                  className={`text-[10px] leading-tight ${isActive ? 'font-bold text-[#12A66A]' : 'font-medium'
-                    }`}
-                >
-                  {label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </nav>
-
-    </div>
+        <Route path="" element={<Navigate to="attendance/daily" replace />} />
+        <Route path="*" element={<Navigate to="attendance/daily" replace />} />
+      </Routes>
+    </SupervisorAppShell>
   );
 };

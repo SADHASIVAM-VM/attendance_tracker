@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   SupervisorWorkerAttendance,
   SupervisorWorksite,
@@ -6,11 +7,13 @@ import {
   MissingClockInCase,
 } from '../../types/supervisor';
 import { WorkerRow } from '../../components/supervisor/WorkerRow';
+import { StatusPill } from '../../components/supervisor/StatusPill';
 import { ReviewSheet } from '../../components/supervisor/ReviewSheet';
 import { SupervisorPersonalAttendance } from '../../components/supervisor/SupervisorPersonalAttendance';
 import { MissingClockInManager } from '../../components/supervisor/MissingClockInManager';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { DateRangePicker, DateRange } from '../../components/ui/date-range-picker';
+import { DataTablePagination } from '../../components/ui/data-table-pagination';
 import { apiRequest } from '../../lib/api';
 import {
   Calendar,
@@ -32,9 +35,12 @@ import {
   Building2,
   RefreshCw,
   Sliders,
-  Flag,
   HelpCircle,
   Download,
+  MapPin,
+  Check,
+  X,
+  Eye,
 } from 'lucide-react';
 
 export type SupervisorSection =
@@ -94,16 +100,42 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   }, []);
 
-  // Normalize initialSection (maps legacy daily-attendance to today-attendance)
-  const normalizedInitialSection: SupervisorSection = useMemo(() => {
-    if (initialSection === 'missing-clock-in' || initialSection === 'missing-attendance') return 'missing-attendance';
-    if (initialSection === 'overrides' || initialSection === 'attendance-overrides') return 'attendance-overrides';
-    if (initialSection === 'history' || initialSection === 'attendance-history') return 'attendance-history';
-    if (initialSection === 'my-attendance') return 'my-attendance';
-    return 'today-attendance';
-  }, [initialSection]);
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const [section, setSection] = useState<SupervisorSection>(normalizedInitialSection);
+  // Derive active attendance sub-section from the current route URL or initialSection
+  const section: SupervisorSection = useMemo(() => {
+    if (initialSection) {
+      return initialSection as SupervisorSection;
+    }
+    const p = location.pathname.toLowerCase();
+    if (p.includes('/my-attendance')) return 'my-attendance';
+    if (p.includes('/missing')) return 'missing-attendance';
+    if (p.includes('/overrides')) return 'attendance-overrides';
+    if (p.includes('/history')) return 'attendance-history';
+    return 'today-attendance';
+  }, [location.pathname, initialSection]);
+
+  const handleSectionClick = (sec: SupervisorSection) => {
+    switch (sec) {
+      case 'missing-attendance':
+        navigate('/supervisor/attendance/missing');
+        break;
+      case 'attendance-overrides':
+        navigate('/supervisor/attendance/overrides');
+        break;
+      case 'attendance-history':
+        navigate('/supervisor/attendance/history');
+        break;
+      case 'my-attendance':
+        navigate('/supervisor/my-attendance');
+        break;
+      case 'today-attendance':
+      default:
+        navigate('/supervisor/attendance/daily');
+        break;
+    }
+  };
 
   // Missing clock-in state
   const [missingCases, setMissingCases] = useState<MissingClockInCase[]>([]);
@@ -116,7 +148,11 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
   const [activeCardFilter, setActiveCardFilter] = useState<CardFilterType>('TOTAL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const pageSize = 20;
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [overridesPage, setOverridesPage] = useState<number>(1);
+  const [overridesLimit, setOverridesLimit] = useState<number>(10);
+  const [historyPage, setHistoryPage] = useState<number>(1);
+  const [historyLimit, setHistoryLimit] = useState<number>(10);
 
   const [multiSelectMode, setMultiSelectMode] = useState<boolean>(false);
   const [selectedWorkerIds, setSelectedWorkerIds] = useState<string[]>([]);
@@ -147,11 +183,74 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
     }
   }, [workers, overrideWorkerId]);
 
+  // Check if attendance record exists for the selected worker on overrideDate
+  const [sessionCheckState, setSessionCheckState] = useState<{
+    isLoading: boolean;
+    sessionExists: boolean | null;
+    sessionData: any | null;
+  }>({ isLoading: false, sessionExists: null, sessionData: null });
+
+  useEffect(() => {
+    let isCancelled = false;
+    if (!overrideWorkerId || !overrideDate) {
+      setSessionCheckState({ isLoading: false, sessionExists: null, sessionData: null });
+      return;
+    }
+
+    // If date matches todayStr and workers list is loaded, evaluate directly
+    if (overrideDate === todayStr && workers.length > 0) {
+      const match = workers.find((w) => w.workerId === overrideWorkerId || w.id === overrideWorkerId);
+      const hasRecord = Boolean(match && match.clockInTime);
+      setSessionCheckState({
+        isLoading: false,
+        sessionExists: hasRecord,
+        sessionData: hasRecord ? match : null,
+      });
+      return;
+    }
+
+    setSessionCheckState((prev) => ({ ...prev, isLoading: true }));
+    apiRequest<any>(
+      `/attendance/supervisor/history-range?startDate=${overrideDate}&endDate=${overrideDate}&workerId=${overrideWorkerId}`
+    )
+      .then((res) => {
+        if (isCancelled) return;
+        const records = Array.isArray(res) ? res : res?.records || [];
+        const match = records.find(
+          (r: any) =>
+            (r.workerId === overrideWorkerId || r.userId === overrideWorkerId || r.id === overrideWorkerId) &&
+            String(r.date || r.workDate).split('T')[0] === overrideDate &&
+            Boolean(r.clockInTime || r.sessionId)
+        );
+        setSessionCheckState({
+          isLoading: false,
+          sessionExists: Boolean(match),
+          sessionData: match || null,
+        });
+      })
+      .catch(() => {
+        if (isCancelled) return;
+        setSessionCheckState({ isLoading: false, sessionExists: null, sessionData: null });
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [overrideWorkerId, overrideDate, todayStr, workers]);
+
   // Existing session preview for override worker + date
   const overrideExistingSession = useMemo(() => {
+    if (sessionCheckState.sessionData) return sessionCheckState.sessionData;
     if (!overrideWorkerId) return null;
-    return workers.find((w) => (w.workerId === overrideWorkerId || w.id === overrideWorkerId) && w.date === overrideDate) || null;
-  }, [workers, overrideWorkerId, overrideDate]);
+    return (
+      workers.find(
+        (w) =>
+          (w.workerId === overrideWorkerId || w.id === overrideWorkerId) &&
+          (!w.date || w.date === overrideDate) &&
+          Boolean(w.clockInTime)
+      ) || null
+    );
+  }, [workers, overrideWorkerId, overrideDate, sessionCheckState.sessionData]);
 
   // -------------------------------------------------------------
   // ATTENDANCE HISTORY STATE (Range-Based Selection via Shadcn Calendar UI)
@@ -293,7 +392,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
   // Metrics for Today's Attendance Cards
   const totalCount = summaryStats?.totalWorkers ?? statistics?.totalWorkers ?? workers.length;
   const approvedCount = summaryStats?.approved ?? statistics?.approved ?? workers.filter((w) => w.status === 'APPROVED').length;
-  const rejectedCount = summaryStats?.rejected ?? statistics?.rejected ?? workers.filter((w) => w.status === 'REJECTED').length;
+  const rejectedCount = summaryStats?.rejected ?? statistics?.rejected ?? workers.filter((w) => w.status === 'REJECTED' || w.status === 'ABSENT').length;
   const pendingCount = summaryStats?.pending ?? statistics?.pending ?? workers.filter((w) => w.status === 'PENDING').length;
   const missingCount = summaryStats?.missingClockIns ?? statistics?.missingClockIns ?? missingCases.length;
   const flaggedDatesCount = summaryStats?.flaggedDatesCount ?? statistics?.flaggedDatesCount ?? 0;
@@ -302,10 +401,10 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
   const filteredWorkers = useMemo(() => {
     return workers.filter((w) => {
       if (activeCardFilter === 'APPROVED' && w.status !== 'APPROVED') return false;
-      if (activeCardFilter === 'REJECTED' && w.status !== 'REJECTED') return false;
+      if (activeCardFilter === 'REJECTED' && w.status !== 'REJECTED' && w.status !== 'ABSENT') return false;
       if (activeCardFilter === 'PENDING' && w.status !== 'PENDING') return false;
       if (activeCardFilter === 'MISSING_CLOCK_IN') {
-        const isMissing = !w.clockInTime && w.status !== 'ON_LEAVE';
+        const isMissing = !w.clockInTime && w.status !== 'ON_LEAVE' && w.status !== 'ABSENT';
         if (!isMissing) return false;
       }
       if (activeCardFilter === 'FLAGGED' && (!w.flagStatus || w.flagStatus === 'NONE')) return false;
@@ -360,6 +459,10 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
   // -------------------------------------------------------------
   // ATTENDANCE OVERRIDE SUBMISSION
   // -------------------------------------------------------------
+  const isOverrideNonCurrentMonth = useMemo(() => {
+    return overrideDate.substring(0, 7) !== currentMonthStr;
+  }, [overrideDate, currentMonthStr]);
+
   const isOverridePrevMonth = useMemo(() => {
     return overrideDate.substring(0, 7) < currentMonthStr;
   }, [overrideDate, currentMonthStr]);
@@ -377,9 +480,9 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
       return;
     }
 
-    if (isOverridePrevMonth) {
+    if (isOverrideNonCurrentMonth) {
       setFlashMessage({
-        text: `Supervisor overrides are strictly limited to the current calendar month (${currentMonthStr}). For previous months, please use the authorized Admin Attendance Correction process.`,
+        text: `Supervisor overrides are strictly limited to the current calendar month (${currentMonthStr}). For other months, please use the Worker Regularisation or Admin Attendance Correction workflow.`,
         type: 'error',
       });
       return;
@@ -387,6 +490,14 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
 
     if (isOverrideFuture) {
       setFlashMessage({ text: 'Future attendance dates cannot be overridden.', type: 'error' });
+      return;
+    }
+
+    if (sessionCheckState.sessionExists === false) {
+      setFlashMessage({
+        text: `No attendance record exists for this worker on ${overrideDate}. Nonexistent clock-ins cannot be silently created as normal attendance via supervisor override. Please use the Worker Regularisation or Admin Attendance Correction workflow.`,
+        type: 'error',
+      });
       return;
     }
 
@@ -439,7 +550,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
       return;
     }
 
-    const headers = ['Date', 'Worker Name', 'Employee ID', 'Clock In', 'Clock Out', 'Worksite', 'Status', 'Flag Status', 'Flag Reason', 'Flag Note'];
+    const headers = ['Date', 'Worker Name', 'Employee ID', 'Clock In', 'Clock Out', 'Worksite', 'Status', 'Action By'];
     const rows = historyRecords.map((r) => [
       r.date,
       `"${(r.workerName || '').replace(/"/g, '""')}"`,
@@ -448,9 +559,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
       r.clockOutTime ? new Date(r.clockOutTime).toLocaleTimeString() : '',
       `"${(r.worksiteName || '').replace(/"/g, '""')}"`,
       r.status || '',
-      r.flag?.status || 'NONE',
-      `"${(r.flag?.reason || '').replace(/"/g, '""')}"`,
-      `"${(r.flag?.note || '').replace(/"/g, '""')}"`,
+      `"${(r.actionByName || r.actionBy || '—').replace(/"/g, '""')}"`,
     ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
@@ -493,212 +602,187 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
       )}
 
       {/* ── SUMMARY KPI CARDS (Real Attendance Data) ────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-        {/* 1. Total Workers */}
-        <button
-          type="button"
-          onClick={() => {
-            setSection('today-attendance');
-            setActiveCardFilter('TOTAL');
-          }}
-          className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
-            section === 'today-attendance' && activeCardFilter === 'TOTAL'
-              ? 'bg-[#F0FDF4] border-2 border-[#12A66A] shadow-xs ring-1 ring-[#12A66A]'
-              : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total</span>
-            <Users className="w-4 h-4 text-slate-500" />
-          </div>
-          <div className="text-2xl font-extrabold text-slate-900 tabular-nums">{totalCount}</div>
-          <span className="text-[10px] text-slate-400 font-medium">Assigned Today</span>
-        </button>
+      {section !== 'my-attendance' && section !== 'attendance-overrides' && section !== 'attendance-history' && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+          {/* 1. Total Workers */}
+          <button
+            type="button"
+            onClick={() => {
+              handleSectionClick('today-attendance');
+              setActiveCardFilter('TOTAL');
+            }}
+            className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
+              section === 'today-attendance' && activeCardFilter === 'TOTAL'
+                ? 'bg-[#F0FDF4] border-2 border-[#12A66A] shadow-xs ring-1 ring-[#12A66A]'
+                : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total</span>
+              <Users className="w-4 h-4 text-slate-500" />
+            </div>
+            <div className="text-2xl font-extrabold text-slate-900 tabular-nums">{totalCount}</div>
+            <span className="text-[10px] text-slate-400 font-medium">Assigned Today</span>
+          </button>
 
-        {/* 2. Approved Today */}
-        <button
-          type="button"
-          onClick={() => {
-            setSection('today-attendance');
-            setActiveCardFilter('APPROVED');
-          }}
-          className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
-            section === 'today-attendance' && activeCardFilter === 'APPROVED'
-              ? 'bg-[#E6F7EF] border-2 border-[#12A66A] shadow-xs ring-1 ring-[#12A66A]'
-              : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Approved</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-          </div>
-          <div className="text-2xl font-extrabold text-[#0E8F5B] tabular-nums">{approvedCount}</div>
-          <span className="text-[10px] text-emerald-600 font-medium">Verified Today</span>
-        </button>
+          {/* 2. Approved Today */}
+          <button
+            type="button"
+            onClick={() => {
+              handleSectionClick('today-attendance');
+              setActiveCardFilter('APPROVED');
+            }}
+            className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
+              section === 'today-attendance' && activeCardFilter === 'APPROVED'
+                ? 'bg-[#E6F7EF] border-2 border-[#12A66A] shadow-xs ring-1 ring-[#12A66A]'
+                : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Approved</span>
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            </div>
+            <div className="text-2xl font-extrabold text-[#0E8F5B] tabular-nums">{approvedCount}</div>
+            <span className="text-[10px] text-emerald-600 font-medium">Verified Today</span>
+          </button>
 
-        {/* 3. Rejected Today */}
-        <button
-          type="button"
-          onClick={() => {
-            setSection('today-attendance');
-            setActiveCardFilter('REJECTED');
-          }}
-          className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
-            section === 'today-attendance' && activeCardFilter === 'REJECTED'
-              ? 'bg-rose-50 border-2 border-rose-500 shadow-xs ring-1 ring-rose-400'
-              : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-bold text-rose-800 uppercase tracking-wider">Rejected</span>
-            <XCircle className="w-4 h-4 text-rose-600" />
-          </div>
-          <div className="text-2xl font-extrabold text-rose-700 tabular-nums">{rejectedCount}</div>
-          <span className="text-[10px] text-rose-600 font-medium">Declined Today</span>
-        </button>
+          {/* 3. Rejected Today */}
+          <button
+            type="button"
+            onClick={() => {
+              handleSectionClick('today-attendance');
+              setActiveCardFilter('REJECTED');
+            }}
+            className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
+              section === 'today-attendance' && activeCardFilter === 'REJECTED'
+                ? 'bg-rose-50 border-2 border-rose-500 shadow-xs ring-1 ring-rose-400'
+                : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-bold text-rose-800 uppercase tracking-wider">Rejected / Absent</span>
+              <XCircle className="w-4 h-4 text-rose-600" />
+            </div>
+            <div className="text-2xl font-extrabold text-rose-700 tabular-nums">{rejectedCount}</div>
+            <span className="text-[10px] text-rose-600 font-medium">Declined / Absent Today</span>
+          </button>
 
-        {/* 4. Pending Today */}
-        <button
-          type="button"
-          onClick={() => {
-            setSection('today-attendance');
-            setActiveCardFilter('PENDING');
-          }}
-          className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
-            section === 'today-attendance' && activeCardFilter === 'PENDING'
-              ? 'bg-amber-50 border-2 border-amber-500 shadow-xs ring-1 ring-amber-400'
-              : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Pending</span>
-            <Clock className="w-4 h-4 text-amber-600 animate-pulse" />
-          </div>
-          <div className="text-2xl font-extrabold text-amber-700 tabular-nums">{pendingCount}</div>
-          <span className="text-[10px] text-amber-600 font-medium">Review Needed</span>
-        </button>
+          {/* 4. Pending Today */}
+          <button
+            type="button"
+            onClick={() => {
+              handleSectionClick('today-attendance');
+              setActiveCardFilter('PENDING');
+            }}
+            className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
+              section === 'today-attendance' && activeCardFilter === 'PENDING'
+                ? 'bg-amber-50 border-2 border-amber-500 shadow-xs ring-1 ring-amber-400'
+                : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Pending</span>
+              <Clock className="w-4 h-4 text-amber-600 animate-pulse" />
+            </div>
+            <div className="text-2xl font-extrabold text-amber-700 tabular-nums">{pendingCount}</div>
+            <span className="text-[10px] text-amber-600 font-medium">Review Needed</span>
+          </button>
 
-        {/* 5. Missing Clock-Ins */}
-        <button
-          type="button"
-          onClick={() => {
-            setSection('missing-attendance');
-          }}
-          className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
-            section === 'missing-attendance'
-              ? 'bg-amber-100/70 border-2 border-amber-600 shadow-xs ring-1 ring-amber-500'
-              : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wider">Missing In</span>
-            <AlertTriangle className="w-4 h-4 text-amber-600" />
-          </div>
-          <div className="text-2xl font-extrabold text-amber-800 tabular-nums">{missingCount}</div>
-          <span className="text-[10px] text-amber-700 font-medium">Unclocked Shifts</span>
-        </button>
+          {/* 5. Missing Clock-Ins */}
+          <button
+            type="button"
+            onClick={() => {
+              handleSectionClick('missing-attendance');
+            }}
+            className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
+              section === 'missing-attendance'
+                ? 'bg-amber-100/70 border-2 border-amber-600 shadow-xs ring-1 ring-amber-500'
+                : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wider">Missing In</span>
+              <AlertTriangle className="w-4 h-4 text-amber-600" />
+            </div>
+            <div className="text-2xl font-extrabold text-amber-800 tabular-nums">{missingCount}</div>
+            <span className="text-[10px] text-amber-700 font-medium">Unclocked Shifts</span>
+          </button>
 
-        {/* 6. Flagged Attendance */}
-        <button
-          type="button"
-          onClick={() => {
-            setSection('today-attendance');
-            setActiveCardFilter('FLAGGED');
-          }}
-          className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
-            section === 'today-attendance' && activeCardFilter === 'FLAGGED'
-              ? 'bg-purple-50 border-2 border-purple-600 shadow-xs ring-1 ring-purple-500'
-              : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-bold text-purple-900 uppercase tracking-wider">Flagged</span>
-            <ShieldAlert className="w-4 h-4 text-purple-600" />
-          </div>
-          <div className="text-2xl font-extrabold text-purple-700 tabular-nums">{flaggedDatesCount}</div>
-          <span className="text-[10px] text-purple-600 font-medium">Exceptions Reviewed</span>
-        </button>
-      </div>
+          {/* 6. Flagged Attendance */}
+          <button
+            type="button"
+            onClick={() => {
+              handleSectionClick('today-attendance');
+              setActiveCardFilter('FLAGGED');
+            }}
+            className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${
+              section === 'today-attendance' && activeCardFilter === 'FLAGGED'
+                ? 'bg-purple-50 border-2 border-purple-600 shadow-xs ring-1 ring-purple-500'
+                : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-bold text-purple-900 uppercase tracking-wider">Flagged</span>
+              <ShieldAlert className="w-4 h-4 text-purple-600" />
+            </div>
+            <div className="text-2xl font-extrabold text-purple-700 tabular-nums">{flaggedDatesCount}</div>
+            <span className="text-[10px] text-purple-600 font-medium">Exceptions Reviewed</span>
+          </button>
+        </div>
+      )}
 
-      {/* ── 5 ATTENDANCE SUB-SECTIONS SWITCHER BAR ───────────────────────────── */}
-      <div className="flex p-1 bg-white border border-[#E8EEF4] rounded-[18px] shadow-xs gap-1 overflow-x-auto">
-        <button
-          type="button"
-          onClick={() => setSection('today-attendance')}
-          className={`flex-1 min-w-[140px] py-2.5 px-3 rounded-[12px] text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-            section === 'today-attendance'
-              ? 'bg-[#12A66A] text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-          }`}
-        >
-          <Users className="w-4 h-4 shrink-0" />
-          <span className="truncate">Today Attendance</span>
-          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 text-white font-extrabold ml-1">
-            {totalCount}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setSection('missing-attendance')}
-          className={`flex-1 min-w-[145px] py-2.5 px-3 rounded-[12px] text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer relative ${
-            section === 'missing-attendance'
-              ? 'bg-amber-600 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-          }`}
-        >
-          <AlertTriangle className="w-4 h-4 shrink-0" />
-          <span className="truncate">Missing Attendance</span>
-          {missingCases.length > 0 && (
-            <span
-              className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
-                section === 'missing-attendance' ? 'bg-white/25 text-white' : 'bg-amber-500 text-white'
+      {/* ── COMBINED DAILY ATTENDANCE (TODAY & MISSING) SEGMENTED SWITCHER ───────────────────────────── */}
+      {(section === 'today-attendance' || section === 'missing-attendance') && (
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white border border-[#E8EEF4] rounded-[18px] p-2 shadow-xs">
+          <div className="flex p-1 bg-[#F1F6FC] rounded-[14px] gap-1 flex-1 sm:max-w-md">
+            <button
+              type="button"
+              onClick={() => handleSectionClick('today-attendance')}
+              className={`flex-1 py-2 px-3 rounded-[10px] text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                section === 'today-attendance'
+                  ? 'bg-[#12A66A] text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              {missingCases.length}
-            </span>
-          )}
-        </button>
+              <Users className="w-3.5 h-3.5" />
+              <span>Today's Attendance</span>
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
+                  section === 'today-attendance' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+                }`}
+              >
+                {totalCount}
+              </span>
+            </button>
 
-        <button
-          type="button"
-          onClick={() => setSection('attendance-overrides')}
-          className={`flex-1 min-w-[140px] py-2.5 px-3 rounded-[12px] text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-            section === 'attendance-overrides'
-              ? 'bg-slate-900 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-          }`}
-        >
-          <Sliders className="w-4 h-4 shrink-0" />
-          <span className="truncate">Attendance Overrides</span>
-        </button>
+            <button
+              type="button"
+              onClick={() => handleSectionClick('missing-attendance')}
+              className={`flex-1 py-2 px-3 rounded-[10px] text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                section === 'missing-attendance'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span>Missing Attendance</span>
+              {missingCases.length > 0 && (
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
+                    section === 'missing-attendance' ? 'bg-white/25 text-white' : 'bg-amber-500 text-white'
+                  }`}
+                >
+                  {missingCases.length}
+                </span>
+              )}
+            </button>
+          </div>
 
-        <button
-          type="button"
-          onClick={() => setSection('attendance-history')}
-          className={`flex-1 min-w-[140px] py-2.5 px-3 rounded-[12px] text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-            section === 'attendance-history'
-              ? 'bg-[#12A66A] text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-          }`}
-        >
-          <History className="w-4 h-4 shrink-0" />
-          <span className="truncate">Attendance History</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setSection('my-attendance')}
-          className={`flex-1 min-w-[120px] py-2.5 px-3 rounded-[12px] text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-            section === 'my-attendance'
-              ? 'bg-[#12A66A] text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-          }`}
-        >
-          <User className="w-4 h-4 shrink-0" />
-          <span className="truncate">My Attendance</span>
-        </button>
-      </div>
+          <div className="text-[11px] text-slate-500 px-3 font-medium hidden sm:block">
+            {section === 'today-attendance' ? "Live today's worker shift records" : 'Missing punch flags & grace review'}
+          </div>
+        </div>
+      )}
 
       {/* ── SECTION 1: TODAY'S ATTENDANCE ALONE ─────────────────────────────── */}
       {section === 'today-attendance' && (
@@ -798,7 +882,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                     {activeCardFilter === 'APPROVED'
                       ? 'Approved'
                       : activeCardFilter === 'REJECTED'
-                      ? 'Rejected'
+                      ? 'Rejected / Absent'
                       : activeCardFilter === 'MISSING_CLOCK_IN'
                       ? 'Missing Clock-ins'
                       : activeCardFilter === 'PENDING'
@@ -923,55 +1007,250 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {paginatedWorkers.map((worker) => (
-                  <WorkerRow
-                    key={worker.id}
-                    worker={worker}
-                    onSelect={(w) => setSelectedWorkerForReview(w)}
-                    onQuickApprove={(w, e) => {
-                      e.stopPropagation();
-                      onApproveWorker(w);
-                      loadSupervisorSummary();
-                    }}
-                    onQuickReject={(w, e) => {
-                      e.stopPropagation();
-                      setSelectedWorkerForReview(w);
-                    }}
-                    multiSelectMode={multiSelectMode}
-                    isSelected={selectedWorkerIds.includes(worker.id)}
-                    onToggleSelect={handleToggleWorkerSelect}
-                  />
-                ))}
+              <div className="bg-white rounded-2xl border border-[#E8EEF4] shadow-xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[11px] font-bold uppercase tracking-wider">
+                      <tr>
+                        {multiSelectMode && (
+                          <th className="py-3 px-4 w-10">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const allCurrentIds = paginatedWorkers.map((w) => w.id);
+                                const allSelected = allCurrentIds.every((id) => selectedWorkerIds.includes(id));
+                                if (allSelected) {
+                                  setSelectedWorkerIds(selectedWorkerIds.filter((id) => !allCurrentIds.includes(id)));
+                                } else {
+                                  setSelectedWorkerIds(Array.from(new Set([...selectedWorkerIds, ...allCurrentIds])));
+                                }
+                              }}
+                              className="text-[#12A66A] p-1 transition-transform active:scale-90"
+                              title={
+                                paginatedWorkers.every((w) => selectedWorkerIds.includes(w.id))
+                                  ? 'Deselect all on this page'
+                                  : 'Select all on this page'
+                              }
+                            >
+                              {paginatedWorkers.length > 0 &&
+                              paginatedWorkers.every((w) => selectedWorkerIds.includes(w.id)) ? (
+                                <CheckSquare className="w-4 h-4 fill-[#12A66A] text-white" />
+                              ) : (
+                                <Square className="w-4 h-4 text-slate-300" />
+                              )}
+                            </button>
+                          </th>
+                        )}
+                        <th className="py-3 px-4">Worker</th>
+                        <th className="py-3 px-4">Clock In / Out</th>
+                        <th className="py-3 px-4">Worksite</th>
+                        <th className="py-3 px-4">Notes / Reason</th>
+                        <th className="py-3 px-4">Status</th>
+                        <th className="py-3 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-700">
+                      {paginatedWorkers.map((worker) => {
+                        const isSelected = selectedWorkerIds.includes(worker.id);
+                        const isPending = worker.status === 'PENDING';
+                        return (
+                          <tr
+                            key={worker.id}
+                            onClick={() => {
+                              if (multiSelectMode) {
+                                handleToggleWorkerSelect(worker);
+                              } else {
+                                setSelectedWorkerForReview(worker);
+                              }
+                            }}
+                            className={`hover:bg-slate-50/80 transition-colors cursor-pointer ${
+                              isSelected ? 'bg-emerald-50/40' : ''
+                            }`}
+                          >
+                            {/* Checkbox column */}
+                            {multiSelectMode && (
+                              <td className="py-3 px-4 w-10" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleWorkerSelect(worker)}
+                                  className="text-[#12A66A] p-1 transition-transform active:scale-90"
+                                >
+                                  {isSelected ? (
+                                    <CheckSquare className="w-4 h-4 fill-[#12A66A] text-white" />
+                                  ) : (
+                                    <Square className="w-4 h-4 text-slate-300" />
+                                  )}
+                                </button>
+                              </td>
+                            )}
+
+                            {/* Worker */}
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-3">
+                                <div className="relative shrink-0">
+                                  <img
+                                    src={worker.avatar}
+                                    alt={worker.name}
+                                    className="w-9 h-9 rounded-xl object-cover border border-[#E8EEF4]"
+                                    onError={(e) => {
+                                      (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                                        worker.name || 'Worker'
+                                      )}&background=0D8ABC&color=fff`;
+                                    }}
+                                  />
+                                  {worker.inPhotoUrl && (
+                                    <div
+                                      title="Verified Selfie Attached"
+                                      className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-[#12A66A] border-2 border-white flex items-center justify-center text-[7px] text-white font-bold"
+                                    >
+                                      ✓
+                                    </div>
+                                  )}
+                                </div>
+                                <div>
+                                  <span className="font-bold text-slate-900 block leading-tight">{worker.name}</span>
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    {worker.employeeCode && (
+                                      <span className="text-[10px] font-mono font-semibold bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded border border-slate-200/60">
+                                        {worker.employeeCode}
+                                      </span>
+                                    )}
+                                    <span className="text-[10px] text-slate-500 font-medium">
+                                      {worker.role || 'Worker'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Clock In / Out */}
+                            <td className="py-3 px-4 whitespace-nowrap">
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-1 text-xs font-semibold tabular-nums text-slate-800">
+                                  <Clock className="w-3.5 h-3.5 text-[#12A66A]" />
+                                  <span>{worker.clockInTime ? worker.clockInTime : 'Not clocked in'}</span>
+                                  {worker.clockOutTime && <span className="text-slate-400 font-normal"> – {worker.clockOutTime}</span>}
+                                </div>
+                                {worker.clockInTime && (
+                                  <div
+                                    className={`flex items-center gap-0.5 text-[10px] font-semibold ${
+                                      worker.isWithinRadius ? 'text-emerald-700' : 'text-rose-600'
+                                    }`}
+                                  >
+                                    <MapPin className="w-2.5 h-2.5" />
+                                    <span>
+                                      {worker.distanceMeters}m {worker.isWithinRadius ? 'on site' : 'outside perimeter'}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* Worksite */}
+                            <td className="py-3 px-4 text-xs font-semibold text-slate-800 whitespace-nowrap">
+                              <div className="flex items-center gap-1.5">
+                                <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span>{worker.worksiteName || currentWorksite?.name || '—'}</span>
+                              </div>
+                            </td>
+
+                            {/* Notes / Reason */}
+                            <td className="py-3 px-4 max-w-xs text-xs">
+                              {worker.rejectionReason || worker.flagReason || (worker.note && !['Not yet clocked in', 'Not yet in', 'Scheduled on shift roster'].includes(worker.note)) ? (
+                                <span className="text-slate-700 block truncate" title={worker.rejectionReason || worker.flagReason || worker.note || ''}>
+                                  {worker.rejectionReason ? `Reason: ${worker.rejectionReason}` : (worker.flagReason || worker.note)}
+                                </span>
+                              ) : (
+                                <span className="text-slate-300 font-normal">—</span>
+                              )}
+                            </td>
+
+                            {/* Status */}
+                            <td className="py-3 px-4 whitespace-nowrap">
+                              <StatusPill status={worker.status} size="sm" />
+                            </td>
+
+                            {/* Actions */}
+                            <td className="py-3 px-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center justify-end gap-1.5">
+                                {isPending && !multiSelectMode ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onApproveWorker(worker);
+                                        loadSupervisorSummary();
+                                      }}
+                                      title="Approve"
+                                      aria-label="Approve"
+                                      className="w-8 h-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105"
+                                    >
+                                      <Check className="w-4 h-4 stroke-[2.5]" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedWorkerForReview(worker);
+                                      }}
+                                      title="Reject / Mark Absent"
+                                      aria-label="Reject"
+                                      className="w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105"
+                                    >
+                                      <X className="w-4 h-4 stroke-[2.5]" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedWorkerForReview(worker);
+                                      }}
+                                      title="Review Details"
+                                      aria-label="Review"
+                                      className="w-8 h-8 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105"
+                                    >
+                                      <Eye className="w-4 h-4 text-slate-500" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedWorkerForReview(worker)}
+                                    title="View Details"
+                                    className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
               {/* Pagination Controls */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs text-slate-500">
-                  <span>
-                    Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filteredWorkers.length)} of {filteredWorkers.length} workers
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      disabled={currentPage === 1}
-                      className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white font-semibold disabled:opacity-40 hover:bg-slate-50 cursor-pointer disabled:cursor-not-allowed"
-                    >
-                      Previous
-                    </button>
-                    <span className="font-bold text-slate-800 px-1">
-                      {currentPage} / {totalPages}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                      disabled={currentPage === totalPages}
-                      className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white font-semibold disabled:opacity-40 hover:bg-slate-50 cursor-pointer disabled:cursor-not-allowed"
-                    >
-                      Next
-                    </button>
-                  </div>
+              {filteredWorkers.length > 0 && (
+                <div className="pt-2">
+                  <DataTablePagination
+                    metadata={{
+                      total: filteredWorkers.length,
+                      page: currentPage,
+                      limit: pageSize,
+                      offset: (currentPage - 1) * pageSize,
+                      totalPages: Math.ceil(filteredWorkers.length / pageSize),
+                    }}
+                    onPageChange={(p) => setCurrentPage(p)}
+                    onLimitChange={(l) => {
+                      setPageSize(l);
+                      setCurrentPage(1);
+                    }}
+                    pageSizeOptions={[10, 25, 50]}
+                  />
                 </div>
               )}
             </div>
@@ -1145,7 +1424,9 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                     Current Record for this Date
                   </span>
-                  {overrideExistingSession ? (
+                  {sessionCheckState.isLoading ? (
+                    <span className="text-slate-400 text-[11px] italic">Checking attendance record...</span>
+                  ) : overrideExistingSession ? (
                     <div className="flex items-center justify-between text-[11px]">
                       <span className="text-slate-600">
                         {overrideExistingSession.clockInTime ? `In: ${overrideExistingSession.clockInTime}` : 'No Clock-In'}
@@ -1156,6 +1437,37 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                     <span className="text-slate-400 text-[11px] italic">No active punch session recorded</span>
                   )}
                 </div>
+
+                {/* Nonexistent Attendance Session Banner */}
+                {sessionCheckState.sessionExists === false && (
+                  <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                      <div className="text-xs text-amber-900 leading-relaxed">
+                        <p className="font-bold text-amber-950 m-0">No Attendance Record</p>
+                        <p className="mt-1 text-[11px] text-amber-800 m-0">
+                          No attendance record exists for this worker on {overrideDate}. Nonexistent clock-ins cannot be silently created as normal attendance via supervisor override. Please use the Worker Regularisation or Admin Attendance Correction workflow.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-amber-200/60">
+                      <button
+                        type="button"
+                        onClick={() => navigate('/supervisor/regularizations')}
+                        className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
+                      >
+                        Worker Regularisation
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/supervisor/attendance-exceptions')}
+                        className="px-2.5 py-1 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
+                      >
+                        Attendance Exceptions
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* New Status */}
                 <div>
@@ -1223,10 +1535,22 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
 
                 <button
                   type="submit"
-                  disabled={isSubmittingOverride || overrideReason.trim().length < 5}
+                  disabled={
+                    isSubmittingOverride ||
+                    overrideReason.trim().length < 5 ||
+                    sessionCheckState.sessionExists === false ||
+                    isOverrideNonCurrentMonth ||
+                    isOverrideFuture
+                  }
                   className="w-full py-2.5 bg-slate-900 hover:bg-black disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs"
                 >
-                  {isSubmittingOverride ? 'Applying Override...' : 'Apply Attendance Override'}
+                  {isSubmittingOverride
+                    ? 'Applying Override...'
+                    : sessionCheckState.sessionExists === false
+                    ? 'Override Blocked - No Attendance Record'
+                    : isOverrideNonCurrentMonth
+                    ? 'Current Month Only'
+                    : 'Apply Attendance Override'}
                 </button>
               </form>
             </div>
@@ -1269,7 +1593,9 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-slate-700">
-                      {overridesList.map((item, idx) => (
+                      {overridesList
+                        .slice((overridesPage - 1) * overridesLimit, overridesPage * overridesLimit)
+                        .map((item, idx) => (
                         <tr key={item.id || idx} className="hover:bg-slate-50/70">
                           <td className="py-3 px-3 font-semibold text-slate-900">{item.workDate}</td>
                           <td className="py-3 px-3 font-medium">{item.workerName || 'Worker'}</td>
@@ -1289,6 +1615,22 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                       ))}
                     </tbody>
                   </table>
+                  <DataTablePagination
+                    metadata={{
+                      total: overridesList.length,
+                      page: overridesPage,
+                      limit: overridesLimit,
+                      offset: (overridesPage - 1) * overridesLimit,
+                      totalPages: Math.ceil(overridesList.length / overridesLimit),
+                    }}
+                    onPageChange={(p) => setOverridesPage(p)}
+                    onLimitChange={(l) => {
+                      setOverridesLimit(l);
+                      setOverridesPage(1);
+                    }}
+                    pageSizeOptions={[10, 25, 50]}
+                    isLoading={isLoadingOverrides}
+                  />
                 </div>
               )}
             </div>
@@ -1439,14 +1781,13 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                       <th className="py-3 px-3.5">Clock-Out</th>
                       <th className="py-3 px-3.5">Site</th>
                       <th className="py-3 px-3.5">Status</th>
-                      <th className="py-3 px-3.5">Flag (Missing Review)</th>
+                      <th className="py-3 px-3.5">Action By</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700 bg-white">
-                    {historyRecords.map((item) => {
-                      const flag = item.flag;
-                      const hasFlag = Boolean(flag);
-
+                    {historyRecords
+                      .slice((historyPage - 1) * historyLimit, historyPage * historyLimit)
+                      .map((item) => {
                       return (
                         <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
                           {/* 1. Date */}
@@ -1485,36 +1826,16 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                             <StatusBadge status={item.status} />
                           </td>
 
-                          {/* 7. Flag (from missing clock-ins flag review) */}
-                          <td className="py-3.5 px-3.5">
-                            {hasFlag ? (
-                              <div className="space-y-1">
-                                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold tracking-wide uppercase border">
-                                  {flag.status === 'APPROVED' ? (
-                                    <span className="bg-emerald-50 text-emerald-800 border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                      <Flag className="w-3 h-3 text-emerald-600" />
-                                      Delay Excused
-                                    </span>
-                                  ) : flag.status === 'REJECTED' ? (
-                                    <span className="bg-rose-50 text-rose-800 border-rose-200 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                      <Flag className="w-3 h-3 text-rose-600" />
-                                      Unexcused Absence
-                                    </span>
-                                  ) : (
-                                    <span className="bg-amber-50 text-amber-800 border-amber-200 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                      <Flag className="w-3 h-3 text-amber-600" />
-                                      Review Pending
-                                    </span>
-                                  )}
+                          {/* 7. Action By */}
+                          <td className="py-3.5 px-3.5 whitespace-nowrap">
+                            {item.actionByName && item.actionByName !== '—' ? (
+                              <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-700 uppercase">
+                                  {item.actionByName.charAt(0)}
                                 </div>
-                                <span className="block text-[11px] text-slate-600 font-medium">
-                                  {flag.reason}
+                                <span className="font-medium text-slate-800 text-xs">
+                                  {item.actionByName}
                                 </span>
-                                {flag.note && (
-                                  <span className="block text-[10px] text-slate-400 italic">
-                                    "{flag.note}"
-                                  </span>
-                                )}
                               </div>
                             ) : (
                               <span className="text-slate-400 font-normal">—</span>
@@ -1525,6 +1846,22 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                     })}
                   </tbody>
                 </table>
+                <DataTablePagination
+                  metadata={{
+                    total: historyRecords.length,
+                    page: historyPage,
+                    limit: historyLimit,
+                    offset: (historyPage - 1) * historyLimit,
+                    totalPages: Math.ceil(historyRecords.length / historyLimit),
+                  }}
+                  onPageChange={(p) => setHistoryPage(p)}
+                  onLimitChange={(l) => {
+                    setHistoryLimit(l);
+                    setHistoryPage(1);
+                  }}
+                  pageSizeOptions={[10, 25, 50]}
+                  isLoading={isLoadingHistory}
+                />
               </div>
             )}
           </div>

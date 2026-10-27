@@ -3,24 +3,27 @@ import type { LucideIcon } from 'lucide-react';
 import { ArrowUpRight, TrendingUp, TrendingDown } from 'lucide-react';
 
 export interface StatCardProps {
-  title: string;
+  title?: string;
+  label?: string;
   value: string | number;
   change?: string;
   isPositive?: boolean;
   timeframe?: string;
-  icon: LucideIcon;
-  variant?: 'featured' | 'default';
+  icon?: LucideIcon;
+  variant?: 'featured' | 'default' | 'warning' | 'info' | 'success';
   iconBgColor?: string;
   iconColor?: string;
   sparklineColor?: string;
   badge?: string;
   badgeColor?: string;
   subtitle?: string;
+  helpText?: string;
   onOpenClick?: () => void;
 }
 
 export const StatCard: React.FC<StatCardProps> = ({
   title,
+  label,
   value,
   change = '+12.5%',
   isPositive = true,
@@ -30,9 +33,13 @@ export const StatCard: React.FC<StatCardProps> = ({
   iconBgColor = 'bg-[#E6F7EF]',
   iconColor = 'text-[#12A66A]',
   sparklineColor = '#12A66A',
+  subtitle,
+  helpText,
   onOpenClick,
 }) => {
   const isFeatured = variant === 'featured';
+  const displayTitle = title || label || '';
+  const displaySubtitle = subtitle || helpText;
 
   // SVG sparklines
   const renderSparkline = () => {
@@ -75,10 +82,10 @@ export const StatCard: React.FC<StatCardProps> = ({
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white backdrop-blur-xs">
-              <Icon className="w-5 h-5" />
+              {Icon ? <Icon className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
             </div>
             <span className="text-xs font-semibold tracking-wide text-white/95">
-              {title}
+              {displayTitle}
             </span>
           </div>
 
@@ -105,7 +112,7 @@ export const StatCard: React.FC<StatCardProps> = ({
           <span className="flex items-center gap-0.5 font-bold">
             ↑ {change}
           </span>
-          <span className="text-white/80">{timeframe}</span>
+          <span className="text-white/80">{displaySubtitle || timeframe}</span>
         </div>
       </div>
     );
@@ -117,10 +124,10 @@ export const StatCard: React.FC<StatCardProps> = ({
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className={`w-10 h-10 rounded-full ${iconBgColor} flex items-center justify-center ${iconColor}`}>
-            <Icon className="w-5 h-5" />
+            {Icon ? <Icon className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
           </div>
           <span className="text-xs font-semibold text-[#6B7280]">
-            {title}
+            {displayTitle}
           </span>
         </div>
 

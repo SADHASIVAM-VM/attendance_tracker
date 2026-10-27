@@ -43,8 +43,9 @@ router.post('/auth/logout', authenticate, authCtrl.logout);
 router.get('/auth/me', authenticate, authCtrl.getMe);
 
 // =======================
-// Users (Super Admin, Admin)
+// Users & Roles (Admin, Supervisor)
 // =======================
+router.get('/roles', authenticate, userCtrl.getRoles);
 router.get('/users', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), userCtrl.getUsers);
 router.post('/users', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), userCtrl.createUser);
 router.get('/users/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), userCtrl.getUserById);
@@ -55,6 +56,7 @@ router.post('/users/:id/deactivate', authenticate, requireRole('SUPER_ADMIN', 'A
 // =======================
 // Worksites (Super Admin, Admin)
 // =======================
+router.get('/worksites/next-code', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), worksiteCtrl.getNextWorksiteCode);
 router.get('/worksites', authenticate, worksiteCtrl.getWorksites);
 router.post('/worksites', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), worksiteCtrl.createWorksite);
 router.post('/worksites/extract-coordinates', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), worksiteCtrl.extractCoordinates);
@@ -73,12 +75,14 @@ router.put('/organizations/settings', authenticate, requireRole('SUPER_ADMIN', '
 // =======================
 // Daily Assignments
 // =======================
+router.get('/assignments/worker-allocations', authenticate, assignmentCtrl.getWorkerAllocations);
 router.get('/assignments', authenticate, assignmentCtrl.getAssignments);
 router.post('/assignments', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), assignmentCtrl.createAssignment);
 router.get('/assignments/:id', authenticate, assignmentCtrl.getAssignmentById);
 router.put('/assignments/:id/workers', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), assignmentCtrl.updateAssignmentWorkers);
 router.post('/assignments/:id/publish', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), assignmentCtrl.publishAssignment);
 router.post('/assignments/:id/cancel', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), assignmentCtrl.cancelAssignment);
+router.post('/assignments/:id/complete', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), assignmentCtrl.completeAssignment);
 router.get('/workers/me/assignments', authenticate, assignmentCtrl.getWorkerMyAssignments);
 
 // =======================
@@ -93,14 +97,19 @@ router.post('/attendance/sessions/:id/clock-out', authenticate, attendanceCtrl.c
 router.get('/attendance/me', authenticate, attendanceCtrl.getWorkerMyAttendance);
 router.get('/attendance/pending-approvals', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), attendanceCtrl.getPendingApprovals);
 router.get('/attendance/supervisor-roster', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), attendanceCtrl.getSupervisorTeamRoster);
+router.get('/attendance/admin/daily', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), attendanceCtrl.getAdminDailyAttendance);
 router.get('/attendance/supervisor/history-range', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), attendanceCtrl.getSupervisorAttendanceHistoryRange);
 router.get('/attendance/supervisor/history', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), attendanceCtrl.getSupervisorAttendanceHistoryRange);
 router.post('/attendance/:id/approve', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), attendanceCtrl.approveAttendance);
 router.post('/attendance/:id/reject', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), attendanceCtrl.rejectAttendance);
+router.get('/attendance/:id/history', authenticate, attendanceCtrl.getAttendanceAuditTrail);
+router.get('/attendance/sessions/:id/audit-trail', authenticate, attendanceCtrl.getAttendanceAuditTrail);
 router.post('/attendance/:id/transfer', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), attendanceCtrl.transferSupervisor);
 router.post('/attendance/:id/supervisor-clock-out', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), attendanceCtrl.supervisorClockOutWorker);
 router.get('/attendance/missing-clock-ins', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), flagCtrl.getMissingClockIns);
+router.get('/attendance/exceptions/summary', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), flagCtrl.getAttendanceExceptionsSummary);
 router.post('/attendance/missing-clock-ins/:id/flag', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), flagCtrl.applyAttendanceFlag);
+router.post('/attendance/missing-clock-ins/:id/resolve', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), flagCtrl.applyAttendanceFlag);
 router.post('/attendance/missing-clock-ins/create-flag', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), flagCtrl.createMissingAttendanceFlag);
 router.post('/attendance/missing-clock-ins/flag-worker', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), flagCtrl.createMissingAttendanceFlag);
 
@@ -144,9 +153,11 @@ router.post('/regularization/:id/cancel', authenticate, regCtrl.cancelRegulariza
 router.get('/leave/types', authenticate, leaveCtrl.getLeaveTypes);
 router.post('/leave/requests', authenticate, leaveCtrl.createLeaveRequest);
 router.get('/leave/requests/me', authenticate, leaveCtrl.getMyLeaveRequests);
+router.get('/leave/requests/team', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), leaveCtrl.getTeamLeaveRequests);
 router.get('/leave/requests/pending', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), leaveCtrl.getPendingLeaveRequests);
 router.post('/leave/requests/:id/approve', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), leaveCtrl.approveLeaveRequest);
 router.post('/leave/requests/:id/reject', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), leaveCtrl.rejectLeaveRequest);
+router.post('/leave/requests/:id/revoke', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), leaveCtrl.revokeLeaveRequest);
 router.post('/leave/requests/:id/cancel', authenticate, leaveCtrl.cancelLeaveRequest);
 
 // =======================

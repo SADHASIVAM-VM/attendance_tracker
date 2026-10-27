@@ -1,34 +1,16 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Lock, Mail, ArrowRight, Phone, Eye, EyeOff, AlertCircle, Clock, ShieldCheck } from 'lucide-react';
+import { Lock, Mail, ArrowRight, Phone, Eye, EyeOff, AlertCircle, ShieldCheck, Clock } from 'lucide-react';
 
 export const LoginView: React.FC = () => {
-  const { login, quickLogin, isLoading } = useAuth();
+  const { login, isLoading } = useAuth();
   const [identifier, setIdentifier] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [rememberMe, setRememberMe] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Supervisor login bypass state (stored in localStorage, default true for convenience)
-  const [bypassAllowed, setBypassAllowed] = useState<boolean>(() => {
-    return localStorage.getItem('supervisor_login_bypass_enabled') !== 'false';
-  });
 
-  const handleToggleBypass = (enabled: boolean) => {
-    setBypassAllowed(enabled);
-    localStorage.setItem('supervisor_login_bypass_enabled', enabled ? 'true' : 'false');
-  };
-
-  const handleBypassSupervisor = async () => {
-    if (!bypassAllowed) return;
-    try {
-      setError(null);
-      await quickLogin('SUPERVISOR');
-    } catch (err: any) {
-      setError(err?.message || 'Failed to bypass login as Supervisor');
-    }
-  };
 
   // Check if identifier looks like a phone number (digits, +, dashes, spaces)
   const isLikelyPhone = /^[+\d\s\-()]+$/.test(identifier.trim()) && identifier.trim().length > 3;
@@ -130,11 +112,10 @@ export const LoginView: React.FC = () => {
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 placeholder="name@enterprise.com or +1 555-0105"
-                className={`w-full text-xs sm:text-sm pl-12 pr-4 py-3 rounded-2xl border ${
-                  error
+                className={`w-full text-xs sm:text-sm pl-12 pr-4 py-3 rounded-2xl border ${error
                     ? 'border-rose-400 bg-rose-50/20 focus:border-rose-500 focus:ring-rose-200'
                     : 'border-[#E8EEF4] bg-[#F8FAFC] focus:bg-white focus:border-[#12A66A] focus:ring-[#12A66A]/20'
-                } focus:outline-none focus:ring-2 text-[#111827] placeholder-[#94A3B8] transition-all`}
+                  } focus:outline-none focus:ring-2 text-[#111827] placeholder-[#94A3B8] transition-all`}
                 required
               />
             </div>
@@ -166,11 +147,10 @@ export const LoginView: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your account password"
-                className={`w-full text-xs sm:text-sm pl-12 pr-11 py-3 rounded-2xl border ${
-                  error
+                className={`w-full text-xs sm:text-sm pl-12 pr-11 py-3 rounded-2xl border ${error
                     ? 'border-rose-400 bg-rose-50/20 focus:border-rose-500 focus:ring-rose-200'
                     : 'border-[#E8EEF4] bg-[#F8FAFC] focus:bg-white focus:border-[#12A66A] focus:ring-[#12A66A]/20'
-                } focus:outline-none focus:ring-2 text-[#111827] placeholder-[#94A3B8] transition-all`}
+                  } focus:outline-none focus:ring-2 text-[#111827] placeholder-[#94A3B8] transition-all`}
                 required
               />
               <button
@@ -218,72 +198,7 @@ export const LoginView: React.FC = () => {
           </button>
         </form>
 
-        {/* ── Supervisor Login Bypass Feature ── */}
-        <div className="pt-2">
-          <div className="relative flex items-center justify-center my-3">
-            <div className="border-t border-[#E8EEF4] w-full" />
-            <span className="bg-white px-3 text-[11px] font-bold uppercase tracking-wider text-[#94A3B8] absolute">
-              Supervisor Bypass Mode
-            </span>
-          </div>
 
-          <div className={`p-4 rounded-2xl border transition-all ${
-            bypassAllowed
-              ? 'bg-[#E6F7EF]/50 border-[#12A66A]/30 shadow-2xs'
-              : 'bg-[#F8FAFC] border-[#E8EEF4]'
-          }`}>
-            <div className="flex items-center justify-between gap-3 mb-2.5">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className={`w-4 h-4 ${bypassAllowed ? 'text-[#12A66A]' : 'text-slate-400'}`} />
-                <div>
-                  <span className="text-xs font-extrabold text-[#111827] block leading-tight">
-                    Supervisor Login Bypass
-                  </span>
-                  <span className="text-[10px] text-[#6B7280]">
-                    {bypassAllowed ? 'Bypass enabled for supervisor access' : 'Bypass disabled (credentials required)'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Enable / Disable Toggle Switch */}
-              <button
-                type="button"
-                onClick={() => handleToggleBypass(!bypassAllowed)}
-                className={`px-2.5 py-1 rounded-full text-[11px] font-extrabold transition-all cursor-pointer flex items-center gap-1.5 ${
-                  bypassAllowed
-                    ? 'bg-[#12A66A] text-white shadow-xs'
-                    : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-                }`}
-                title={bypassAllowed ? 'Click to disable bypass' : 'Click to enable bypass'}
-              >
-                <span className={`w-2 h-2 rounded-full ${bypassAllowed ? 'bg-white animate-pulse' : 'bg-slate-400'}`} />
-                <span>{bypassAllowed ? 'Enabled' : 'Disabled'}</span>
-              </button>
-            </div>
-
-            {bypassAllowed ? (
-              <div className="space-y-2">
-                <button
-                  type="button"
-                  onClick={handleBypassSupervisor}
-                  disabled={isLoading}
-                  className="w-full py-3 px-4 bg-white hover:bg-emerald-50/60 border border-[#12A66A] text-[#0E8F5B] hover:text-[#065F46] font-extrabold text-xs rounded-xl shadow-2xs transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <Clock className="w-4 h-4 text-[#12A66A]" />
-                  <span>Bypass Login as Supervisor</span>
-                  <ArrowRight className="w-3.5 h-3.5 text-[#12A66A]" />
-                </button>
-                <p className="text-[10px] text-center text-[#0E8F5B]/80 font-medium">
-                  Direct one-click supervisor entry. Toggle OFF above to lock login to password only.
-                </p>
-              </div>
-            ) : (
-              <p className="text-[11px] text-[#64748B] text-center py-1">
-                Bypass is currently disabled. Use the button above to enable, or enter credentials to sign in.
-              </p>
-            )}
-          </div>
-        </div>
 
         {/* Security & Access Info */}
         <div className="p-3 bg-[#F8FAFC] border border-[#E8EEF4] rounded-2xl flex items-center gap-2.5 text-[11px] text-[#64748B]">

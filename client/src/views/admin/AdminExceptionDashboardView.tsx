@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiRequest } from '../../lib/api';
 import { Modal } from '../../components/common/Modal';
+import { DataTablePagination } from '../../components/ui/data-table-pagination';
 import {
   AlertTriangle,
   AlertCircle,
@@ -51,6 +52,8 @@ export const AdminExceptionDashboardView: React.FC = () => {
   const [filterWorksite, setFilterWorksite] = useState<string>('');
   const [filterStartDate, setFilterStartDate] = useState<string>('');
   const [filterEndDate, setFilterEndDate] = useState<string>('');
+  const [page, setPage] = useState<number>(1);
+  const [limit, setLimit] = useState<number>(10);
 
   // Modals & Drawers
   const [selectedCaseDetail, setSelectedCaseDetail] = useState<any | null>(null);
@@ -65,7 +68,7 @@ export const AdminExceptionDashboardView: React.FC = () => {
   // Override Modal
   const [overrideModalOpen, setOverrideModalOpen] = useState<boolean>(false);
   const [overrideItem, setOverrideItem] = useState<any | null>(null);
-  const [overrideStatus, setOverrideStatus] = useState<'APPROVED' | 'REJECTED' | 'PENDING'>('APPROVED');
+  const [overrideStatus, setOverrideStatus] = useState<string>('APPROVED');
   const [overrideReason, setOverrideReason] = useState<string>('');
   const [overrideClockIn, setOverrideClockIn] = useState<string>('');
   const [overrideClockOut, setOverrideClockOut] = useState<string>('');
@@ -416,7 +419,9 @@ export const AdminExceptionDashboardView: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                {filteredExceptions.map((item) => (
+                {filteredExceptions
+                  .slice((page - 1) * limit, page * limit)
+                  .map((item) => (
                   <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="py-3 px-4 font-semibold text-slate-900">
                       <div>{item.workerName}</div>
@@ -501,6 +506,25 @@ export const AdminExceptionDashboardView: React.FC = () => {
               </tbody>
             </table>
           </div>
+
+          {filteredExceptions.length > 0 && (
+            <DataTablePagination
+              metadata={{
+                total: filteredExceptions.length,
+                page,
+                limit,
+                offset: (page - 1) * limit,
+                totalPages: Math.ceil(filteredExceptions.length / limit),
+              }}
+              onPageChange={(p) => setPage(p)}
+              onLimitChange={(l) => {
+                setLimit(l);
+                setPage(1);
+              }}
+              pageSizeOptions={[10, 25, 50]}
+              isLoading={loading}
+            />
+          )}
         </div>
       )}
 
@@ -666,7 +690,10 @@ export const AdminExceptionDashboardView: React.FC = () => {
             >
               <option value="APPROVED">APPROVED (Verified)</option>
               <option value="REJECTED">REJECTED (Denied)</option>
+              <option value="ABSENT">ABSENT (Confirmed Absent)</option>
+              <option value="MISSING">MISSING (Unverified)</option>
               <option value="PENDING">PENDING (Re-open for Review)</option>
+              <option value="LEAVE">LEAVE (Authorized Leave)</option>
             </select>
           </div>
 

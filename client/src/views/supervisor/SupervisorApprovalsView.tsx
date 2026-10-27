@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiRequest } from '../../lib/api';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { Modal } from '../../components/common/Modal';
+import { DataTablePagination } from '../../components/ui/data-table-pagination';
 import {
   UserCheck,
   Check,
@@ -87,6 +88,10 @@ export const SupervisorApprovalsView: React.FC = () => {
   const [escalateModalOpen, setEscalateModalOpen] = useState<boolean>(false);
   const [selectedForEscalate, setSelectedForEscalate] = useState<{ id: string; type: string } | null>(null);
   const [escalateReason, setEscalateReason] = useState<string>('');
+  const [exceptionPage, setExceptionPage] = useState<number>(1);
+  const [exceptionLimit, setExceptionLimit] = useState<number>(10);
+  const [regPage, setRegPage] = useState<number>(1);
+  const [regLimit, setRegLimit] = useState<number>(10);
 
   const [submitting, setSubmitting] = useState<boolean>(false);
 
@@ -902,94 +907,122 @@ export const SupervisorApprovalsView: React.FC = () => {
                   <p className="text-xs text-slate-400 mt-1">All timestamp correction and missed punch requests are resolved.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {filterList(pendingRegularization).map((item) => (
-                    <div
-                      key={item.id}
-                      className="bg-white rounded-2xl border border-slate-200 shadow-2xs hover:shadow-sm transition-all p-4.5 flex flex-col justify-between space-y-4"
-                    >
-                      <div className="space-y-3">
-                        {/* Worker Header */}
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 font-bold flex items-center justify-center border border-blue-100">
-                              {item.workerName ? item.workerName.slice(0, 2).toUpperCase() : 'WR'}
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-bold text-slate-900 m-0">{item.workerName}</h3>
-                              <span className="text-[11px] font-semibold text-slate-500 block">
-                                ID: {item.employeeCode}
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50/75 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
+                          <th className="py-3 px-4">Worker</th>
+                          <th className="py-3 px-4">Worksite</th>
+                          <th className="py-3 px-4">Work Date</th>
+                          <th className="py-3 px-4">Proposed Times</th>
+                          <th className="py-3 px-4">Worker Reason</th>
+                          <th className="py-3 px-4">Status</th>
+                          <th className="py-3 px-4 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                        {filterList(pendingRegularization)
+                          .slice((regPage - 1) * regLimit, regPage * regLimit)
+                          .map((item) => (
+                          <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="py-3.5 px-4 font-semibold text-slate-900">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 font-bold flex items-center justify-center border border-blue-100 text-[11px] shrink-0">
+                                  {item.workerName ? item.workerName.slice(0, 2).toUpperCase() : 'WR'}
+                                </div>
+                                <div>
+                                  <div className="font-bold text-slate-900">{item.workerName}</div>
+                                  <span className="text-[10px] text-slate-400 font-normal">ID: {item.employeeCode}</span>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4 text-slate-600 font-medium">
+                              <div className="flex items-center gap-1.5">
+                                <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span>{item.worksiteName || 'Assigned Site'}</span>
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4 font-mono text-[11px] text-slate-600">
+                              {item.workDate}
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <div className="space-y-0.5 text-[11px] font-mono">
+                                <div>
+                                  <span className="text-slate-400 font-sans text-[10px] uppercase font-bold mr-1">In:</span>
+                                  <span className="font-bold text-blue-700">
+                                    {item.proposedClockInTime ? new Date(item.proposedClockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unchanged'}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-400 font-sans text-[10px] uppercase font-bold mr-1">Out:</span>
+                                  <span className="font-bold text-blue-700">
+                                    {item.proposedClockOutTime ? new Date(item.proposedClockOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unchanged'}
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4 max-w-[220px]">
+                              <p className="text-xs text-amber-900 italic bg-amber-50/70 border border-amber-200/70 rounded-lg p-2 m-0 line-clamp-2" title={item.reason}>
+                                "{item.reason}"
+                              </p>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                                {item.status || 'PENDING'}
                               </span>
-                            </div>
-                          </div>
+                            </td>
+                            <td className="py-3.5 px-4 text-right">
+                              {item.status === 'PENDING' ? (
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    onClick={() => handleApproveRegularization(item.id)}
+                                    disabled={submitting}
+                                    title="Approve regularisation"
+                                    className="p-1.5 text-emerald-700 hover:text-white bg-emerald-50 hover:bg-emerald-600 border border-emerald-200 rounded-lg transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                                  >
+                                    <Check className="w-4 h-4 stroke-[2.5]" />
+                                  </button>
 
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                            {item.status || 'PENDING'}
-                          </span>
-                        </div>
+                                  <button
+                                    onClick={() => openRejectModal(item, 'regularization')}
+                                    disabled={submitting}
+                                    title="Reject regularisation"
+                                    className="p-1.5 text-rose-700 hover:text-white bg-rose-50 hover:bg-rose-600 border border-rose-200 rounded-lg transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                                  >
+                                    <X className="w-4 h-4 stroke-[2.5]" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-[11px] font-semibold text-slate-500">
+                                  {item.status}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
 
-                        {/* Session Metadata */}
-                        <div className="bg-slate-50 rounded-xl p-3 text-xs space-y-1.5 border border-slate-100">
-                          <div className="flex items-center justify-between text-slate-600">
-                            <span className="font-semibold flex items-center gap-1.5">
-                              <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                              {item.worksiteName || 'Assigned Site'}
-                            </span>
-                            <span className="text-slate-500 font-mono text-[11px] font-semibold">{item.workDate}</span>
-                          </div>
-
-                          <div className="border-t border-slate-200/60 pt-1.5 space-y-1">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[11px] text-slate-400">Proposed In:</span>
-                              <span className="font-mono font-bold text-blue-700 text-xs">
-                                {item.proposedClockInTime ? new Date(item.proposedClockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unchanged'}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-[11px] text-slate-400">Proposed Out:</span>
-                              <span className="font-mono font-bold text-blue-700 text-xs">
-                                {item.proposedClockOutTime ? new Date(item.proposedClockOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unchanged'}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Worker Justification */}
-                        <div className="p-2.5 bg-amber-50/70 border border-amber-200/70 rounded-xl text-xs text-amber-950">
-                          <span className="font-bold block text-[10px] uppercase text-amber-800 tracking-wider">
-                            Worker Reason
-                          </span>
-                          <p className="mt-0.5 text-xs text-amber-900 italic m-0">"{item.reason}"</p>
-                        </div>
-                      </div>
-
-                      {/* Action Buttons */}
-                      {item.status === 'PENDING' ? (
-                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
-                          <button
-                            onClick={() => handleApproveRegularization(item.id)}
-                            disabled={submitting}
-                            className="py-2 px-3 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-                          >
-                            <Check className="w-3.5 h-3.5 stroke-[2.5]" /> Approve
-                          </button>
-
-                          <button
-                            onClick={() => openRejectModal(item, 'regularization')}
-                            disabled={submitting}
-                            className="py-2 px-3 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                          >
-                            <X className="w-3.5 h-3.5 stroke-[2.5]" /> Reject
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                          <span>Decision Finalized</span>
-                          <span className="font-bold text-slate-700">{item.status}</span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                  {filterList(pendingRegularization).length > 0 && (
+                    <DataTablePagination
+                      metadata={{
+                        total: filterList(pendingRegularization).length,
+                        page: regPage,
+                        limit: regLimit,
+                        offset: (regPage - 1) * regLimit,
+                        totalPages: Math.ceil(filterList(pendingRegularization).length / regLimit),
+                      }}
+                      onPageChange={(p) => setRegPage(p)}
+                      onLimitChange={(l) => {
+                        setRegLimit(l);
+                        setRegPage(1);
+                      }}
+                      pageSizeOptions={[10, 25, 50]}
+                      isLoading={loading}
+                    />
+                  )}
                 </div>
               )}
             </div>
@@ -1126,7 +1159,9 @@ export const SupervisorApprovalsView: React.FC = () => {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                        {filterList(exceptions).map((ex) => (
+                        {filterList(exceptions)
+                          .slice((exceptionPage - 1) * exceptionLimit, exceptionPage * exceptionLimit)
+                          .map((ex) => (
                           <tr key={ex.id} className="hover:bg-slate-50/50 transition-colors">
                             <td className="py-3.5 px-4 font-semibold text-slate-900">
                               <div>{ex.workerName}</div>
@@ -1180,6 +1215,25 @@ export const SupervisorApprovalsView: React.FC = () => {
                       </tbody>
                     </table>
                   </div>
+
+                  {filterList(exceptions).length > 0 && (
+                    <DataTablePagination
+                      metadata={{
+                        total: filterList(exceptions).length,
+                        page: exceptionPage,
+                        limit: exceptionLimit,
+                        offset: (exceptionPage - 1) * exceptionLimit,
+                        totalPages: Math.ceil(filterList(exceptions).length / exceptionLimit),
+                      }}
+                      onPageChange={(p) => setExceptionPage(p)}
+                      onLimitChange={(l) => {
+                        setExceptionLimit(l);
+                        setExceptionPage(1);
+                      }}
+                      pageSizeOptions={[10, 25, 50]}
+                      isLoading={loading}
+                    />
+                  )}
                 </div>
               )}
             </div>

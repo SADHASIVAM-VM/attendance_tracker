@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { getDb } from '../database/db.js';
-import { users, userRoles } from '../database/schema.js';
+import { users, userRoles, roles, SYSTEM_ROLES } from '../database/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { logAuditEvent } from '../utils/audit.js';
 
@@ -24,7 +24,7 @@ const createUserSchema = z.object({
   emergencyContactPhone: z.string().optional(),
   photoUrl: z.string().optional(),
   employmentType: z.string().default('full-time'),
-  roles: z.array(z.enum(['SUPER_ADMIN', 'ADMIN', 'SUPERVISOR', 'WORKER'])).min(1),
+  roles: z.array(z.enum(['ADMIN', 'SUPERVISOR', 'ENGINEER', 'ACCOUNTANT', 'WORKER'])).min(1),
 });
 
 const updateUserSchema = z.object({
@@ -45,7 +45,7 @@ const updateUserSchema = z.object({
   employeeCode: z.string().optional(),
   email: z.string().email().optional(),
   isActive: z.boolean().optional(),
-  roles: z.array(z.enum(['SUPER_ADMIN', 'ADMIN', 'SUPERVISOR', 'WORKER'])).optional(),
+  roles: z.array(z.enum(['ADMIN', 'SUPERVISOR', 'ENGINEER', 'ACCOUNTANT', 'WORKER'])).optional(),
 });
 
 export async function getUsers(req: Request, res: Response): Promise<any> {
@@ -480,3 +480,39 @@ export async function deactivateUser(req: Request, res: Response): Promise<any> 
 
   return res.json({ success: true, message: 'User deactivated successfully' });
 }
+
+export async function getRoles(_req: Request, res: Response): Promise<any> {
+  const db = await getDb();
+
+  const standardRoles = [
+    { name: 'ADMIN', description: 'System administrator with full operations, approvals, and configuration control' },
+    { name: 'SUPERVISOR', description: 'Field and site supervisor managing team clock-ins, rosters, and daily approvals' },
+    { name: 'ENGINEER', description: 'Site engineer responsible for technical oversight, worksite execution, and asset tracking' },
+    { name: 'ACCOUNTANT', description: 'Finance and payroll accountant managing wages, allowances, expenses, and reconciliation' },
+    { name: 'WORKER', description: 'Field workforce personnel executing site tasks and logging daily attendance' },
+  ];
+
+  // Verify and seed any missing roles in DB
+  for (const sr of standardRoles) {
+    const [exists] = await db.select().from(roles).where(eq(roles.name as any, sr.name as any)).limit(1);
+    if (!exists) {
+      await db.insert(roles).values(sr);
+    }
+  }
+
+  const dbRoles = await db.select().from(roles);
+  const roleOrder: Record<string, number> = {
+    ADMIN: 1,
+    SUPERVISOR: 2,
+    ENGINEER: 3,
+    ACCOUNTANT: 4,
+    WORKER: 5,
+  };
+
+  const validRoles = dbRoles
+    .filter((r: any) => ['ADMIN', 'SUPERVISOR', 'ENGINEER', 'ACCOUNTANT', 'WORKER'].includes(r.name))
+    .sort((a: any, b: any) => (roleOrder[a.name] || 99) - (roleOrder[b.name] || 99));
+
+  return res.json(validRoles);
+}
+

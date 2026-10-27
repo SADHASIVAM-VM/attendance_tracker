@@ -224,7 +224,18 @@ export async function getSupervisorQueues(req: Request, res: Response): Promise<
       )
       .orderBy(desc(leaveRequests.createdAt));
 
-    const records = await query;
+    let records = await query;
+
+    if (!isSuperOrAdmin) {
+      const assignedWorkerRows = authorizedAssignmentIds.length > 0
+        ? await db
+            .select({ workerId: siteAssignmentWorkers.workerId })
+            .from(siteAssignmentWorkers)
+            .where(inArray(siteAssignmentWorkers.assignmentId, authorizedAssignmentIds))
+        : [];
+      const assignedWorkerIdSet = new Set(assignedWorkerRows.map((w: any) => w.workerId));
+      records = records.filter((r) => assignedWorkerIdSet.has(r.userId) || r.currentApproverId === user.id);
+    }
 
     return records
       .filter((r) => !workerId || r.userId === workerId)

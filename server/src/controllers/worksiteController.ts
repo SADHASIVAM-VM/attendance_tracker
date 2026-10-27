@@ -8,7 +8,7 @@ import { resolveGoogleMapsUrl } from '../utils/mapsUrlParser.js';
 
 const worksiteSchema = z.object({
   name: z.string().min(1),
-  code: z.string().min(1),
+  code: z.string().optional(),
   address: z.string().min(1),
   description: z.string().optional(),
   latitude: z.number().min(-90).max(90),
@@ -19,6 +19,36 @@ const worksiteSchema = z.object({
 });
 
 const updateWorksiteSchema = worksiteSchema.partial();
+
+export async function getNextWorksiteCode(req: Request, res: Response): Promise<any> {
+  const db = await getDb();
+  const orgId = req.user!.orgId;
+
+  const existingSites = await db
+    .select({ code: worksites.code })
+    .from(worksites)
+    .where(eq(worksites.orgId as any, orgId as any));
+
+  const codes = new Set(existingSites.map((s: any) => String(s.code || '').trim().toUpperCase()));
+
+  let maxNum = 1000;
+  for (const c of codes) {
+    const match = c.match(/^WKS-(\d+)$/i);
+    if (match && match[1]) {
+      const num = parseInt(match[1], 10);
+      if (!isNaN(num) && num > maxNum) maxNum = num;
+    }
+  }
+
+  let nextNum = maxNum + 1;
+  let candidate = `WKS-${String(nextNum).padStart(4, '0')}`;
+  while (codes.has(candidate)) {
+    nextNum++;
+    candidate = `WKS-${String(nextNum).padStart(4, '0')}`;
+  }
+
+  return res.json({ code: candidate });
+}
 
 export async function getWorksites(req: Request, res: Response): Promise<any> {
   const db = await getDb();
@@ -144,12 +174,38 @@ export async function createWorksite(req: Request, res: Response): Promise<any> 
   const db = await getDb();
   const orgId = req.user!.orgId;
 
+  // Automatically determine unique worksite code
+  let siteCode = data.code?.trim().toUpperCase();
+  const existingSites = await db
+    .select({ code: worksites.code })
+    .from(worksites)
+    .where(eq(worksites.orgId as any, orgId as any));
+  const existingCodes = new Set(existingSites.map((s: any) => String(s.code || '').trim().toUpperCase()));
+
+  if (!siteCode || existingCodes.has(siteCode)) {
+    let maxNum = 1000;
+    for (const c of existingCodes) {
+      const match = c.match(/^WKS-(\d+)$/i);
+      if (match && match[1]) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > maxNum) maxNum = num;
+      }
+    }
+    let nextNum = maxNum + 1;
+    let candidate = `WKS-${String(nextNum).padStart(4, '0')}`;
+    while (existingCodes.has(candidate)) {
+      nextNum++;
+      candidate = `WKS-${String(nextNum).padStart(4, '0')}`;
+    }
+    siteCode = candidate;
+  }
+
   const [newSite] = await db
     .insert(worksites)
     .values({
       orgId,
       name: data.name,
-      code: data.code,
+      code: siteCode,
       address: data.address,
       description: data.description,
       latitude: data.latitude,
@@ -194,8 +250,10 @@ export async function updateWorksite(req: Request, res: Response): Promise<any> 
     return res.status(404).json({ error: 'WORKSITE_NOT_FOUND', message: 'Worksite not found' });
   }
 
+  // Preserve existing worksite code (non-editable, immutable)
+  const { code: _ignoredCode, ...allowedData } = data;
   const updates = {
-    ...data,
+    ...allowedData,
     updatedAt: new Date(),
   };
 

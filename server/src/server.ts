@@ -44,8 +44,8 @@ async function startServer() {
   try {
     // Initialize DB and ensure tables
     await getDb();
-    // Seed initial dataset if not present
-    // await seedDatabase();
+    // Seed initial dataset and verify 5 system roles ({ ADMIN, SUPERVISOR, ENGINEER, ACCOUNTANT, WORKER })
+    await seedDatabase();
 
     app.listen(PORT, () => {
       console.log(`🚀 Workforce Attendance API running on http://localhost:${PORT}`);

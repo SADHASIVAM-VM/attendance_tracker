@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { apiRequest } from '../../lib/api';
 import { Modal } from '../../components/common/Modal';
+import { DataTablePagination } from '../../components/ui/data-table-pagination';
 import {
   ShieldAlert,
   AlertTriangle,
@@ -43,8 +45,20 @@ interface SummaryData {
 }
 
 export const AdminAttendanceControlCenterView: React.FC = () => {
-  // Active Tab: 'corrections' | 'overdue' | 'exceptions' | 'audit'
-  const [activeTab, setActiveTab] = useState<'corrections' | 'overdue' | 'exceptions' | 'audit'>('corrections');
+  // Active Tab: 'corrections' | 'overdue' | 'exceptions' (synced with URL)
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = (searchParams.get('tab') || 'corrections').toLowerCase() as 'corrections' | 'overdue' | 'exceptions';
+  const activeTab: 'corrections' | 'overdue' | 'exceptions' = ['corrections', 'overdue', 'exceptions'].includes(tabParam)
+    ? tabParam
+    : 'corrections';
+
+  const setActiveTab = (tab: 'corrections' | 'overdue' | 'exceptions') => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', tab);
+      return next;
+    });
+  };
 
   // Summary Metrics
   const [summary, setSummary] = useState<SummaryData>({
@@ -69,8 +83,10 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
   const [corrections, setCorrections] = useState<any[]>([]);
   const [correctionsTotal, setCorrectionsTotal] = useState<number>(0);
   const [correctionsPage, setCorrectionsPage] = useState<number>(1);
-  const [correctionsLimit] = useState<number>(12);
+  const [correctionsLimit, setCorrectionsLimit] = useState<number>(10);
   const [correctionsTotalPages, setCorrectionsTotalPages] = useState<number>(1);
+  const [overduePage, setOverduePage] = useState<number>(1);
+  const [overdueLimit, setOverdueLimit] = useState<number>(10);
 
   // Filters for Corrections
   const [filterSearch, setFilterSearch] = useState<string>('');
@@ -97,16 +113,6 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
   const [requestInfoModalOpen, setRequestInfoModalOpen] = useState<boolean>(false);
   const [requestInfoNote, setRequestInfoNote] = useState<string>('');
 
-  // New Missing Attendance Correction Modal
-  const [showCreateMissingModal, setShowCreateMissingModal] = useState<boolean>(false);
-  const [newMissingWorkerId, setNewMissingWorkerId] = useState<string>('');
-  const [newMissingWorksiteId, setNewMissingWorksiteId] = useState<string>('');
-  const [newMissingDate, setNewMissingDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [newMissingClockIn, setNewMissingClockIn] = useState<string>('');
-  const [newMissingClockOut, setNewMissingClockOut] = useState<string>('');
-  const [newMissingReason, setNewMissingReason] = useState<string>('');
-  const [newMissingStatus, setNewMissingStatus] = useState<'APPROVED' | 'PENDING'>('APPROVED');
-
   // ==========================================
   // TAB 2: OVERDUE APPROVALS STATE
   // ==========================================
@@ -131,12 +137,6 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
   const [overrideClockIn, setOverrideClockIn] = useState<string>('');
   const [overrideClockOut, setOverrideClockOut] = useState<string>('');
 
-  // ==========================================
-  // TAB 4: AUDIT LOGS STATE
-  // ==========================================
-  const [auditLogsList, setAuditLogsList] = useState<any[]>([]);
-  const [auditLoading, setAuditLoading] = useState<boolean>(false);
-  const [auditSearch, setAuditSearch] = useState<string>('');
 
   // Initial Load
   useEffect(() => {
@@ -153,8 +153,6 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
       loadOverdueApprovals();
     } else if (activeTab === 'exceptions') {
       loadExceptions();
-    } else if (activeTab === 'audit') {
-      loadAuditLogs();
     }
   }, [
     activeTab,
@@ -183,7 +181,7 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
       const res = await apiRequest<any>('/worksites');
       const list = Array.isArray(res) ? res : res?.data || [];
       setWorksitesList(list);
-    } catch {}
+    } catch { }
   };
 
   const loadWorkers = async () => {
@@ -191,7 +189,7 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
       const res = await apiRequest<any>('/users?limit=100');
       const list = Array.isArray(res) ? res : res?.users || res?.data || [];
       setWorkersList(list);
-    } catch {}
+    } catch { }
   };
 
   // Load Corrections Table
@@ -254,21 +252,7 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
     } finally {
       setExceptionsLoading(false);
     }
-  };
-
-  // Load Audit Logs
-  const loadAuditLogs = async () => {
-    try {
-      setAuditLoading(true);
-      const res = await apiRequest<any>('/audit-logs?limit=50&sortBy=createdAt&sortOrder=desc');
-      const list = Array.isArray(res) ? res : res?.data || [];
-      setAuditLogsList(list);
-    } catch (err: any) {
-      setMessage({ text: err.message || 'Failed to load audit logs', type: 'error' });
-    } finally {
-      setAuditLoading(false);
-    }
-  };
+  }
 
   // Open Request Detail Drawer
   const openRequestDetail = async (requestId: string) => {
@@ -361,42 +345,7 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
     }
   };
 
-  // 4. Create Missing Attendance Correction
-  const handleCreateMissingSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMissingWorkerId || !newMissingWorksiteId || !newMissingDate || !newMissingReason.trim()) {
-      alert('Please fill all mandatory fields (Worker, Worksite, Date, Reason).');
-      return;
-    }
-    try {
-      setActionSubmitting(true);
-      await apiRequest('/admin/corrections/create-missing-attendance', {
-        method: 'POST',
-        body: JSON.stringify({
-          workerId: newMissingWorkerId,
-          worksiteId: newMissingWorksiteId,
-          workDate: newMissingDate,
-          clockInTime: newMissingClockIn ? new Date(`${newMissingDate}T${newMissingClockIn}`).toISOString() : undefined,
-          clockOutTime: newMissingClockOut ? new Date(`${newMissingDate}T${newMissingClockOut}`).toISOString() : undefined,
-          reason: newMissingReason.trim(),
-          status: newMissingStatus,
-        }),
-      });
-      setMessage({ text: 'Authorized attendance correction created successfully.', type: 'success' });
-      setShowCreateMissingModal(false);
-      setNewMissingReason('');
-      setNewMissingClockIn('');
-      setNewMissingClockOut('');
-      loadSummary();
-      loadCorrections();
-    } catch (err: any) {
-      setMessage({ text: err.message || 'Failed to create correction', type: 'error' });
-    } finally {
-      setActionSubmitting(false);
-    }
-  };
-
-  // 5. Send Overdue Reminder
+  // 4. Send Overdue Reminder
   const handleSendReminder = async (sessionId: string) => {
     try {
       await apiRequest(`/admin/overdue-approvals/${sessionId}/remind`, { method: 'POST' });
@@ -483,23 +432,11 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
               <h1 className="text-2xl font-black tracking-tight text-slate-900 m-0">
                 Attendance Control Center
               </h1>
-              <p className="text-xs text-slate-500 font-medium">
-                Administrative corrections, supervisor escalation queues, and immutable compliance audit.
-              </p>
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setShowCreateMissingModal(true)}
-            className="flex items-center gap-2 px-3.5 py-2 text-xs font-bold bg-[#12A66A] hover:bg-[#0E8F5B] text-white rounded-xl shadow-xs transition-all cursor-pointer active:scale-95"
-          >
-            <Clock className="w-3.5 h-3.5" />
-            <span>Record Missing Attendance</span>
-          </button>
-
           <button
             type="button"
             onClick={handleRunEscalationJob}
@@ -517,7 +454,6 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
               if (activeTab === 'corrections') loadCorrections();
               if (activeTab === 'overdue') loadOverdueApprovals();
               if (activeTab === 'exceptions') loadExceptions();
-              if (activeTab === 'audit') loadAuditLogs();
             }}
             className="p-2 text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer shadow-2xs"
             title="Refresh All"
@@ -530,11 +466,10 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
       {/* ── TOAST NOTIFICATION ──────────────────────────────────────────────── */}
       {message && (
         <div
-          className={`p-3.5 rounded-xl text-xs font-semibold flex items-center justify-between animate-in fade-in duration-100 ${
-            message.type === 'success'
-              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-              : 'bg-rose-50 text-rose-800 border border-rose-200'
-          }`}
+          className={`p-3.5 rounded-xl text-xs font-semibold flex items-center justify-between animate-in fade-in duration-100 ${message.type === 'success'
+            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+            : 'bg-rose-50 text-rose-800 border border-rose-200'
+            }`}
         >
           <span>{message.text}</span>
           <button onClick={() => setMessage(null)} className="cursor-pointer text-slate-400 hover:text-slate-600">
@@ -551,11 +486,10 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
             setActiveTab('corrections');
             setFilterStatus('PENDING');
           }}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-            activeTab === 'corrections' && filterStatus === 'PENDING'
-              ? 'bg-amber-50/80 border-amber-400 ring-2 ring-amber-400/20 shadow-xs'
-              : 'bg-white border-slate-200 hover:border-slate-300'
-          }`}
+          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${activeTab === 'corrections' && filterStatus === 'PENDING'
+            ? 'bg-amber-50/80 border-amber-400 ring-2 ring-amber-400/20 shadow-xs'
+            : 'bg-white border-slate-200 hover:border-slate-300'
+            }`}
         >
           <div className="flex items-center justify-between mb-1">
             <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">
@@ -572,11 +506,10 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
         {/* 2. Overdue Approvals */}
         <div
           onClick={() => setActiveTab('overdue')}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-            activeTab === 'overdue'
-              ? 'bg-rose-50/80 border-rose-400 ring-2 ring-rose-400/20 shadow-xs'
-              : 'bg-white border-slate-200 hover:border-slate-300'
-          }`}
+          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${activeTab === 'overdue'
+            ? 'bg-rose-50/80 border-rose-400 ring-2 ring-rose-400/20 shadow-xs'
+            : 'bg-white border-slate-200 hover:border-slate-300'
+            }`}
         >
           <div className="flex items-center justify-between mb-1">
             <span className="text-[10px] font-bold text-rose-700 uppercase tracking-wider">
@@ -593,11 +526,10 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
         {/* 3. Missing Exceptions */}
         <div
           onClick={() => setActiveTab('exceptions')}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-            activeTab === 'exceptions'
-              ? 'bg-orange-50/80 border-orange-400 ring-2 ring-orange-400/20 shadow-xs'
-              : 'bg-white border-slate-200 hover:border-slate-300'
-          }`}
+          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${activeTab === 'exceptions'
+            ? 'bg-orange-50/80 border-orange-400 ring-2 ring-orange-400/20 shadow-xs'
+            : 'bg-white border-slate-200 hover:border-slate-300'
+            }`}
         >
           <div className="flex items-center justify-between mb-1">
             <span className="text-[10px] font-bold text-orange-700 uppercase tracking-wider">
@@ -617,11 +549,10 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
             setActiveTab('corrections');
             setFilterStatus('APPROVED');
           }}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-            activeTab === 'corrections' && filterStatus === 'APPROVED'
-              ? 'bg-emerald-50/80 border-emerald-400 ring-2 ring-emerald-400/20 shadow-xs'
-              : 'bg-white border-slate-200 hover:border-slate-300'
-          }`}
+          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${activeTab === 'corrections' && filterStatus === 'APPROVED'
+            ? 'bg-emerald-50/80 border-emerald-400 ring-2 ring-emerald-400/20 shadow-xs'
+            : 'bg-white border-slate-200 hover:border-slate-300'
+            }`}
         >
           <div className="flex items-center justify-between mb-1">
             <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
@@ -641,11 +572,10 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
             setActiveTab('corrections');
             setFilterStatus('REJECTED');
           }}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-            activeTab === 'corrections' && filterStatus === 'REJECTED'
-              ? 'bg-slate-100 border-slate-400 ring-2 ring-slate-400/20 shadow-xs'
-              : 'bg-white border-slate-200 hover:border-slate-300'
-          }`}
+          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${activeTab === 'corrections' && filterStatus === 'REJECTED'
+            ? 'bg-slate-100 border-slate-400 ring-2 ring-slate-400/20 shadow-xs'
+            : 'bg-white border-slate-200 hover:border-slate-300'
+            }`}
         >
           <div className="flex items-center justify-between mb-1">
             <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
@@ -682,11 +612,10 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('corrections')}
-          className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-            activeTab === 'corrections'
-              ? 'bg-[#12A66A] text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-          }`}
+          className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${activeTab === 'corrections'
+            ? 'bg-[#12A66A] text-white shadow-xs'
+            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
         >
           <FileText className="w-3.5 h-3.5 shrink-0" />
           <span>Correction Requests ({correctionsTotal})</span>
@@ -695,11 +624,10 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('overdue')}
-          className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-            activeTab === 'overdue'
-              ? 'bg-rose-600 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-          }`}
+          className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${activeTab === 'overdue'
+            ? 'bg-rose-600 text-white shadow-xs'
+            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
         >
           <AlertCircle className="w-3.5 h-3.5 shrink-0" />
           <span>Overdue Approvals ({summary.overdueApprovals})</span>
@@ -708,27 +636,13 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('exceptions')}
-          className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-            activeTab === 'exceptions'
-              ? 'bg-orange-600 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-          }`}
+          className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${activeTab === 'exceptions'
+            ? 'bg-orange-600 text-white shadow-xs'
+            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
         >
           <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
           <span>Exceptions & Overrides</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('audit')}
-          className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-            activeTab === 'audit'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-          }`}
-        >
-          <History className="w-3.5 h-3.5 shrink-0" />
-          <span>Audit Log</span>
         </button>
       </div>
 
@@ -929,11 +843,10 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
 
                           {/* Original Record */}
                           <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
-                            <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold mr-1.5 ${
-                              row.originalStatus === 'APPROVED' ? 'bg-emerald-50 text-emerald-700' :
+                            <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold mr-1.5 ${row.originalStatus === 'APPROVED' ? 'bg-emerald-50 text-emerald-700' :
                               row.originalStatus === 'REJECTED' ? 'bg-rose-50 text-rose-700' :
-                              'bg-amber-50 text-amber-700'
-                            }`}>
+                                'bg-amber-50 text-amber-700'
+                              }`}>
                               {row.originalStatus}
                             </span>
                             <span className="tabular-nums text-[11px]">
@@ -959,12 +872,11 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
                           {/* Status */}
                           <td className="py-3 px-4 whitespace-nowrap">
                             <span
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
-                                isPending ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${isPending ? 'bg-amber-50 text-amber-700 border border-amber-200' :
                                 isApproved ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                                isRejected ? 'bg-rose-50 text-rose-700 border border-rose-200' :
-                                'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                              }`}
+                                  isRejected ? 'bg-rose-50 text-rose-700 border border-rose-200' :
+                                    'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                }`}
                             >
                               {isPending && <Clock className="w-2.5 h-2.5" />}
                               {isApproved && <CheckCircle2 className="w-2.5 h-2.5" />}
@@ -994,33 +906,23 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
             </div>
 
             {/* Pagination */}
-            {correctionsTotalPages > 1 && (
-              <div className="p-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 bg-slate-50/50">
-                <span>
-                  Showing {(correctionsPage - 1) * correctionsLimit + 1}–{Math.min(correctionsPage * correctionsLimit, correctionsTotal)} of {correctionsTotal} requests
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setCorrectionsPage((p) => Math.max(1, p - 1))}
-                    disabled={correctionsPage === 1}
-                    className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg font-semibold disabled:opacity-40 hover:bg-slate-50 cursor-pointer"
-                  >
-                    Previous
-                  </button>
-                  <span className="font-bold text-slate-800 px-1">
-                    {correctionsPage} / {correctionsTotalPages}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setCorrectionsPage((p) => Math.min(correctionsTotalPages, p + 1))}
-                    disabled={correctionsPage === correctionsTotalPages}
-                    className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg font-semibold disabled:opacity-40 hover:bg-slate-50 cursor-pointer"
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
+            {correctionsTotal > 0 && (
+              <DataTablePagination
+                metadata={{
+                  total: correctionsTotal,
+                  page: correctionsPage,
+                  limit: correctionsLimit,
+                  offset: (correctionsPage - 1) * correctionsLimit,
+                  totalPages: correctionsTotalPages,
+                }}
+                onPageChange={(p) => setCorrectionsPage(p)}
+                onLimitChange={(l) => {
+                  setCorrectionsLimit(l);
+                  setCorrectionsPage(1);
+                }}
+                pageSizeOptions={[10, 25, 50]}
+                isLoading={loading}
+              />
             )}
           </div>
         </div>
@@ -1092,7 +994,9 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    overdueList.map((row) => (
+                    overdueList
+                      .slice((overduePage - 1) * overdueLimit, overduePage * overdueLimit)
+                      .map((row) => (
                       <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="py-3 px-4">
                           <strong className="block text-slate-900 font-bold">{row.supervisorName}</strong>
@@ -1107,11 +1011,10 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
                         <td className="py-3 px-4 text-slate-600 tabular-nums">{formatTime(row.clockInTime)}</td>
                         <td className="py-3 px-4">
                           <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
-                              row.severityLevel === 'CRITICAL' ? 'bg-rose-100 text-rose-800 border border-rose-300' :
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${row.severityLevel === 'CRITICAL' ? 'bg-rose-100 text-rose-800 border border-rose-300' :
                               row.severityLevel === 'HIGH' ? 'bg-amber-100 text-amber-800 border border-amber-300' :
-                              'bg-slate-100 text-slate-700'
-                            }`}
+                                'bg-slate-100 text-slate-700'
+                              }`}
                           >
                             <AlertCircle className="w-2.5 h-2.5" />
                             <span>{row.overdueFormatted}</span>
@@ -1154,6 +1057,25 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
                 </tbody>
               </table>
             </div>
+
+            {overdueList.length > 0 && (
+              <DataTablePagination
+                metadata={{
+                  total: overdueList.length,
+                  page: overduePage,
+                  limit: overdueLimit,
+                  offset: (overduePage - 1) * overdueLimit,
+                  totalPages: Math.ceil(overdueList.length / overdueLimit),
+                }}
+                onPageChange={(p) => setOverduePage(p)}
+                onLimitChange={(l) => {
+                  setOverdueLimit(l);
+                  setOverduePage(1);
+                }}
+                pageSizeOptions={[10, 25, 50]}
+                isLoading={overdueLoading}
+              />
+            )}
           </div>
         </div>
       )}
@@ -1189,11 +1111,10 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
                       {ex.exceptionType.replace(/_/g, ' ')}
                     </span>
                     <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        ex.status === 'RESOLVED' ? 'bg-emerald-50 text-emerald-700' :
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${ex.status === 'RESOLVED' ? 'bg-emerald-50 text-emerald-700' :
                         ex.status === 'ESCALATED' ? 'bg-rose-50 text-rose-700' :
-                        'bg-amber-50 text-amber-700'
-                      }`}
+                          'bg-amber-50 text-amber-700'
+                        }`}
                     >
                       {ex.status}
                     </span>
@@ -1234,95 +1155,6 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
         </div>
       )}
 
-      {/* ======================================================================= */}
-      {/* ── TAB 4: AUDIT LOG TRAIL ───────────────────────────────────────────── */}
-      {/* ======================================================================= */}
-      {activeTab === 'audit' && (
-        <div className="space-y-4">
-          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between gap-3">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                placeholder="Search audit trail by actor, action, reason..."
-                value={auditSearch}
-                onChange={(e) => setAuditSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-200 rounded-xl focus:outline-indigo-600 bg-slate-50/50"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={loadAuditLogs}
-              className="px-3 py-1.5 text-xs font-bold border border-slate-200 rounded-xl hover:bg-slate-50 cursor-pointer"
-            >
-              Refresh Audit
-            </button>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-slate-50/75 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
-                    <th className="py-3 px-4">Timestamp</th>
-                    <th className="py-3 px-4">Actor</th>
-                    <th className="py-3 px-4">Role</th>
-                    <th className="py-3 px-4">Action</th>
-                    <th className="py-3 px-4">Entity Type</th>
-                    <th className="py-3 px-4">Reason / Justification</th>
-                    <th className="py-3 px-4">Details</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {auditLoading ? (
-                    <tr>
-                      <td colSpan={7} className="py-12 text-center text-slate-400">Loading security audit trail...</td>
-                    </tr>
-                  ) : auditLogsList.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="py-12 text-center text-slate-400">No audit logs recorded yet.</td>
-                    </tr>
-                  ) : (
-                    auditLogsList
-                      .filter((l) => {
-                        if (!auditSearch.trim()) return true;
-                        const q = auditSearch.toLowerCase();
-                        return (
-                          (l.actorName && l.actorName.toLowerCase().includes(q)) ||
-                          (l.action && l.action.toLowerCase().includes(q)) ||
-                          (l.reason && l.reason.toLowerCase().includes(q))
-                        );
-                      })
-                      .map((l) => (
-                        <tr key={l.id} className="hover:bg-slate-50/80">
-                          <td className="py-3 px-4 text-slate-500 whitespace-nowrap text-[11px] tabular-nums">
-                            {new Date(l.createdAt).toLocaleString()}
-                          </td>
-                          <td className="py-3 px-4 font-bold text-slate-900">{l.actorName}</td>
-                          <td className="py-3 px-4">
-                            <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
-                              {l.actorRole}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 font-mono font-bold text-indigo-700 text-[11px]">
-                            {l.action}
-                          </td>
-                          <td className="py-3 px-4 text-slate-600">{l.entityType}</td>
-                          <td className="py-3 px-4 text-slate-700 max-w-[200px] truncate" title={l.reason || ''}>
-                            {l.reason || '—'}
-                          </td>
-                          <td className="py-3 px-4 font-mono text-[10px] text-slate-400 truncate max-w-[150px]">
-                            {l.afterValues ? JSON.stringify(l.afterValues) : '—'}
-                          </td>
-                        </tr>
-                      ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ======================================================================= */}
       {/* ── SECTION C: REQUEST DETAIL INSPECTOR MODAL ───────────────────────── */}
@@ -1361,11 +1193,10 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
 
                 <div className="text-right">
                   <span className="text-[10px] text-slate-400 uppercase font-bold block">Status</span>
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-black inline-block mt-0.5 ${
-                    requestDetail.request.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-black inline-block mt-0.5 ${requestDetail.request.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
                     requestDetail.request.status === 'REJECTED' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
-                    'bg-amber-50 text-amber-700 border border-amber-200'
-                  }`}>
+                      'bg-amber-50 text-amber-700 border border-amber-200'
+                    }`}>
                     {requestDetail.request.status.replace(/_/g, ' ')}
                   </span>
                   <span className="text-[10px] text-slate-400 block mt-1">
@@ -1680,145 +1511,6 @@ export const AdminAttendanceControlCenterView: React.FC = () => {
               </button>
             </div>
           </div>
-        </Modal>
-      )}
-
-      {/* ── MODAL: CREATE MISSING ATTENDANCE RECORD (SECTION D) ─────────────── */}
-      {showCreateMissingModal && (
-        <Modal
-          isOpen={showCreateMissingModal}
-          onClose={() => setShowCreateMissingModal(false)}
-          title="Authorized Missing Attendance Resolution"
-          maxWidth="lg"
-        >
-          <form onSubmit={handleCreateMissingSubmit} className="space-y-4 text-xs">
-            <p className="text-slate-600">
-              Use this authorized administrative workflow to create an official attendance record for a worker who did not punch in on a scheduled date. This generates an explicit, traceable correction entry.
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Worker: <span className="text-rose-600">*</span>
-                </label>
-                <select
-                  value={newMissingWorkerId}
-                  onChange={(e) => setNewMissingWorkerId(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white font-semibold"
-                  required
-                >
-                  <option value="">Select Worker</option>
-                  {workersList.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.fullName} ({w.employeeCode || 'Worker'})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Worksite: <span className="text-rose-600">*</span>
-                </label>
-                <select
-                  value={newMissingWorksiteId}
-                  onChange={(e) => setNewMissingWorksiteId(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white font-semibold"
-                  required
-                >
-                  <option value="">Select Worksite</option>
-                  {worksitesList.map((ws) => (
-                    <option key={ws.id} value={ws.id}>
-                      {ws.name} ({ws.code || 'SITE'})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Shift Date: <span className="text-rose-600">*</span>
-                </label>
-                <input
-                  type="date"
-                  value={newMissingDate}
-                  onChange={(e) => setNewMissingDate(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl font-semibold"
-                  required
-                >
-                </input>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Resolution Status:
-                </label>
-                <select
-                  value={newMissingStatus}
-                  onChange={(e: any) => setNewMissingStatus(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white font-semibold"
-                >
-                  <option value="APPROVED">APPROVED (Apply Instantly)</option>
-                  <option value="PENDING">PENDING (Supervisor Review)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Actual Clock-In Time (HH:MM):
-                </label>
-                <input
-                  type="time"
-                  value={newMissingClockIn}
-                  onChange={(e) => setNewMissingClockIn(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl font-semibold"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Actual Clock-Out Time (HH:MM):
-                </label>
-                <input
-                  type="time"
-                  value={newMissingClockOut}
-                  onChange={(e) => setNewMissingClockOut(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl font-semibold"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                Mandatory Administrative Justification: <span className="text-rose-600">*</span>
-              </label>
-              <textarea
-                rows={2}
-                value={newMissingReason}
-                onChange={(e) => setNewMissingReason(e.target.value)}
-                placeholder="e.g. Worker was present on site; mobile app device battery died; confirmed via physical register..."
-                className="w-full p-2.5 text-xs border border-slate-200 rounded-xl focus:outline-[#12A66A]"
-                required
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setShowCreateMissingModal(false)}
-                className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={actionSubmitting}
-                className="px-4 py-2 text-xs font-bold bg-[#12A66A] hover:bg-[#0E8F5B] text-white rounded-xl cursor-pointer disabled:opacity-50"
-              >
-                {actionSubmitting ? 'Creating...' : 'Create & Apply'}
-              </button>
-            </div>
-          </form>
         </Modal>
       )}
 

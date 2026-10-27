@@ -43,13 +43,26 @@ export const users = pgTable('users', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Standard 5 System Roles Config
+export const SYSTEM_ROLES = ['ADMIN', 'SUPERVISOR', 'ENGINEER', 'ACCOUNTANT', 'WORKER'] as const;
+export type SystemRole = (typeof SYSTEM_ROLES)[number];
+
+// Roles Table (Master Database Roles)
+export const roles = pgTable('roles', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: varchar('name', { length: 50 }).notNull().unique(), // 'ADMIN', 'SUPERVISOR', 'ENGINEER', 'ACCOUNTANT', 'WORKER'
+  description: text('description'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 // User Roles
 export const userRoles = pgTable('user_roles', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').references(() => users.id).notNull(),
-  role: varchar('role', { length: 50 }).notNull(), // 'SUPER_ADMIN', 'ADMIN', 'SUPERVISOR', 'WORKER'
+  role: varchar('role', { length: 50 }).notNull(), // 'ADMIN', 'SUPERVISOR', 'ENGINEER', 'ACCOUNTANT', 'WORKER'
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
 
 // Worksites
 export const worksites = pgTable('worksites', {
@@ -107,9 +120,11 @@ export const attendanceSessions = pgTable('attendance_sessions', {
   workerId: uuid('worker_id').references(() => users.id).notNull(),
   supervisorSnapshotId: uuid('supervisor_snapshot_id').references(() => users.id).notNull(),
   currentApproverId: uuid('current_approver_id').references(() => users.id),
+  actionBy: uuid('action_by').references(() => users.id),
+  notes: text('notes'),
   worksiteSnapshotId: uuid('worksite_snapshot_id').references(() => worksites.id).notNull(),
   workDate: date('work_date').notNull(),
-  status: varchar('status', { length: 50 }).default('PENDING').notNull(), // 'PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'
+  status: varchar('status', { length: 50 }).default('PENDING').notNull(), // Canonical statuses: 'APPROVED', 'REJECTED', 'ABSENT', 'MISSING', 'PENDING', 'LEAVE'
   idempotencyKey: varchar('idempotency_key', { length: 255 }).notNull().unique(),
   clockInTime: timestamp('clock_in_time', { withTimezone: true }),
   clockOutTime: timestamp('clock_out_time', { withTimezone: true }),
@@ -185,13 +200,20 @@ export const attendanceEvents = pgTable('attendance_events', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
-// Approval Actions
+// Approval Actions (Immutable Attendance Audit History)
 export const approvalActions = pgTable('approval_actions', {
   id: uuid('id').defaultRandom().primaryKey(),
   sessionId: uuid('session_id').references(() => attendanceSessions.id).notNull(),
-  action: varchar('action', { length: 50 }).notNull(), // 'APPROVED', 'REJECTED', 'TRANSFERRED', 'ADMIN_OVERRIDE'
+  workerId: uuid('worker_id').references(() => users.id),
+  workDate: date('work_date'),
+  previousStatus: varchar('previous_status', { length: 50 }),
+  newStatus: varchar('new_status', { length: 50 }),
+  action: varchar('action', { length: 50 }).notNull(), // 'APPROVED', 'REJECTED', 'TRANSFERRED', 'ADMIN_OVERRIDE', ...
+  actionType: varchar('action_type', { length: 50 }),
   reviewerId: uuid('reviewer_id').references(() => users.id).notNull(),
+  actorRole: varchar('actor_role', { length: 50 }),
   previousSupervisorId: uuid('previous_supervisor_id').references(() => users.id),
+  regularizationId: uuid('regularization_id').references(() => attendanceAdjustmentRequests.id),
   note: text('note'),
   reason: text('reason'),
   performedAt: timestamp('performed_at', { withTimezone: true }).defaultNow().notNull(),
@@ -256,6 +278,9 @@ export const leaveRequests = pgTable('leave_requests', {
   cancellationReason: text('cancellation_reason'),
   cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
   cancelledBy: uuid('cancelled_by').references(() => users.id),
+  revocationReason: text('revocation_reason'),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  revokedBy: uuid('revoked_by').references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });

@@ -15,6 +15,7 @@
     "#hooks/*": "./src/hooks/*.ts"
   },
   "dependencies": {
+    "@astraicons/react": "^1.7.0",
     "@base-ui/react": "^1.9.0",
     "@fontsource-variable/geist": "^5.3.0",
     "@hookform/resolvers": "^5.9.1",

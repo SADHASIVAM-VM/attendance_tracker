@@ -16,14 +16,23 @@ import {
   attendanceFlags,
   attendanceExceptions,
   attendanceAdjustmentRequests,
+  userRoles,
 } from '../database/schema.js';
-import { eq, ne, and, or, sql, desc, inArray } from 'drizzle-orm';
+import { eq, ne, and, or, sql, desc, inArray, lte } from 'drizzle-orm';
 import { calculateHaversineDistance, isWithinGeofence, isAccuracyAcceptable } from '../utils/geo.js';
 import { logAuditEvent } from '../utils/audit.js';
 import { detectAndFlagLeaveAttendanceConflict } from '../services/escalationService.js';
 import { supervisorClockIn, supervisorClockOut } from './supervisorAttendanceController.js';
 import { generateSignedDownloadUrl, generateUploadAuthorization, savePhoto, verifyStorageToken } from '../services/storage.js';
 import { calculateSessionOvertime } from '../services/overtimeService.js';
+import { getOrgCurrentMonth, isCurrentCalendarMonth, getOrgTimezone } from '../utils/dateUtils.js';
+import {
+  applyAttendanceStatusTransition,
+  getAttendanceSessionAuditTrail,
+  normalizeAttendanceStatus,
+  validateMandatoryNote,
+  CanonicalAttendanceStatus,
+} from '../services/attendanceStatusService.js';
 
 const clockInSchema = z.object({
   assignmentId: z.string().uuid().optional(),
@@ -866,12 +875,21 @@ export async function approveAttendance(req: Request, res: Response): Promise<an
   const { id } = req.params;
   const parseResult = approvalSchema.safeParse(req.body);
   const rawNote = parseResult.success
-    ? (parseResult.data.note || parseResult.data.decisionNote)
-    : (req.body as any)?.decisionNote || (req.body as any)?.note;
-  const note = rawNote || 'Approved by supervisor';
+    ? (parseResult.data.note || parseResult.data.decisionNote || (parseResult.data as any).reason)
+    : (req.body as any)?.decisionNote || (req.body as any)?.note || (req.body as any)?.reason;
+
+  const noteValidation = validateMandatoryNote(rawNote, 3);
+  if (!noteValidation.valid) {
+    return res.status(400).json({
+      error: 'NOTE_REQUIRED',
+      message: 'A mandatory, meaningful approval note (at least 3 characters) is required to approve attendance.',
+    });
+  }
+  const cleanNote = noteValidation.trimmedNote;
 
   const db = await getDb();
   const reviewer = req.user!;
+  const isSuperOrAdmin = reviewer.roles.includes('SUPER_ADMIN') || reviewer.roles.includes('ADMIN');
 
   // Try fetching session by ID, or fallback by worker ID (latest pending session)
   let [session] = await db
@@ -903,10 +921,12 @@ export async function approveAttendance(req: Request, res: Response): Promise<an
     return res.status(404).json({ error: 'SESSION_NOT_FOUND', message: 'Attendance session not found' });
   }
 
-  if (session.status !== 'PENDING') {
+  // Section 3: An authorised admin can review and approve attendance even if supervisor previously rejected it.
+  // Supervisors can only approve PENDING sessions.
+  if (session.status !== 'PENDING' && !isSuperOrAdmin) {
     return res.status(400).json({
       error: 'ATTENDANCE_ALREADY_FINALIZED',
-      message: `Session is already finalized with status: ${session.status}`,
+      message: `Session is already finalized with status: ${session.status}. Only an authorized administrator can override finalized attendance.`,
     });
   }
 
@@ -919,57 +939,54 @@ export async function approveAttendance(req: Request, res: Response): Promise<an
   }
 
   // Check authorization across snapshot, assignment, worksite, or worker assignments
-  const isAuthorized = await isSupervisorAuthorizedForSession(db, session, reviewer);
+  if (!isSuperOrAdmin) {
+    const isAuthorized = await isSupervisorAuthorizedForSession(db, session, reviewer);
+    if (!isAuthorized) {
+      return res.status(403).json({
+        error: 'UNAUTHORIZED_SUPERVISOR',
+        message: 'You are not the designated supervisor for this attendance session',
+      });
+    }
 
-  if (!isAuthorized) {
-    return res.status(403).json({
-      error: 'UNAUTHORIZED_SUPERVISOR',
-      message: 'You are not the designated supervisor for this attendance session',
-    });
+    // Supervisors are allowed to edit only the current month's records
+    const orgTz = await getOrgTimezone(db, reviewer.orgId);
+    const { monthStr } = getOrgCurrentMonth(orgTz);
+    const sessionWorkDate = String(session.workDate).split('T')[0];
+    if (!isCurrentCalendarMonth(sessionWorkDate, orgTz)) {
+      return res.status(403).json({
+        error: 'CURRENT_MONTH_ONLY',
+        message: `Supervisors are allowed to edit only the current month's records (${monthStr}). Session date (${sessionWorkDate}) falls outside the current calendar month; please use the Worker Regularisation or Admin Attendance Correction workflow.`,
+      });
+    }
   }
 
-  const now = new Date();
-  const shouldUpdateSupervisor = session.supervisorSnapshotId !== reviewer.id && reviewer.roles.includes('SUPERVISOR');
+  const isOverride = isSuperOrAdmin && session.status !== 'PENDING';
+  const actionType = isOverride ? 'ADMIN_OVERRIDE_APPROVAL' : 'SUPERVISOR_APPROVAL';
+  const approvalSource = isOverride ? 'ADMIN_OVERRIDE' : 'MANUAL';
 
-  const [updatedSession] = await db
-    .update(attendanceSessions)
-    .set({
-      status: 'APPROVED',
-      approvedAt: now,
-      approvalSource: 'MANUAL',
-      ...(shouldUpdateSupervisor ? { supervisorSnapshotId: reviewer.id } : {}),
-      updatedAt: now,
-    })
-    .where(eq(attendanceSessions.id as any, session.id as any))
-    .returning();
-
-  await db.insert(approvalActions).values({
-    sessionId: session.id,
-    action: 'APPROVED',
-    reviewerId: reviewer.id,
-    note,
-    performedAt: now,
+  const { updatedSession } = await applyAttendanceStatusTransition({
+    db,
+    session,
+    targetStatus: 'APPROVED',
+    actorId: reviewer.id,
+    actorRole: reviewer.roles[0] || (isSuperOrAdmin ? 'ADMIN' : 'SUPERVISOR'),
+    actorNameSnapshot: reviewer.fullName,
+    note: cleanNote,
+    actionType,
+    approvalSource,
+    req,
   });
 
   // Notify worker
   await db.insert(notifications).values({
     userId: session.workerId,
     title: 'Attendance Approved',
-    message: `Your clock-in for ${session.workDate} has been verified and approved.`,
+    message: isOverride
+      ? `Your attendance for ${session.workDate} was approved by Administrator ${reviewer.fullName}. Reason: ${cleanNote}`
+      : `Your clock-in for ${session.workDate} has been verified and approved. Reason: ${cleanNote}`,
     type: 'ATTENDANCE_APPROVED',
     entityType: 'ATTENDANCE_SESSION',
     entityId: session.id,
-  });
-
-  await logAuditEvent({
-    orgId: reviewer.orgId,
-    actorId: reviewer.id,
-    action: 'APPROVE_ATTENDANCE',
-    entityType: 'ATTENDANCE_SESSION',
-    entityId: session.id,
-    beforeValues: { status: 'PENDING' },
-    afterValues: { status: 'APPROVED', note },
-    ipAddress: req.ip,
   });
 
   return res.json({ success: true, message: 'Attendance approved', session: updatedSession });
@@ -983,18 +1000,18 @@ export async function rejectAttendance(req: Request, res: Response): Promise<any
     ? (parseResult.data.reason || parseResult.data.decisionNote || parseResult.data.note || parseResult.data.rejectionReason)
     : ((req.body as any)?.decisionNote || (req.body as any)?.reason || (req.body as any)?.note);
 
-  // Rejection requires a mandatory reason
-  if (!rawReason || rawReason.trim().length < 3) {
+  const noteValidation = validateMandatoryNote(rawReason, 3);
+  if (!noteValidation.valid) {
     return res.status(400).json({
       error: 'REJECTION_REASON_REQUIRED',
       message: 'A mandatory rejection reason (at least 3 characters) is required',
     });
   }
-
-  const reason = rawReason.trim();
+  const cleanReason = noteValidation.trimmedNote;
 
   const db = await getDb();
   const reviewer = req.user!;
+  const isSuperOrAdmin = reviewer.roles.includes('SUPER_ADMIN') || reviewer.roles.includes('ADMIN');
 
   // Try fetching session by ID, or fallback by worker ID (latest pending session)
   let [session] = await db
@@ -1026,64 +1043,60 @@ export async function rejectAttendance(req: Request, res: Response): Promise<any
     return res.status(404).json({ error: 'SESSION_NOT_FOUND', message: 'Attendance session not found' });
   }
 
-  if (session.status !== 'PENDING') {
+  if (session.status !== 'PENDING' && !isSuperOrAdmin) {
     return res.status(400).json({
       error: 'ATTENDANCE_ALREADY_FINALIZED',
-      message: `Session is already finalized with status: ${session.status}`,
+      message: `Session is already finalized with status: ${session.status}. Only an authorized administrator can override finalized attendance.`,
     });
   }
 
   // Check authorization across snapshot, assignment, worksite, or worker assignments
-  const isAuthorized = await isSupervisorAuthorizedForSession(db, session, reviewer);
+  if (!isSuperOrAdmin) {
+    const isAuthorized = await isSupervisorAuthorizedForSession(db, session, reviewer);
+    if (!isAuthorized) {
+      return res.status(403).json({
+        error: 'UNAUTHORIZED_SUPERVISOR',
+        message: 'You are not the designated supervisor for this attendance session',
+      });
+    }
 
-  if (!isAuthorized) {
-    return res.status(403).json({
-      error: 'UNAUTHORIZED_SUPERVISOR',
-      message: 'You are not the designated supervisor for this attendance session',
-    });
+    // Supervisors are allowed to edit only the current month's records
+    const orgTz = await getOrgTimezone(db, reviewer.orgId);
+    const { monthStr } = getOrgCurrentMonth(orgTz);
+    const sessionWorkDate = String(session.workDate).split('T')[0];
+    if (!isCurrentCalendarMonth(sessionWorkDate, orgTz)) {
+      return res.status(403).json({
+        error: 'CURRENT_MONTH_ONLY',
+        message: `Supervisors are allowed to edit only the current month's records (${monthStr}). Session date (${sessionWorkDate}) falls outside the current calendar month; please use the Worker Regularisation or Admin Attendance Correction workflow.`,
+      });
+    }
   }
 
-  const now = new Date();
-  const shouldUpdateSupervisor = session.supervisorSnapshotId !== reviewer.id && reviewer.roles.includes('SUPERVISOR');
+  const isOverride = isSuperOrAdmin && session.status !== 'PENDING';
+  const actionType = isOverride ? 'ADMIN_OVERRIDE_REJECTION' : 'SUPERVISOR_REJECTION';
+  const approvalSource = isOverride ? 'ADMIN_OVERRIDE' : 'MANUAL';
 
-  const [updatedSession] = await db
-    .update(attendanceSessions)
-    .set({
-      status: 'REJECTED',
-      rejectionReason: reason,
-      ...(shouldUpdateSupervisor ? { supervisorSnapshotId: reviewer.id } : {}),
-      updatedAt: now,
-    })
-    .where(eq(attendanceSessions.id as any, session.id as any))
-    .returning();
-
-  await db.insert(approvalActions).values({
-    sessionId: session.id,
-    action: 'REJECTED',
-    reviewerId: reviewer.id,
-    reason,
-    performedAt: now,
+  const { updatedSession } = await applyAttendanceStatusTransition({
+    db,
+    session,
+    targetStatus: 'REJECTED',
+    actorId: reviewer.id,
+    actorRole: reviewer.roles[0] || (isSuperOrAdmin ? 'ADMIN' : 'SUPERVISOR'),
+    actorNameSnapshot: reviewer.fullName,
+    note: cleanReason,
+    actionType,
+    approvalSource,
+    req,
   });
 
   // Notify worker
   await db.insert(notifications).values({
     userId: session.workerId,
     title: 'Attendance Rejected',
-    message: `Your clock-in for ${session.workDate} was rejected. Reason: ${reason}`,
+    message: `Your clock-in for ${session.workDate} was rejected. Reason: ${cleanReason}`,
     type: 'ATTENDANCE_REJECTED',
     entityType: 'ATTENDANCE_SESSION',
     entityId: session.id,
-  });
-
-  await logAuditEvent({
-    orgId: reviewer.orgId,
-    actorId: reviewer.id,
-    action: 'REJECT_ATTENDANCE',
-    entityType: 'ATTENDANCE_SESSION',
-    entityId: session.id,
-    beforeValues: { status: 'PENDING' },
-    afterValues: { status: 'REJECTED', reason },
-    ipAddress: req.ip,
   });
 
   return res.json({ success: true, message: 'Attendance rejected', session: updatedSession });
@@ -1162,6 +1175,9 @@ export async function getWorkerMyAttendance(req: Request, res: Response): Promis
       id: attendanceSessions.id,
       workDate: attendanceSessions.workDate,
       status: attendanceSessions.status,
+      notes: attendanceSessions.notes,
+      actionBy: attendanceSessions.actionBy,
+      updatedAt: attendanceSessions.updatedAt,
       clockInTime: attendanceSessions.clockInTime,
       clockOutTime: attendanceSessions.clockOutTime,
       rejectionReason: attendanceSessions.rejectionReason,
@@ -1177,6 +1193,7 @@ export async function getWorkerMyAttendance(req: Request, res: Response): Promis
       worksiteName: worksites.name,
       worksiteCode: worksites.code,
       shiftName: siteAssignments.shiftName,
+      supervisorSnapshotId: attendanceSessions.supervisorSnapshotId,
       supervisorName: users.fullName,
     })
     .from(attendanceSessions)
@@ -1283,7 +1300,71 @@ export async function getWorkerMyAttendance(req: Request, res: Response): Promis
     }
   }
 
-  // Attach flag details and regularization to existing punch sessions
+  // Fetch immutable audit trail actions for these sessions
+  const sessionIds = sessions.map((s) => s.id);
+  const actionsBySessionId = new Map<string, any[]>();
+  const actorIds = new Set<string>();
+
+  for (const s of sessions) {
+    if (s.actionBy) actorIds.add(s.actionBy);
+    if (s.supervisorSnapshotId) actorIds.add(s.supervisorSnapshotId);
+  }
+
+  if (sessionIds.length > 0) {
+    const rawActions = await db
+      .select({
+        id: approvalActions.id,
+        sessionId: approvalActions.sessionId,
+        workerId: approvalActions.workerId,
+        workDate: approvalActions.workDate,
+        previousStatus: approvalActions.previousStatus,
+        newStatus: approvalActions.newStatus,
+        action: approvalActions.action,
+        actionType: approvalActions.actionType,
+        reviewerId: approvalActions.reviewerId,
+        actorRole: approvalActions.actorRole,
+        note: approvalActions.note,
+        reason: approvalActions.reason,
+        performedAt: approvalActions.performedAt,
+        reviewerName: users.fullName,
+      })
+      .from(approvalActions)
+      .leftJoin(users, eq(approvalActions.reviewerId, users.id))
+      .where(inArray(approvalActions.sessionId, sessionIds))
+      .orderBy(desc(approvalActions.performedAt));
+
+    for (const act of rawActions) {
+      if (!actionsBySessionId.has(act.sessionId)) {
+        actionsBySessionId.set(act.sessionId, []);
+      }
+      if (act.reviewerId) actorIds.add(act.reviewerId);
+      actionsBySessionId.get(act.sessionId)!.push({
+        id: act.id,
+        previousStatus: act.previousStatus ? normalizeAttendanceStatus(act.previousStatus) : null,
+        newStatus: act.newStatus ? normalizeAttendanceStatus(act.newStatus) : normalizeAttendanceStatus(act.action),
+        action: act.action,
+        actionType: act.actionType || act.action,
+        reviewerId: act.reviewerId,
+        reviewerName: act.reviewerName || 'Authorised Reviewer',
+        actorRole: act.actorRole || 'SUPERVISOR',
+        note: act.note || act.reason || 'Status updated',
+        performedAt: act.performedAt,
+      });
+    }
+  }
+
+  const actorNameMap = new Map<string, string>();
+  if (actorIds.size > 0) {
+    const actorUsers = await db
+      .select({ id: users.id, fullName: users.fullName })
+      .from(users)
+      .where(inArray(users.id, Array.from(actorIds)));
+    for (const u of actorUsers) {
+      actorNameMap.set(u.id, u.fullName);
+    }
+  }
+
+  // Attach flag details, regularization, and audit history to punch sessions
   for (const s of sessions) {
     const dStr = String(s.workDate).split('T')[0];
     const flag = flagByDate.get(dStr);
@@ -1297,6 +1378,30 @@ export async function getWorkerMyAttendance(req: Request, res: Response): Promis
     if (reg) {
       (s as any).regularization = reg;
     }
+
+    const history = actionsBySessionId.get(s.id) || [];
+    (s as any).auditHistory = history;
+
+    // Canonical status normalization
+    const canonicalStatus = normalizeAttendanceStatus(s.status);
+    (s as any).status = canonicalStatus;
+
+    // Single source of truth: If approved, clear rejectionReason so worker sees current APPROVED status
+    if (canonicalStatus === 'APPROVED') {
+      (s as any).rejectionReason = null;
+      (s as any).isAbsent = false;
+    } else if (canonicalStatus === 'ABSENT') {
+      (s as any).isAbsent = true;
+    }
+
+    // Resolve latest actor name
+    if (s.actionBy) {
+      (s as any).actionByName = actorNameMap.get(s.actionBy) || (s.supervisorName || 'Site Administrator');
+    } else if (history.length > 0) {
+      (s as any).actionBy = history[0].reviewerId;
+      (s as any).actionByName = history[0].reviewerName;
+      (s as any).notes = (s as any).notes || history[0].note;
+    }
   }
 
   const sessionDateSet = new Set(sessions.map((s) => String(s.workDate).split('T')[0]));
@@ -1305,109 +1410,175 @@ export async function getWorkerMyAttendance(req: Request, res: Response): Promis
   // 1. Process attendance exceptions
   for (const ex of exceptions) {
     const dStr = String(ex.workDate).split('T')[0];
-    if (!sessionDateSet.has(dStr)) {
-      let synthStatus = 'MISSING_CLOCK_IN';
-      if (ex.resolutionType === 'EXCUSED_ABSENCE') {
-        synthStatus = 'EXCUSED_ABSENCE';
-      } else if (ex.resolutionType === 'UNEXCUSED_ABSENCE') {
-        synthStatus = 'ABSENT';
-      } else if (ex.status === 'RESOLVED') {
-        synthStatus = ex.resolutionType || 'RESOLVED';
-      }
-
-      result.push({
-        id: `exception_${ex.id}`,
-        workDate: dStr,
-        status: synthStatus,
-        isAbsent: true,
-        absenceType: ex.resolutionType || 'MISSING_CLOCK_IN',
-        exceptionId: ex.id,
-        exceptionStatus: ex.status,
-        resolutionType: ex.resolutionType,
-        resolutionNote: ex.resolutionNote,
-        worksiteName: ex.worksiteName || 'Assigned Worksite',
-        worksiteCode: ex.worksiteCode || 'SITE',
-        shiftName: 'Scheduled Shift',
-        supervisorName: ex.supervisorName || 'Site Supervisor',
-        clockInTime: null,
-        clockOutTime: null,
-        standardHoursMinutes: 540,
-        breakDurationMinutes: 0,
-        calculatedOtMinutes: 0,
-        approvedOtMinutes: 0,
-        otStatus: 'NONE',
-        isPayrollLocked: false,
-        regularization: regByDate.get(dStr) || null,
-      });
-      sessionDateSet.add(dStr);
+    let synthStatus: CanonicalAttendanceStatus = 'MISSING';
+    if (ex.resolutionType === 'UNEXCUSED_ABSENCE') {
+      synthStatus = 'ABSENT';
+    } else if (ex.resolutionType === 'EXCUSED_ABSENCE' || ex.status === 'RESOLVED') {
+      synthStatus = 'APPROVED';
     }
+
+    result.push({
+      id: `exception_${ex.id}`,
+      workDate: dStr,
+      status: synthStatus,
+      notes: ex.resolutionNote || 'Attendance exception recorded',
+      actionByName: ex.supervisorName || 'Site Supervisor',
+      isAbsent: synthStatus === 'ABSENT',
+      absenceType: synthStatus,
+      exceptionId: ex.id,
+      exceptionStatus: ex.status,
+      resolutionType: ex.resolutionType,
+      resolutionNote: ex.resolutionNote,
+      worksiteName: ex.worksiteName || 'Assigned Worksite',
+      worksiteCode: ex.worksiteCode || 'SITE',
+      shiftName: 'Scheduled Shift',
+      supervisorName: ex.supervisorName || 'Site Supervisor',
+      clockInTime: null,
+      clockOutTime: null,
+      standardHoursMinutes: 540,
+      breakDurationMinutes: 0,
+      calculatedOtMinutes: 0,
+      approvedOtMinutes: 0,
+      otStatus: 'NONE',
+      isPayrollLocked: false,
+      regularization: regByDate.get(dStr) || null,
+      auditHistory: [],
+    });
+    sessionDateSet.add(dStr);
   }
 
   // 2. Process assigned past roster days (incorporating supervisor flag decisions)
   for (const asg of assignedDays) {
-    const dStr = String(asg.workDate).split('T')[0];
-    if (dStr < todayStr && !sessionDateSet.has(dStr)) {
-      const flag = flagByDate.get(dStr);
-      let status = 'ABSENT';
-      let absenceType = 'UNEXCUSED_ABSENCE';
-      let resolutionType = 'UNEXCUSED_ABSENCE';
-      let resolutionNote = 'Scheduled shift missed without clock-in or prior leave';
+  const dStr = String(asg.workDate).split('T')[0];
+  if (dStr <= todayStr && !sessionDateSet.has(dStr)) {
+    const flag = flagByDate.get(dStr);
+    let status: CanonicalAttendanceStatus = 'MISSING';
+    let absenceType = 'MISSING';
+    let resolutionType = 'PENDING';
+    let resolutionNote = 'Scheduled shift has no clock-in record. Pending supervisor review.';
 
-      if (flag) {
-        if (flag.flagStatus === 'APPROVED') {
-          status = 'EXCUSED_ABSENCE';
-          absenceType = 'EXCUSED_ABSENCE';
-          resolutionType = 'EXCUSED_ABSENCE';
-          resolutionNote = flag.reason
-            ? `Absence Excused by Supervisor: ${flag.reason}${flag.note ? ` ("${flag.note}")` : ''}`
-            : (flag.note || 'Absence excused by supervisor');
-        } else if (flag.flagStatus === 'REJECTED') {
-          status = 'ABSENT';
-          absenceType = 'UNEXCUSED_ABSENCE';
-          resolutionType = 'UNEXCUSED_ABSENCE';
-          resolutionNote = flag.reason
-            ? `Unexcused Absence - Explanation Rejected: ${flag.reason}${flag.note ? ` ("${flag.note}")` : ''}`
-            : (flag.note || 'Unexcused absence - supervisor rejected explanation');
-        } else if (flag.flagStatus === 'PENDING_REVIEW') {
-          status = 'MISSING_CLOCK_IN';
-          absenceType = 'MISSING_CLOCK_IN';
-          resolutionType = 'PENDING';
-          resolutionNote = 'Missing clock-in pending supervisor review';
-        }
+    if (flag) {
+      if (flag.flagStatus === 'APPROVED') {
+        status = 'APPROVED';
+        absenceType = 'APPROVED';
+        resolutionType = 'APPROVED';
+        resolutionNote = flag.reason
+          ? `Absence Excused by Supervisor: ${flag.reason}${flag.note ? ` ("${flag.note}")` : ''}`
+          : (flag.note || 'Absence excused by supervisor');
+      } else if (flag.flagStatus === 'REJECTED' || flag.flagStatus === 'ABSENT') {
+        status = 'ABSENT';
+        absenceType = 'ABSENT';
+        resolutionType = 'ABSENT';
+        resolutionNote = flag.reason
+          ? `Unexcused Absence Confirmed by Supervisor: ${flag.reason}${flag.note ? ` ("${flag.note}")` : ''}`
+          : (flag.note || 'Unexcused absence confirmed by supervisor');
+      } else if (flag.flagStatus === 'PENDING_REVIEW' || flag.flagStatus === 'FLAGGED') {
+        status = 'MISSING';
+        absenceType = 'MISSING';
+        resolutionType = 'PENDING';
+        resolutionNote = flag.reason
+          ? `Flagged by Supervisor: ${flag.reason}${flag.note ? ` ("${flag.note}")` : ''}`
+          : 'Flagged missing day awaiting resolution';
       }
-
-      result.push({
-        id: flag ? `flag_${flag.id}` : `scheduled_absent_${dStr}`,
-        workDate: dStr,
-        status,
-        isAbsent: true,
-        absenceType,
-        exceptionStatus: flag?.flagStatus || 'OPEN',
-        flagStatus: flag?.flagStatus || null,
-        flagReason: flag?.reason || null,
-        flagNote: flag?.note || null,
-        resolutionType,
-        resolutionNote,
-        worksiteName: asg.worksiteName || 'Assigned Worksite',
-        worksiteCode: asg.worksiteCode || 'SITE',
-        shiftName: asg.shiftName || 'Scheduled Shift',
-        supervisorName: flag?.supervisorName || asg.supervisorName || 'Site Supervisor',
-        clockInTime: null,
-        clockOutTime: null,
-        standardHoursMinutes: 540,
-        breakDurationMinutes: 0,
-        calculatedOtMinutes: 0,
-        approvedOtMinutes: 0,
-        otStatus: 'NONE',
-        isPayrollLocked: false,
-        regularization: regByDate.get(dStr) || null,
-      });
-      sessionDateSet.add(dStr);
     }
+
+    const isConfirmedAbsent = status === 'ABSENT';
+    const isConfirmedExcused = status === 'EXCUSED_ABSENCE';
+
+    result.push({
+      id: flag ? `flag_${flag.id}` : `scheduled_missing_${dStr}`,
+      workDate: dStr,
+      status,
+      isAbsent: isConfirmedAbsent || isConfirmedExcused,
+      absenceType,
+      exceptionStatus: flag?.flagStatus || 'OPEN',
+      flagStatus: flag?.flagStatus || null,
+      flagReason: flag?.reason || null,
+      flagNote: flag?.note || null,
+      resolutionType,
+      resolutionNote,
+      worksiteName: asg.worksiteName || 'Assigned Worksite',
+      worksiteCode: asg.worksiteCode || 'SITE',
+      shiftName: asg.shiftName || 'Scheduled Shift',
+      supervisorName: flag?.supervisorName || asg.supervisorName || 'Site Supervisor',
+      clockInTime: null,
+      clockOutTime: null,
+      standardHoursMinutes: 540,
+      breakDurationMinutes: 0,
+      calculatedOtMinutes: 0,
+      approvedOtMinutes: 0,
+      otStatus: 'NONE',
+      notes: resolutionNote,
+      actionByName: flag?.supervisorName || asg.supervisorName || 'Site Supervisor',
+      isPayrollLocked: false,
+      regularization: regByDate.get(dStr) || null,
+      auditHistory: [],
+    });
+    sessionDateSet.add(dStr);
   }
+}
 
   result.sort((a, b) => (a.workDate < b.workDate ? 1 : -1));
   return res.json(result);
+}
+
+/**
+ * GET /attendance/:id/history
+ * GET /attendance/sessions/:id/audit-trail
+ * Section 6 & 11: Return immutable audit history of an attendance session
+ */
+export async function getAttendanceAuditTrail(req: Request, res: Response): Promise<any> {
+  const { id } = req.params;
+  const user = req.user!;
+  const db = await getDb();
+  const isSuperOrAdmin = user.roles.includes('SUPER_ADMIN') || user.roles.includes('ADMIN');
+
+  let [session] = await db
+    .select()
+    .from(attendanceSessions)
+    .where(and(eq(attendanceSessions.id as any, id as any), eq(attendanceSessions.orgId as any, user.orgId as any)))
+    .limit(1);
+
+  if (!session) {
+    // Also try finding by workerId and date if id is formatted as date or workerId
+    return res.status(404).json({ error: 'SESSION_NOT_FOUND', message: 'Attendance record not found' });
+  }
+
+  // Authorization: Worker can only view own session; supervisors/admins can view team sessions
+  if (!isSuperOrAdmin && session.workerId !== user.id) {
+    const isAuthorized = await isSupervisorAuthorizedForSession(db, session, user);
+    if (!isAuthorized) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: 'Not authorized to view audit trail for this attendance record' });
+    }
+  }
+
+  const trail = await getAttendanceSessionAuditTrail(db, session.id);
+
+  let latestActorName = null;
+  if (session.actionBy) {
+    const [actor] = await db
+      .select({ fullName: users.fullName })
+      .from(users)
+      .where(eq(users.id, session.actionBy))
+      .limit(1);
+    latestActorName = actor?.fullName || null;
+  }
+
+  return res.json({
+    session: {
+      id: session.id,
+      workerId: session.workerId,
+      workDate: String(session.workDate).split('T')[0],
+      status: normalizeAttendanceStatus(session.status),
+      notes: session.notes,
+      actionBy: session.actionBy,
+      actionByName: latestActorName,
+      updatedAt: session.updatedAt,
+      clockInTime: session.clockInTime,
+      clockOutTime: session.clockOutTime,
+    },
+    auditHistory: trail,
+  });
 }
 
 export async function getSupervisorTeamRoster(req: Request, res: Response): Promise<any> {
@@ -1527,7 +1698,7 @@ export async function getSupervisorTeamRoster(req: Request, res: Response): Prom
     .where(
       and(
         eq(attendanceSessions.orgId, orgId),
-        sql`DATE(${attendanceSessions.workDate}) = ${dateParam}`
+        sql`DATE(${attendanceSessions.workDate})::text = ${dateParam}`
       )
     );
 
@@ -1601,11 +1772,13 @@ export async function getSupervisorTeamRoster(req: Request, res: Response): Prom
       note: attendanceFlags.note,
     })
     .from(attendanceFlags)
-    .where(and(eq(attendanceFlags.orgId, orgId), eq(attendanceFlags.workDate, dateParam)));
+    .where(and(eq(attendanceFlags.orgId, orgId), sql`DATE(${attendanceFlags.workDate})::text = ${dateParam}`));
 
   const flagByWorkerId: Record<string, any> = {};
   for (const f of dateFlags) {
-    flagByWorkerId[f.workerId] = f;
+    if (!flagByWorkerId[f.workerId] || f.flagStatus === 'REJECTED' || f.flagStatus === 'APPROVED') {
+      flagByWorkerId[f.workerId] = f;
+    }
   }
 
   // 6. Map assigned workers to roster items
@@ -1641,14 +1814,26 @@ export async function getSupervisorTeamRoster(req: Request, res: Response): Prom
     const hasAppliedLeave = !!leave;
 
     if (session?.status) {
-      workerStatus = session.status;
-      if (session?.rejectionReason) {
-        note = session.rejectionReason;
-      } else if (session?.clockOutTime) {
-        note = 'Clock-out submitted for verification';
-      } else if (session?.clockInTime) {
-        note = 'Clock-in submitted';
+      const canonicalStatus = normalizeAttendanceStatus(session.status);
+      if (canonicalStatus === 'ABSENT' || session.status === 'ABSENT' || session.status === 'UNEXCUSED_ABSENCE') {
+        workerStatus = 'ABSENT';
+        note = session.rejectionReason || (session as any).notes || flag?.reason || flag?.note || 'Unexcused absence confirmed by supervisor';
+      } else {
+        workerStatus = canonicalStatus;
+        if (session?.rejectionReason) {
+          note = session.rejectionReason;
+        } else if (session?.clockOutTime) {
+          note = 'Clock-out submitted for verification';
+        } else if (session?.clockInTime) {
+          note = 'Clock-in submitted';
+        }
       }
+    } else if (flag && (flag.flagStatus === 'REJECTED' || flag.flagStatus === 'ABSENT')) {
+      workerStatus = 'ABSENT';
+      note = flag.reason || flag.note || 'Unexcused absence confirmed by supervisor';
+    } else if (flag && flag.flagStatus === 'APPROVED') {
+      workerStatus = 'APPROVED';
+      note = flag.reason || flag.note || 'Absence excused by supervisor';
     } else if (leave) {
       if (leave.status === 'APPROVED') {
         workerStatus = 'ON_LEAVE';
@@ -1761,10 +1946,11 @@ export async function getSupervisorTeamRoster(req: Request, res: Response): Prom
   const totalWorkers = rosterWorkers.length;
   const approved = rosterWorkers.filter((w) => w.status === 'APPROVED').length;
   const rejected = rosterWorkers.filter((w) => w.status === 'REJECTED').length;
-  // Missing clock-ins: Assigned workers who have NO clock-in record for this date and are NOT on approved leave
+  // Missing clock-ins: Assigned workers who have NO clock-in record for this date and are NOT on approved leave or marked absent
   const missingClockIns = rosterWorkers.filter(
-    (w) => !w.clockInTime && w.status !== 'ON_LEAVE'
+    (w) => !w.clockInTime && w.status !== 'ON_LEAVE' && w.status !== 'ABSENT'
   ).length;
+  const absent = rosterWorkers.filter((w) => w.status === 'ABSENT').length;
   const pending = rosterWorkers.filter((w) => w.status === 'PENDING').length;
   const onLeave = rosterWorkers.filter((w) => w.status === 'ON_LEAVE').length;
 
@@ -1780,9 +1966,9 @@ export async function getSupervisorTeamRoster(req: Request, res: Response): Prom
         isSuperOrAdmin
           ? sql`true`
           : or(
-              eq(attendanceAdjustmentRequests.currentApproverId, user.id),
-              eq(attendanceSessions.supervisorSnapshotId, user.id)
-            )!
+            eq(attendanceAdjustmentRequests.currentApproverId, user.id),
+            eq(attendanceSessions.supervisorSnapshotId, user.id)
+          )!
       )
     );
   const pendingRegularization = Number(pendingRegRequests[0]?.count || 0);
@@ -1820,10 +2006,12 @@ export async function getSupervisorTeamRoster(req: Request, res: Response): Prom
       filteredWorkers = filteredWorkers.filter((w) => w.status === 'APPROVED');
     } else if (statusParam === 'REJECTED') {
       filteredWorkers = filteredWorkers.filter((w) => w.status === 'REJECTED');
+    } else if (statusParam === 'ABSENT') {
+      filteredWorkers = filteredWorkers.filter((w) => w.status === 'ABSENT');
     } else if (statusParam === 'PENDING') {
       filteredWorkers = filteredWorkers.filter((w) => w.status === 'PENDING');
     } else if (statusParam === 'MISSING_CLOCK_IN' || statusParam === 'NOT_YET_IN') {
-      filteredWorkers = filteredWorkers.filter((w) => !w.clockInTime && w.status !== 'ON_LEAVE');
+      filteredWorkers = filteredWorkers.filter((w) => !w.clockInTime && w.status !== 'ON_LEAVE' && w.status !== 'ABSENT');
     } else if (statusParam === 'ON_LEAVE') {
       filteredWorkers = filteredWorkers.filter((w) => w.status === 'ON_LEAVE');
     }
@@ -1836,6 +2024,385 @@ export async function getSupervisorTeamRoster(req: Request, res: Response): Prom
     workers: filteredWorkers,
     totalCount: totalWorkers,
     filteredCount: filteredWorkers.length,
+  });
+}
+
+/**
+ * GET /attendance/admin/daily
+ * Admin Daily Attendance endpoint:
+ * Fetches all workers across the organization (including all roles) with:
+ * status -> not yet in, clocked-in, clocked-out, on leave
+ * worksites / locations, missing clock-in flags, and quick action metrics.
+ */
+export async function getAdminDailyAttendance(req: Request, res: Response): Promise<any> {
+  const db = await getDb();
+  const user = req.user!;
+  const orgId = user.orgId;
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  const dateParam = String(req.query.date || todayStr);
+  const worksiteIdParam = req.query.worksiteId ? String(req.query.worksiteId) : undefined;
+  const roleParam = req.query.role ? String(req.query.role).toUpperCase() : 'ALL';
+  const statusParam = req.query.status ? String(req.query.status).toUpperCase() : 'ALL';
+  const searchParam = req.query.search ? String(req.query.search).trim().toLowerCase() : '';
+
+  // 1. Fetch all active users in organization
+  const allOrgUsers = await db
+    .select({
+      id: users.id,
+      fullName: users.fullName,
+      employeeCode: users.employeeCode,
+      email: users.email,
+      phone: users.phone,
+      photoUrl: users.photoUrl,
+      employmentType: users.employmentType,
+      isActive: users.isActive,
+    })
+    .from(users)
+    .where(and(eq(users.orgId, orgId), eq(users.isActive, true)));
+
+  // 2. Fetch all user roles for these users
+  const userIds = allOrgUsers.map((u) => u.id);
+  let allUserRoles: any[] = [];
+  if (userIds.length > 0) {
+    allUserRoles = await db
+      .select({
+        userId: userRoles.userId,
+        role: userRoles.role,
+      })
+      .from(userRoles)
+      .where(inArray(userRoles.userId, userIds));
+  }
+
+  const rolesByUserId: Record<string, string[]> = {};
+  for (const ur of allUserRoles) {
+    if (!rolesByUserId[ur.userId]) {
+      rolesByUserId[ur.userId] = [];
+    }
+    rolesByUserId[ur.userId].push(ur.role);
+  }
+
+  // 3. Fetch all worksites in the organization
+  const allWorksites = await db
+    .select({
+      id: worksites.id,
+      name: worksites.name,
+      code: worksites.code,
+      address: worksites.address,
+      latitude: worksites.latitude,
+      longitude: worksites.longitude,
+      radiusMeters: worksites.radiusMeters,
+    })
+    .from(worksites)
+    .where(eq(worksites.orgId, orgId));
+
+  const worksiteMap: Record<string, any> = {};
+  for (const ws of allWorksites) {
+    worksiteMap[ws.id] = ws;
+  }
+
+  // 4. Fetch assignments on dateParam
+  const assignments = await db
+    .select({
+      id: siteAssignments.id,
+      worksiteId: siteAssignments.worksiteId,
+      shiftName: siteAssignments.shiftName,
+      shiftStartTime: siteAssignments.shiftStartTime,
+      shiftEndTime: siteAssignments.shiftEndTime,
+      workDate: siteAssignments.workDate,
+      carryForward: siteAssignments.carryForward,
+      status: siteAssignments.status,
+    })
+    .from(siteAssignments)
+    .where(
+      and(
+        eq(siteAssignments.orgId, orgId),
+        ne(siteAssignments.status, 'CANCELLED'),
+        or(
+          eq(siteAssignments.workDate, dateParam),
+          and(eq(siteAssignments.carryForward, true), lte(siteAssignments.workDate, dateParam))
+        )
+      )
+    );
+
+  const assignmentIds = assignments.map((a) => a.id);
+
+  // Fetch assignment workers
+  let assignmentWorkersList: any[] = [];
+  if (assignmentIds.length > 0) {
+    assignmentWorkersList = await db
+      .select({
+        assignmentId: siteAssignmentWorkers.assignmentId,
+        workerId: siteAssignmentWorkers.workerId,
+      })
+      .from(siteAssignmentWorkers)
+      .where(inArray(siteAssignmentWorkers.assignmentId, assignmentIds));
+  }
+
+  const assignmentByWorkerId: Record<string, any> = {};
+  for (const aw of assignmentWorkersList) {
+    const a = assignments.find((asg) => asg.id === aw.assignmentId);
+    if (a) {
+      assignmentByWorkerId[aw.workerId] = a;
+    }
+  }
+
+  // 5. Fetch attendance sessions on dateParam
+  const sessions = await db
+    .select({
+      id: attendanceSessions.id,
+      workerId: attendanceSessions.workerId,
+      workDate: attendanceSessions.workDate,
+      status: attendanceSessions.status,
+      clockInTime: attendanceSessions.clockInTime,
+      clockOutTime: attendanceSessions.clockOutTime,
+      worksiteSnapshotId: attendanceSessions.worksiteSnapshotId,
+      assignmentId: attendanceSessions.assignmentId,
+      rejectionReason: attendanceSessions.rejectionReason,
+      netWorkingSeconds: attendanceSessions.netWorkingSeconds,
+      totalDurationSeconds: attendanceSessions.totalDurationSeconds,
+      isAutoApproved: attendanceSessions.isAutoApproved,
+    })
+    .from(attendanceSessions)
+    .where(
+      and(
+        eq(attendanceSessions.orgId, orgId),
+        sql`DATE(${attendanceSessions.workDate})::text = ${dateParam}`
+      )
+    );
+
+  // 6. Fetch events for these sessions
+  const sessionIds = sessions.map((s) => s.id);
+  const clockInEvents: Record<string, any> = {};
+  const clockOutEvents: Record<string, any> = {};
+
+  if (sessionIds.length > 0) {
+    const events = await db
+      .select()
+      .from(attendanceEvents)
+      .where(sql`${attendanceEvents.sessionId} IN (${sql.join(sessionIds.map((id) => sql`${id}`), sql`, `)})`);
+
+    for (const ev of events) {
+      if (ev.eventType === 'CLOCK_IN') {
+        clockInEvents[ev.sessionId] = {
+          ...ev,
+          photoUrl: generateSignedDownloadUrl(ev.photoObjectKey, user.id),
+        };
+      } else if (ev.eventType === 'CLOCK_OUT') {
+        clockOutEvents[ev.sessionId] = {
+          ...ev,
+          photoUrl: generateSignedDownloadUrl(ev.photoObjectKey, user.id),
+        };
+      }
+    }
+  }
+
+  const sessionByWorkerId: Record<string, any> = {};
+  for (const s of sessions) {
+    sessionByWorkerId[s.workerId] = {
+      ...s,
+      clockInEvent: clockInEvents[s.id] || null,
+      clockOutEvent: clockOutEvents[s.id] || null,
+    };
+  }
+
+  // 7. Fetch leaves covering dateParam
+  const leaves = await db
+    .select({
+      id: leaveRequests.id,
+      userId: leaveRequests.userId,
+      status: leaveRequests.status,
+      leaveTypeName: leaveTypes.name,
+      reason: leaveRequests.reason,
+    })
+    .from(leaveRequests)
+    .leftJoin(leaveTypes, eq(leaveRequests.leaveTypeId, leaveTypes.id))
+    .where(
+      and(
+        eq(leaveRequests.orgId, orgId),
+        sql`${leaveRequests.status} IN ('PENDING', 'APPROVED')`,
+        sql`${leaveRequests.startDate} <= ${dateParam} AND ${leaveRequests.endDate} >= ${dateParam}`
+      )
+    );
+
+  const leaveByWorkerId: Record<string, any> = {};
+  for (const l of leaves) {
+    leaveByWorkerId[l.userId] = l;
+  }
+
+  // 8. Fetch flags for dateParam
+  const flags = await db
+    .select({
+      id: attendanceFlags.id,
+      workerId: attendanceFlags.workerId,
+      flagStatus: attendanceFlags.flagStatus,
+      reason: attendanceFlags.reason,
+      note: attendanceFlags.note,
+    })
+    .from(attendanceFlags)
+    .where(and(eq(attendanceFlags.orgId, orgId), sql`DATE(${attendanceFlags.workDate})::text = ${dateParam}`));
+
+  const flagByWorkerId: Record<string, any> = {};
+  for (const f of flags) {
+    if (!flagByWorkerId[f.workerId] || f.flagStatus === 'REJECTED' || f.flagStatus === 'APPROVED') {
+      flagByWorkerId[f.workerId] = f;
+    }
+  }
+
+  // 9. Assemble all workers
+  const now = new Date();
+  const allWorkers: any[] = [];
+
+  for (const u of allOrgUsers) {
+    const userRolesList = rolesByUserId[u.id] || (u.employmentType ? [u.employmentType.toUpperCase()] : ['WORKER']);
+    const primaryRole = userRolesList[0] || 'WORKER';
+
+    const session = sessionByWorkerId[u.id];
+    const assignment = assignmentByWorkerId[u.id];
+    const leave = leaveByWorkerId[u.id];
+    const flag = flagByWorkerId[u.id];
+
+    // Determine Worksite
+    let resolvedWorksite = null;
+    if (session?.worksiteSnapshotId && worksiteMap[session.worksiteSnapshotId]) {
+      resolvedWorksite = worksiteMap[session.worksiteSnapshotId];
+    } else if (assignment?.worksiteId && worksiteMap[assignment.worksiteId]) {
+      resolvedWorksite = worksiteMap[assignment.worksiteId];
+    } else if (allWorksites.length > 0) {
+      resolvedWorksite = allWorksites[0];
+    }
+
+    // Determine Status
+    let status: 'NOT_YET_IN' | 'CLOCKED_IN' | 'CLOCKED_OUT' | 'ON_LEAVE' | 'ABSENT' = 'NOT_YET_IN';
+    if (session?.clockInTime) {
+      if (session.clockOutTime) {
+        status = 'CLOCKED_OUT';
+      } else {
+        status = 'CLOCKED_IN';
+      }
+    } else if (
+      session?.status === 'ABSENT' ||
+      session?.status === 'UNEXCUSED_ABSENCE' ||
+      (flag && (flag.flagStatus === 'REJECTED' || flag.flagStatus === 'ABSENT'))
+    ) {
+      status = 'ABSENT';
+    } else if (leave && leave.status === 'APPROVED') {
+      status = 'ON_LEAVE';
+    } else {
+      status = 'NOT_YET_IN';
+    }
+
+    // Calculate hours
+    let totalHours = 0;
+    if (session?.netWorkingSeconds) {
+      totalHours = Math.round((session.netWorkingSeconds / 3600) * 10) / 10;
+    } else if (session?.clockInTime && session?.clockOutTime) {
+      const diffMs = new Date(session.clockOutTime).getTime() - new Date(session.clockInTime).getTime();
+      totalHours = Math.max(0, Math.round((diffMs / (1000 * 60 * 60)) * 10) / 10);
+    } else if (session?.clockInTime) {
+      const diffMs = now.getTime() - new Date(session.clockInTime).getTime();
+      totalHours = Math.max(0, Math.round((diffMs / (1000 * 60 * 60)) * 10) / 10);
+    }
+
+    const clockInEvent = session?.clockInEvent;
+    const clockOutEvent = session?.clockOutEvent;
+
+    allWorkers.push({
+      id: u.id,
+      sessionId: session?.id || null,
+      workerId: u.id,
+      name: u.fullName || 'Staff Member',
+      employeeCode: u.employeeCode || '',
+      email: u.email || '',
+      phone: u.phone || '',
+      avatar: u.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(u.fullName || 'User')}&background=0D8ABC&color=fff`,
+      roles: userRolesList,
+      role: primaryRole,
+      employmentType: u.employmentType || 'full-time',
+      isActive: u.isActive,
+      worksiteId: resolvedWorksite?.id || null,
+      worksiteName: resolvedWorksite?.name || 'Unassigned / HQ',
+      worksiteCode: resolvedWorksite?.code || 'HQ',
+      worksiteAddress: resolvedWorksite?.address || '',
+      shiftName: assignment?.shiftName || 'Standard Shift',
+      shiftStartTime: assignment?.shiftStartTime || '08:00',
+      shiftEndTime: assignment?.shiftEndTime || '17:00',
+      clockInTime: session?.clockInTime || null,
+      clockOutTime: session?.clockOutTime || null,
+      status,
+      sessionStatus: session?.status || null,
+      totalHours,
+      distanceMeters: clockInEvent?.calculatedDistanceMeters != null ? Math.round(clockInEvent.calculatedDistanceMeters) : 0,
+      isWithinGeofence: clockInEvent?.isWithinGeofence ?? true,
+      isLocationBypassed: clockInEvent?.isLocationBypassed ?? false,
+      latitude: clockInEvent?.latitude || null,
+      longitude: clockInEvent?.longitude || null,
+      inPhotoUrl: clockInEvent?.photoUrl || null,
+      outPhotoUrl: clockOutEvent?.photoUrl || null,
+      flagId: flag?.id || null,
+      flagStatus: flag?.flagStatus || null,
+      flagReason: flag?.reason || null,
+      flagNote: flag?.note || null,
+      leaveId: leave?.id || null,
+      leaveType: leave?.leaveTypeName || null,
+      rejectionReason: session?.rejectionReason || (flag?.flagStatus === 'REJECTED' ? (flag.reason || flag.note) : null),
+    });
+  }
+
+  const totalWorkers = allWorkers.length;
+  const clockedIn = allWorkers.filter((w) => w.status === 'CLOCKED_IN').length;
+  const clockedOut = allWorkers.filter((w) => w.status === 'CLOCKED_OUT').length;
+  const absent = allWorkers.filter((w) => w.status === 'ABSENT').length;
+  const notYetIn = allWorkers.filter((w) => w.status === 'NOT_YET_IN').length;
+  const onLeave = allWorkers.filter((w) => w.status === 'ON_LEAVE').length;
+  const flaggedCount = allWorkers.filter((w) => !!w.flagStatus).length;
+
+  const stats = {
+    totalWorkers,
+    clockedIn,
+    clockedOut,
+    absent,
+    notYetIn,
+    onLeave,
+    flaggedCount,
+  };
+
+  // 11. Apply Filters
+  let filtered = allWorkers;
+
+  if (worksiteIdParam && worksiteIdParam !== 'ALL') {
+    filtered = filtered.filter((w) => w.worksiteId === worksiteIdParam);
+  }
+
+  if (roleParam && roleParam !== 'ALL') {
+    filtered = filtered.filter((w) => w.roles.map((r: string) => r.toUpperCase()).includes(roleParam));
+  }
+
+  if (statusParam && statusParam !== 'ALL') {
+    if (statusParam === 'FLAGGED') {
+      filtered = filtered.filter((w) => !!w.flagStatus);
+    } else {
+      filtered = filtered.filter((w) => w.status === statusParam);
+    }
+  }
+
+  if (searchParam) {
+    filtered = filtered.filter(
+      (w) =>
+        w.name.toLowerCase().includes(searchParam) ||
+        w.employeeCode.toLowerCase().includes(searchParam) ||
+        w.email.toLowerCase().includes(searchParam) ||
+        w.role.toLowerCase().includes(searchParam) ||
+        w.worksiteName.toLowerCase().includes(searchParam)
+    );
+  }
+
+  return res.json({
+    date: dateParam,
+    stats,
+    workers: filtered,
+    worksites: allWorksites,
+    roles: ['ALL', 'WORKER', 'SUPERVISOR', 'ENGINEER', 'ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'],
   });
 }
 
@@ -1903,6 +2470,20 @@ export async function supervisorClockOutWorker(req: Request, res: Response): Pro
       error: 'UNAUTHORIZED_SUPERVISOR',
       message: 'You are not authorized to clock out this worker',
     });
+  }
+
+  // Requirement: Supervisors are allowed to edit only the current month's records
+  const isSuperOrAdmin = supervisor.roles.includes('SUPER_ADMIN') || supervisor.roles.includes('ADMIN');
+  if (!isSuperOrAdmin) {
+    const orgTz = await getOrgTimezone(db, orgId);
+    const { monthStr } = getOrgCurrentMonth(orgTz);
+    const sessionWorkDate = String(session.workDate).split('T')[0];
+    if (!isCurrentCalendarMonth(sessionWorkDate, orgTz)) {
+      return res.status(403).json({
+        error: 'CURRENT_MONTH_ONLY',
+        message: `Supervisors are allowed to edit only the current month's records (${monthStr}). Session date (${sessionWorkDate}) falls outside the current calendar month; please use the Worker Regularisation or Admin Attendance Correction workflow.`,
+      });
+    }
   }
 
   const now = new Date();
@@ -2057,6 +2638,7 @@ export async function getSupervisorAttendanceHistoryRange(req: Request, res: Res
       worksiteSnapshotId: attendanceSessions.worksiteSnapshotId,
       supervisorSnapshotId: attendanceSessions.supervisorSnapshotId,
       currentApproverId: attendanceSessions.currentApproverId,
+      actionBy: attendanceSessions.actionBy,
       assignmentId: attendanceSessions.assignmentId,
       workerName: users.fullName,
       employeeCode: users.employeeCode,
@@ -2085,6 +2667,7 @@ export async function getSupervisorAttendanceHistoryRange(req: Request, res: Res
       reason: attendanceFlags.reason,
       note: attendanceFlags.note,
       reviewedAt: attendanceFlags.reviewedAt,
+      reviewedBy: attendanceFlags.reviewedBy,
       resolvedByClockIn: attendanceFlags.resolvedByClockIn,
       supervisorId: attendanceFlags.supervisorId,
       workerName: users.fullName,
@@ -2121,6 +2704,54 @@ export async function getSupervisorAttendanceHistoryRange(req: Request, res: Res
     return false;
   });
 
+  // 4. Resolve action takers (actionBy and approval action actors)
+  const actorIds = new Set<string>();
+  authorizedSessions.forEach((s) => {
+    if (s.actionBy) actorIds.add(s.actionBy);
+    if (s.supervisorSnapshotId) actorIds.add(s.supervisorSnapshotId);
+    if (s.currentApproverId) actorIds.add(s.currentApproverId);
+  });
+  flags.forEach((f) => {
+    if (f.reviewedBy) actorIds.add(f.reviewedBy);
+    if (f.supervisorId) actorIds.add(f.supervisorId);
+  });
+
+  const sessionIds = authorizedSessions.map((s) => s.id);
+  const sessionReviewerMap = new Map<string, { reviewerId: string; reviewerName: string }>();
+  if (sessionIds.length > 0) {
+    const recentActions = await db
+      .select({
+        sessionId: approvalActions.sessionId,
+        reviewerId: approvalActions.reviewerId,
+        reviewerName: users.fullName,
+      })
+      .from(approvalActions)
+      .leftJoin(users, eq(approvalActions.reviewerId, users.id))
+      .where(inArray(approvalActions.sessionId, sessionIds))
+      .orderBy(desc(approvalActions.performedAt));
+
+    for (const act of recentActions) {
+      if (!sessionReviewerMap.has(act.sessionId)) {
+        sessionReviewerMap.set(act.sessionId, {
+          reviewerId: act.reviewerId,
+          reviewerName: act.reviewerName || 'Supervisor',
+        });
+        if (act.reviewerId) actorIds.add(act.reviewerId);
+      }
+    }
+  }
+
+  const actorNameMap = new Map<string, string>();
+  if (actorIds.size > 0) {
+    const actorUsers = await db
+      .select({ id: users.id, fullName: users.fullName })
+      .from(users)
+      .where(inArray(users.id, Array.from(actorIds)));
+    actorUsers.forEach((u) => {
+      actorNameMap.set(u.id, u.fullName);
+    });
+  }
+
   // Build combined list
   const sessionKeys = new Set<string>();
   const result: any[] = [];
@@ -2131,6 +2762,20 @@ export async function getSupervisorAttendanceHistoryRange(req: Request, res: Res
     sessionKeys.add(key);
 
     const fl = flagMap.get(key);
+
+    const sessionAudit = sessionReviewerMap.get(s.id);
+    const effectiveActionById = s.actionBy || sessionAudit?.reviewerId || (s.status !== 'PENDING' ? s.supervisorSnapshotId : null);
+    let actionByName = '—';
+    if (s.actionBy && actorNameMap.has(s.actionBy)) {
+      actionByName = actorNameMap.get(s.actionBy)!;
+    } else if (sessionAudit?.reviewerName) {
+      actionByName = sessionAudit.reviewerName;
+    } else if (effectiveActionById && actorNameMap.has(effectiveActionById)) {
+      actionByName = actorNameMap.get(effectiveActionById)!;
+    } else if (s.status !== 'PENDING' && s.supervisorSnapshotId && actorNameMap.has(s.supervisorSnapshotId)) {
+      actionByName = actorNameMap.get(s.supervisorSnapshotId)!;
+    }
+
     result.push({
       id: s.id,
       date: dStr,
@@ -2144,14 +2789,16 @@ export async function getSupervisorAttendanceHistoryRange(req: Request, res: Res
       worksiteName: s.worksiteName || 'Assigned Worksite',
       worksiteCode: s.worksiteCode || 'SITE',
       status: s.status,
+      actionBy: effectiveActionById,
+      actionByName: actionByName,
       flag: fl
         ? {
-            id: fl.id,
-            status: fl.flagStatus,
-            reason: fl.reason || 'Missing Clock-In',
-            note: fl.note,
-            reviewedAt: fl.reviewedAt,
-          }
+          id: fl.id,
+          status: fl.flagStatus,
+          reason: fl.reason || 'Missing Clock-In',
+          note: fl.note,
+          reviewedAt: fl.reviewedAt,
+        }
         : null,
     });
   }
@@ -2166,6 +2813,11 @@ export async function getSupervisorAttendanceHistoryRange(req: Request, res: Res
       }
       sessionKeys.add(key);
 
+      const flagActorId = f.reviewedBy || (f.flagStatus !== 'PENDING_REVIEW' ? f.supervisorId : null);
+      const flagActionByName = flagActorId && actorNameMap.has(flagActorId)
+        ? actorNameMap.get(flagActorId)!
+        : (f.flagStatus !== 'PENDING_REVIEW' ? 'Supervisor' : '—');
+
       result.push({
         id: `flag_${f.id}`,
         date: dStr,
@@ -2179,6 +2831,8 @@ export async function getSupervisorAttendanceHistoryRange(req: Request, res: Res
         worksiteName: f.worksiteName || 'Assigned Worksite',
         worksiteCode: f.worksiteCode || 'SITE',
         status: f.flagStatus === 'APPROVED' ? 'EXCUSED_ABSENCE' : 'ABSENT',
+        actionBy: flagActorId,
+        actionByName: flagActionByName,
         flag: {
           id: f.id,
           status: f.flagStatus,

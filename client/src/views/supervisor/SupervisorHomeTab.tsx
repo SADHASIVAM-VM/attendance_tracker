@@ -1,15 +1,18 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     SupervisorWorkerAttendance,
     SupervisorWorksite,
     SpendDaySummary,
     SupervisorTabId,
 } from '../../types/supervisor';
+import { apiRequest } from '../../lib/api';
 import { StatCard } from '../../components/supervisor/StatCard';
 import { WorkerRow } from '../../components/supervisor/WorkerRow';
 import { ReviewSheet } from '../../components/supervisor/ReviewSheet';
 import { SpendBarChart } from '../../components/supervisor/SpendBarChart';
 import { StatusPill } from '../../components/supervisor/StatusPill';
+import { SupervisorClockInCard } from '../../components/supervisor/SupervisorClockInCard';
+import { AttendanceExceptionsSection } from '../../components/supervisor/AttendanceExceptionsSection';
 
 import {
     Clock,
@@ -39,6 +42,7 @@ interface SupervisorHomeTabProps {
     onNavigateTab: (tab: SupervisorTabId) => void;
     onApproveWorker: (worker: SupervisorWorkerAttendance) => void;
     onRejectWorker: (worker: SupervisorWorkerAttendance, reason: string) => void;
+    onRefreshRoster?: () => void;
 }
 
 export const SupervisorHomeTab: React.FC<SupervisorHomeTabProps> = ({
@@ -50,10 +54,47 @@ export const SupervisorHomeTab: React.FC<SupervisorHomeTabProps> = ({
     onNavigateTab,
     onApproveWorker,
     onRejectWorker,
+    onRefreshRoster,
 }) => {
     const [selectedWorkerForReview, setSelectedWorkerForReview] =
         useState<SupervisorWorkerAttendance | null>(null);
     const [showWorksiteDropdown, setShowWorksiteDropdown] = useState<boolean>(false);
+    const [extraWorksites, setExtraWorksites] = useState<SupervisorWorksite[]>([]);
+
+    // Fetch master worksites list to ensure all worksite options are visible
+    useEffect(() => {
+        apiRequest<any>('/worksites')
+            .then((res) => {
+                const raw = Array.isArray(res) ? res : res?.data || [];
+                if (raw.length > 0) {
+                    const mapped: SupervisorWorksite[] = raw
+                        .filter((s: any) => s.isActive !== false)
+                        .map((s: any) => ({
+                            id: s.id,
+                            name: s.name,
+                            code: s.code || 'SITE',
+                            address: s.address || '',
+                            radiusMeters: Number(s.radiusMeters || 30),
+                        }));
+                    setExtraWorksites(mapped);
+                }
+            })
+            .catch(() => {});
+    }, []);
+
+    // Combine worksites to guarantee options are fully visible
+    const allDisplayWorksites = useMemo(() => {
+        const list = [...worksites];
+        extraWorksites.forEach((ew) => {
+            if (!list.some((w) => w.id === ew.id)) {
+                list.push(ew);
+            }
+        });
+        if (selectedWorksite?.id && !list.some((w) => w.id === selectedWorksite.id)) {
+            list.unshift(selectedWorksite);
+        }
+        return list;
+    }, [worksites, extraWorksites, selectedWorksite]);
 
     // Time-based greeting
     const greeting = useMemo(() => {
@@ -160,17 +201,17 @@ export const SupervisorHomeTab: React.FC<SupervisorHomeTabProps> = ({
                         {showWorksiteDropdown && (
                             <>
                                 <div
-                                    className="fixed inset-0 z-20"
+                                    className="fixed inset-0 z-40"
                                     onClick={() => setShowWorksiteDropdown(false)}
                                 />
-                                <div className="absolute right-0 mt-2 w-64 bg-white border border-[#E8EEF4] rounded-2xl p-2 shadow-xl z-30 space-y-1 animate-in fade-in duration-150">
+                                <div className="absolute right-0 mt-2 w-72 bg-white border border-[#E8EEF4] rounded-2xl p-2 shadow-2xl z-50 space-y-1 animate-in fade-in duration-150 max-h-60 overflow-y-auto">
                                     <span className="text-[10px] font-bold text-slate-400 uppercase px-3 py-1.5 block">
                                         Switch Site
                                     </span>
-                                    {worksites.length === 0 ? (
+                                    {allDisplayWorksites.length === 0 ? (
                                         <div className="p-3 text-xs text-slate-400 text-center">No other worksites</div>
                                     ) : (
-                                        worksites.map((ws) => (
+                                        allDisplayWorksites.map((ws) => (
                                             <button
                                                 key={ws.id}
                                                 type="button"
@@ -178,14 +219,21 @@ export const SupervisorHomeTab: React.FC<SupervisorHomeTabProps> = ({
                                                     onSelectWorksite(ws);
                                                     setShowWorksiteDropdown(false);
                                                 }}
-                                                className={`w-full p-2.5 rounded-xl text-left text-xs transition-colors flex items-center justify-between ${ws.id === selectedWorksite?.id
+                                                className={`w-full p-2.5 rounded-xl text-left text-xs transition-colors flex items-center justify-between cursor-pointer ${ws.id === selectedWorksite?.id
                                                         ? 'bg-[#E6F7EF] text-[#0E8F5B] font-bold'
                                                         : 'hover:bg-slate-50 text-slate-700'
                                                     }`}
                                             >
-                                                <span className="truncate">{ws.name}</span>
+                                                <div className="min-w-0">
+                                                    <span className="truncate block font-semibold">{ws.name}</span>
+                                                    {ws.address && (
+                                                        <span className="text-[10px] text-slate-400 truncate block mt-0.5">
+                                                            {ws.address}
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 {ws.id === selectedWorksite?.id && (
-                                                    <CheckCircle2 className="w-4 h-4 text-[#12A66A] shrink-0" />
+                                                    <CheckCircle2 className="w-4 h-4 text-[#12A66A] shrink-0 ml-2" />
                                                 )}
                                             </button>
                                         ))
@@ -197,7 +245,15 @@ export const SupervisorHomeTab: React.FC<SupervisorHomeTabProps> = ({
                 </div>
             </div>
 
-            {/* ─── 2. KEY METRICS STAT STRIP ───────────────────────────────── */}
+            {/* ─── 2. SUPERVISOR CLOCK-IN & LOCATION CARD (WORKER HOME SECTION STYLE) ─── */}
+            <SupervisorClockInCard
+                worksites={allDisplayWorksites}
+                selectedWorksite={selectedWorksite}
+                onSelectWorksite={onSelectWorksite}
+                onClockInSuccess={onRefreshRoster}
+            />
+
+            {/* ─── 3. KEY METRICS STAT STRIP ───────────────────────────────── */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 <StatCard
                     label="Pending Review"
@@ -236,28 +292,14 @@ export const SupervisorHomeTab: React.FC<SupervisorHomeTabProps> = ({
                 />
             </div>
 
-            {/* ─── QUICK ATTENDANCE REGULARISATION BANNER ────────────────────── */}
-            <div className="bg-gradient-to-r from-blue-50/80 to-indigo-50/60 border border-blue-200/80 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                        <FileEdit className="w-5 h-5 stroke-[2.5]" />
-                    </div>
-                    <div>
-                        <h4 className="text-xs font-bold text-slate-900 m-0">Attendance Regularisation Queue</h4>
-                        <p className="text-[11px] text-slate-600 m-0 mt-0.5">
-                            Review and approve missed punches and timestamp adjustment requests from workers.
-                        </p>
-                    </div>
-                </div>
-                <button
-                    type="button"
-                    onClick={() => onNavigateTab('regularization')}
-                    className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shrink-0 cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
-                >
-                    <span>Review Regularisations</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-            </div>
+            {/* ─── ATTENDANCE EXCEPTIONS SECTION ─────────────────────────────── */}
+            <AttendanceExceptionsSection
+                worksiteId={selectedWorksite?.id}
+                onNavigateToExceptions={(cat) =>
+                    onNavigateTab(cat ? (`attendance-exceptions?category=${cat}` as any) : 'attendance-exceptions')
+                }
+                onRefreshParent={onRefreshRoster}
+            />
 
             {/* ─── 3. PENDING VERIFICATIONS ACTION QUEUE ───────────────────── */}
             <div className="bg-white border border-[#E8EEF4] rounded-[22px] p-5 sm:p-6 shadow-xs space-y-4">

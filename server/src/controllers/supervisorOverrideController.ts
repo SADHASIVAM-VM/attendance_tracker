@@ -21,6 +21,7 @@ import { calculateSessionOvertime } from '../services/overtimeService.js';
 import { isSupervisorAuthorizedForSession } from './attendanceController.js';
 import {
   getOrgCurrentMonth,
+  isCurrentCalendarMonth,
   isPreviousCalendarMonth,
   isFutureDate,
 } from '../utils/dateUtils.js';
@@ -28,13 +29,13 @@ import {
 const supervisorOverrideSchema = z.object({
   workerId: z.string().uuid(),
   workDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be formatted as YYYY-MM-DD'),
-  status: z.enum(['APPROVED', 'REJECTED', 'PENDING']),
+  status: z.enum(['APPROVED', 'REJECTED', 'ABSENT', 'MISSING', 'PENDING', 'LEAVE']),
   clockInTime: z.string().datetime().nullable().optional(),
   clockOutTime: z.string().datetime().nullable().optional(),
   reason: z
     .string()
     .trim()
-    .min(5, 'A meaningful override reason of at least 5 characters is required'),
+    .min(3, 'A meaningful override reason of at least 3 characters is required'),
   remarks: z.string().trim().optional(),
 });
 
@@ -83,11 +84,11 @@ export async function applySupervisorAttendanceOverride(req: Request, res: Respo
   const orgTz = await getOrgTimezone(db, orgId);
   const { monthStr, todayStr } = getOrgCurrentMonth(orgTz);
 
-  // Requirement: Block all supervisor overrides for previous calendar months
-  if (isPreviousCalendarMonth(workDate, orgTz)) {
+  // Requirement: Allow the supervisor to edit only the current month's records
+  if (!isCurrentCalendarMonth(workDate, orgTz)) {
     return res.status(403).json({
-      error: 'PREVIOUS_MONTH_RESTRICTION',
-      message: `Supervisor overrides are restricted to the current calendar month (${monthStr}). Date ${workDate} falls in a previous month; please direct this request to the authorized Admin Attendance Correction process.`,
+      error: 'CURRENT_MONTH_ONLY',
+      message: `Supervisor overrides are restricted to the current calendar month (${monthStr}). Date ${workDate} falls outside the current calendar month; please use the Worker Regularisation or Admin Attendance Correction workflow.`,
     });
   }
 
@@ -116,7 +117,7 @@ export async function applySupervisorAttendanceOverride(req: Request, res: Respo
   if (!session) {
     return res.status(400).json({
       error: 'NO_ATTENDANCE_SESSION',
-      message: `No attendance record exists for this worker on ${workDate}. Nonexistent clock-ins cannot be silently created as normal attendance via supervisor override. Please use the Worker Regularization or Admin Attendance Correction workflow.`,
+      message: `No attendance record exists for this worker on ${workDate}. Nonexistent clock-ins cannot be silently created as normal attendance via supervisor override. Please use the Worker Regularisation or Admin Attendance Correction workflow.`,
     });
   }
 
@@ -169,11 +170,16 @@ export async function applySupervisorAttendanceOverride(req: Request, res: Respo
     netWorkingSeconds: session.netWorkingSeconds,
   };
 
+  const cleanNote = remarks ? `${remarks} (Reason: ${reason})` : reason;
+
   // 5. Update session atomically
   const [updatedSession] = await db
     .update(attendanceSessions)
     .set({
       status: newStatus,
+      notes: cleanNote,
+      actionBy: supervisor.id,
+      currentApproverId: supervisor.id,
       clockInTime: effectiveIn,
       clockOutTime: effectiveOut,
       totalDurationSeconds,
@@ -183,19 +189,25 @@ export async function applySupervisorAttendanceOverride(req: Request, res: Respo
       otStatus: otCalc.otStatus,
       approvalSource: 'SUPERVISOR_OVERRIDE',
       approvedAt: newStatus === 'APPROVED' ? now : session.approvedAt,
-      rejectionReason: newStatus === 'REJECTED' ? reason : null,
+      rejectionReason: (newStatus === 'REJECTED' || newStatus === 'ABSENT') ? reason : null,
       updatedAt: now,
     })
     .where(eq(attendanceSessions.id, session.id))
     .returning();
 
-  // 6. Record in approval_actions
+  // 6. Record in approval_actions (Immutable Attendance Audit History)
   await db.insert(approvalActions).values({
     sessionId: session.id,
+    workerId: session.workerId,
+    workDate: session.workDate,
+    previousStatus: session.status,
+    newStatus,
     action: 'SUPERVISOR_OVERRIDE',
+    actionType: 'SUPERVISOR_OVERRIDE',
     reviewerId: supervisor.id,
+    actorRole: supervisor.roles[0] || 'SUPERVISOR',
     reason,
-    note: remarks ? `${remarks} (Reason: ${reason})` : reason,
+    note: cleanNote,
     performedAt: now,
   });
 

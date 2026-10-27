@@ -66,3 +66,22 @@ export function isFutureDate(dateStr: string, timeZone: string = 'Asia/Kolkata')
   const { todayStr } = getOrgCurrentMonth(timeZone);
   return dateStr > todayStr;
 }
+
+/**
+ * Helper to fetch org timezone from DB with fallback
+ */
+export async function getOrgTimezone(db: any, orgId: string): Promise<string> {
+  if (!orgId || !db) return 'Asia/Kolkata';
+  try {
+    const { organizations } = await import('../database/schema.js');
+    const { eq } = await import('drizzle-orm');
+    const [org] = await db
+      .select({ timezone: organizations.timezone })
+      .from(organizations)
+      .where(eq(organizations.id, orgId))
+      .limit(1);
+    return org?.timezone || 'Asia/Kolkata';
+  } catch {
+    return 'Asia/Kolkata';
+  }
+}

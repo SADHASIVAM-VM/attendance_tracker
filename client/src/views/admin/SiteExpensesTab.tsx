@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiRequest, downloadFile } from '../../lib/api';
 import { StatCard } from '../../components/common/StatCard';
+import { DataTablePagination } from '../../components/ui/data-table-pagination';
 import {
   DollarSign,
   CheckCircle,
@@ -22,6 +23,8 @@ export const SiteExpensesTab: React.FC = () => {
   const [summary, setSummary] = useState<any>(null);
   const [worksites, setWorksites] = useState<any[]>([]);
   const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [page, setPage] = useState<number>(1);
+  const [limit, setLimit] = useState<number>(10);
 
   // Filters
   const [startDate, setStartDate] = useState<string>('');
@@ -160,19 +163,19 @@ export const SiteExpensesTab: React.FC = () => {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <StatCard
           title="Total Expenses Logged"
-          value={`$${totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          value={`₹${totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           icon={Receipt}
           badge={`${totalCount} vouchers`}
         />
         <StatCard
           title="Approved (Payroll Eligible)"
-          value={`$${approvedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          value={`₹${approvedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           icon={CheckCircle}
           badgeColor="text-emerald-700 bg-emerald-50"
         />
         <StatCard
           title="Pending Approval"
-          value={`$${pendingAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          value={`₹${pendingAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           icon={Clock}
           badgeColor="text-amber-700 bg-amber-50"
         />
@@ -254,6 +257,7 @@ export const SiteExpensesTab: React.FC = () => {
               <tr>
                 <th className="py-3 px-4">Date</th>
                 <th className="py-3 px-4">Worksite</th>
+                <th className="py-3 px-4">Supervisor</th>
                 <th className="py-3 px-4">Category</th>
                 <th className="py-3 px-4">Description</th>
                 <th className="py-3 px-4">Amount</th>
@@ -266,31 +270,44 @@ export const SiteExpensesTab: React.FC = () => {
             <tbody className="divide-y divide-slate-100 text-slate-700">
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-slate-400 text-xs">
+                  <td colSpan={10} className="py-8 text-center text-slate-400 text-xs">
                     Loading site expense vouchers...
                   </td>
                 </tr>
               ) : expenses.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-slate-400 text-xs">
+                  <td colSpan={10} className="py-8 text-center text-slate-400 text-xs">
                     No site expenses found matching filters.
                   </td>
                 </tr>
               ) : (
-                expenses.map((e) => (
+                expenses.slice((page - 1) * limit, page * limit).map((e) => (
                   <tr key={e.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="py-3 px-4 font-medium text-slate-900">{e.expenseDate}</td>
+                    <td className="py-3 px-4 font-medium text-slate-900">{e.expenseDate || e.date}</td>
                     <td className="py-3 px-4 text-xs font-semibold text-slate-800">{e.worksiteName || '—'}</td>
+                    <td className="py-3 px-4 text-xs">
+                      <div className="flex items-center gap-1.5 font-medium text-slate-800">
+                        <span className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-[10px] shrink-0">
+                          {e.supervisorName ? e.supervisorName.slice(0, 2).toUpperCase() : 'SP'}
+                        </span>
+                        <span className="truncate max-w-[120px]">{e.supervisorName || 'Site Supervisor'}</span>
+                      </div>
+                    </td>
                     <td className="py-3 px-4">
                       <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-700">
                         {e.category}
                       </span>
+                      {e.workerName && (
+                        <span className="block text-[10px] text-slate-400 mt-0.5 truncate max-w-[120px]">
+                          For: {e.workerName}
+                        </span>
+                      )}
                     </td>
-                    <td className="py-3 px-4 text-xs max-w-xs truncate" title={e.description}>
-                      {e.description}
+                    <td className="py-3 px-4 text-xs max-w-xs truncate" title={e.description || e.note}>
+                      {e.description || e.note}
                     </td>
                     <td className="py-3 px-4 font-mono font-bold text-slate-900">
-                      {e.currency || 'USD'} {Number(e.amount).toFixed(2)}
+                      ₹{Number(e.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
                     <td className="py-3 px-4 text-xs">
                       {e.receiptUrl ? (
@@ -366,7 +383,7 @@ export const SiteExpensesTab: React.FC = () => {
                           </button>
                         </div>
                       ) : (
-                        <span className="text-xs text-slate-400 font-medium">Closed</span>
+                        <span className="text-xs text-slate-400">Locked</span>
                       )}
                     </td>
                   </tr>
@@ -375,6 +392,25 @@ export const SiteExpensesTab: React.FC = () => {
             </tbody>
           </table>
         </div>
+
+        {expenses.length > 0 && (
+          <DataTablePagination
+            metadata={{
+              total: expenses.length,
+              page,
+              limit,
+              offset: (page - 1) * limit,
+              totalPages: Math.ceil(expenses.length / limit),
+            }}
+            onPageChange={(p) => setPage(p)}
+            onLimitChange={(l) => {
+              setLimit(l);
+              setPage(1);
+            }}
+            pageSizeOptions={[10, 25, 50]}
+            isLoading={loading}
+          />
+        )}
       </div>
 
       {/* Reject Modal */}

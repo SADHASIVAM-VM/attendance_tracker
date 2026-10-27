@@ -33,7 +33,7 @@ export const DataTablePagination: React.FC<DataTablePaginationProps> = ({
   metadata,
   onPageChange,
   onLimitChange,
-  pageSizeOptions = [5, 10, 25, 50],
+  pageSizeOptions = [10, 25, 50],
   isLoading = false,
 }) => {
   if (!metadata) return null;

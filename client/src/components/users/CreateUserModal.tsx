@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from '../../context/ToastContext';
+import { apiRequest } from '../../lib/api';
 import {
   X,
   Upload,
@@ -24,7 +25,7 @@ import {
 } from 'lucide-react';
 
 export type EmploymentType = 'full-time' | 'part-time' | 'contract';
-export type UserRole = 'WORKER' | 'SUPERVISOR' | 'ADMIN' | 'SUPER_ADMIN';
+export type UserRole = 'ADMIN' | 'SUPERVISOR' | 'ENGINEER' | 'ACCOUNTANT' | 'WORKER';
 
 export interface CreateUserData {
   id?: string;
@@ -127,6 +128,22 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({
   const [customPhotoSelected, setCustomPhotoSelected] = useState<boolean>(false);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
+  // DB Roles list
+  const [dbRoles, setDbRoles] = useState<Array<{ name: string; description?: string }>>([]);
+
+  // Fetch system roles from backend on modal open
+  useEffect(() => {
+    if (isOpen) {
+      apiRequest<Array<{ name: string; description?: string }>>('/roles')
+        .then((res) => {
+          if (Array.isArray(res) && res.length > 0) {
+            setDbRoles(res);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isOpen]);
+
   // Populate form if in edit mode or when modal opens
   useEffect(() => {
     if (!isOpen) return;
@@ -149,7 +166,8 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({
       setEmergencyContactName(editUser.emergencyContactName || '');
       setEmergencyContactPhone(editUser.emergencyContactPhone || '');
       setEmploymentType(editUser.employmentType || 'full-time');
-      setRole(editUser.role || initialRole);
+      const rawRole = (editUser.role as any) === 'SUPER_ADMIN' ? 'ADMIN' : editUser.role;
+      setRole((rawRole as UserRole) || initialRole || 'WORKER');
       setEmployeeCode(editUser.employeeCode || '');
       setEmail(editUser.email || '');
       setPassword(''); // keep blank when editing
@@ -172,6 +190,8 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({
       setEmergencyContactName('');
       setEmergencyContactPhone('');
       setEmploymentType('full-time');
+      const safeInitRole = (initialRole as any) === 'SUPER_ADMIN' ? 'ADMIN' : initialRole;
+      setRole((safeInitRole as UserRole) || 'WORKER');
       setRole(initialRole);
       const prefix = initialRole === 'WORKER' ? 'EMP' : initialRole === 'SUPERVISOR' ? 'SUP' : 'ADM';
       setEmployeeCode(`${prefix}-${Math.floor(100 + Math.random() * 900)}`);
@@ -264,7 +284,16 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({
   };
 
   const handleGenerateCode = () => {
-    const prefix = role === 'WORKER' ? 'EMP' : role === 'SUPERVISOR' ? 'SUP' : 'ADM';
+    const prefix =
+      role === 'WORKER'
+        ? 'EMP'
+        : role === 'SUPERVISOR'
+        ? 'SUP'
+        : role === 'ENGINEER'
+        ? 'ENG'
+        : role === 'ACCOUNTANT'
+        ? 'ACC'
+        : 'ADM';
     setEmployeeCode(`${prefix}-${Math.floor(100 + Math.random() * 900)}`);
   };
 
@@ -969,10 +998,30 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({
                     disabled={submitting}
                     className="w-full text-xs font-semibold px-3.5 py-2.5 rounded-xl border border-[#CBD5E1] bg-white focus:outline-none focus:ring-2 focus:ring-[#12A66A]/20 focus:border-[#12A66A] cursor-pointer"
                   >
-                    <option value="WORKER">Field Worker</option>
-                    <option value="SUPERVISOR">Site Supervisor</option>
-                    <option value="ADMIN">Operations Admin</option>
-                    <option value="SUPER_ADMIN">Super Administrator</option>
+                    {(dbRoles.length > 0
+                      ? dbRoles.filter((r) => ['ADMIN', 'SUPERVISOR', 'ENGINEER', 'ACCOUNTANT', 'WORKER'].includes(r.name))
+                      : [
+                          { name: 'ADMIN', description: 'Operations Admin' },
+                          { name: 'SUPERVISOR', description: 'Site Supervisor' },
+                          { name: 'ENGINEER', description: 'Site Engineer' },
+                          { name: 'ACCOUNTANT', description: 'Payroll Accountant' },
+                          { name: 'WORKER', description: 'Field Worker' },
+                        ]
+                    ).map((r) => {
+                      const roleName = r.name as UserRole;
+                      const roleLabels: Record<UserRole, string> = {
+                        ADMIN: 'ADMIN — Operations Admin',
+                        SUPERVISOR: 'SUPERVISOR — Site Supervisor',
+                        ENGINEER: 'ENGINEER — Site Engineer',
+                        ACCOUNTANT: 'ACCOUNTANT — Payroll Accountant',
+                        WORKER: 'WORKER — Field Worker',
+                      };
+                      return (
+                        <option key={roleName} value={roleName}>
+                          {roleLabels[roleName] || roleName}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 

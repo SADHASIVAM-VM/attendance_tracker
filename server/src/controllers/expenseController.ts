@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getDb } from '../database/db.js';
 import { siteExpenses, users, worksites } from '../database/schema.js';
 import { eq, and, desc, sql, gte, lte } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { logAuditEvent } from '../utils/audit.js';
 
 const expenseCategories = ['Materials', 'Food', 'Transport', 'Worker payment', 'Other'] as const;
@@ -73,6 +74,9 @@ export async function getExpenses(req: Request, res: Response): Promise<any> {
     conditions.push(eq(siteExpenses.status, status as any));
   }
 
+  const supervisorUsers = alias(users, 'supervisor_users');
+  const reviewerUsers = alias(users, 'reviewer_users');
+
   const records = await db
     .select({
       id: siteExpenses.id,
@@ -97,9 +101,14 @@ export async function getExpenses(req: Request, res: Response): Promise<any> {
       createdAt: siteExpenses.createdAt,
       updatedAt: siteExpenses.updatedAt,
       worksiteName: worksites.name,
+      supervisorName: supervisorUsers.fullName,
+      supervisorEmail: supervisorUsers.email,
+      reviewerName: reviewerUsers.fullName,
     })
     .from(siteExpenses)
     .leftJoin(worksites, eq(siteExpenses.worksiteId, worksites.id))
+    .leftJoin(supervisorUsers, eq(siteExpenses.supervisorId, supervisorUsers.id))
+    .leftJoin(reviewerUsers, eq(siteExpenses.reviewerId, reviewerUsers.id))
     .where(and(...conditions))
     .orderBy(desc(siteExpenses.date), desc(siteExpenses.createdAt));
 
@@ -112,19 +121,24 @@ export async function getExpenses(req: Request, res: Response): Promise<any> {
     workerId: r.workerId || undefined,
     workerName: r.workerName || undefined,
     note: r.note,
+    description: r.note,
     receiptUrl: r.receiptUrl || undefined,
     date: typeof r.date === 'string' ? r.date.split('T')[0] : new Date(r.date).toISOString().split('T')[0],
+    expenseDate: typeof r.date === 'string' ? r.date.split('T')[0] : new Date(r.date).toISOString().split('T')[0],
     time: r.time,
     currency: r.currency || 'INR',
     status: r.status || 'PENDING',
     reviewerId: r.reviewerId || undefined,
     reviewedAt: r.reviewedAt || undefined,
+    reviewerName: r.reviewerName || undefined,
     rejectionReason: r.rejectionReason || undefined,
     isLocked: r.isLocked,
     payrollPeriodId: r.payrollPeriodId || undefined,
     worksiteId: r.worksiteId,
     worksiteName: r.worksiteName || undefined,
     supervisorId: r.supervisorId,
+    supervisorName: r.supervisorName || undefined,
+    supervisorEmail: r.supervisorEmail || undefined,
   }));
 
   return res.json(entries);

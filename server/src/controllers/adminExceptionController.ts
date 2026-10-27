@@ -19,6 +19,12 @@ import {
   runMissingClockOutCheck,
   runOverdueEscalationCheck,
 } from '../services/escalationService.js';
+import {
+  applyAttendanceStatusTransition,
+  CanonicalAttendanceStatus,
+  CANONICAL_ATTENDANCE_STATUSES,
+  validateMandatoryNote,
+} from '../services/attendanceStatusService.js';
 
 /**
  * GET /admin/exceptions/summary
@@ -389,17 +395,21 @@ export async function reassignException(req: Request, res: Response): Promise<an
  * Administrative override for attendance status with mandatory justification and audit logging
  */
 const overrideSchema = z.object({
-  status: z.enum(['APPROVED', 'REJECTED', 'PENDING']),
-  reason: z.string().min(5, 'Mandatory administrative justification is required'),
-  clockInTime: z.string().datetime().optional(),
-  clockOutTime: z.string().datetime().optional(),
+  status: z.enum(['APPROVED', 'REJECTED', 'ABSENT', 'MISSING', 'PENDING', 'LEAVE']),
+  reason: z.string().trim().min(3, 'Mandatory administrative justification of at least 3 characters is required'),
+  clockInTime: z.string().datetime().optional().nullable(),
+  clockOutTime: z.string().datetime().optional().nullable(),
 });
 
 export async function administrativeAttendanceOverride(req: Request, res: Response): Promise<any> {
   const { id } = req.params;
   const parseResult = overrideSchema.safeParse(req.body);
   if (!parseResult.success) {
-    return res.status(400).json({ error: 'INVALID_INPUT', details: parseResult.error.issues });
+    return res.status(400).json({
+      error: 'INVALID_INPUT',
+      message: parseResult.error.issues[0]?.message || 'Invalid input data',
+      details: parseResult.error.issues,
+    });
   }
 
   const { status, reason, clockInTime, clockOutTime } = parseResult.data;
@@ -416,63 +426,28 @@ export async function administrativeAttendanceOverride(req: Request, res: Respon
     return res.status(404).json({ error: 'SESSION_NOT_FOUND', message: 'Attendance session not found' });
   }
 
-  const now = new Date();
-  const updates: any = {
-    status,
-    updatedAt: now,
-    approvalSource: 'ADMIN_OVERRIDE',
-  };
-
-  if (clockInTime) updates.clockInTime = new Date(clockInTime);
-  if (clockOutTime) updates.clockOutTime = new Date(clockOutTime);
-  if (status === 'APPROVED') updates.approvedAt = now;
-  if (status === 'REJECTED') updates.rejectionReason = reason;
-
   // Recalculate working duration if timestamps provided
-  const finalIn = updates.clockInTime || session.clockInTime;
-  const finalOut = updates.clockOutTime || session.clockOutTime;
+  const finalIn = clockInTime ? new Date(clockInTime) : session.clockInTime;
+  const finalOut = clockOutTime ? new Date(clockOutTime) : session.clockOutTime;
+  let durSec = session.totalDurationSeconds || 0;
   if (finalIn && finalOut) {
-    const durSec = Math.max(0, Math.round((new Date(finalOut).getTime() - new Date(finalIn).getTime()) / 1000));
-    updates.totalDurationSeconds = durSec;
-    updates.netWorkingSeconds = durSec;
+    durSec = Math.max(0, Math.round((new Date(finalOut).getTime() - new Date(finalIn).getTime()) / 1000));
   }
 
-  const [updatedSession] = await db
-    .update(attendanceSessions)
-    .set(updates)
-    .where(eq(attendanceSessions.id as any, id as any))
-    .returning();
-
-  // Record approval action
-  await db.insert(approvalActions).values({
-    sessionId: session.id,
-    action: 'ADMIN_OVERRIDE',
-    reviewerId: admin.id,
-    note: reason,
-    performedAt: now,
-  });
-
-  // Record audit log with before and after
-  await logAuditEvent({
-    orgId: admin.orgId,
+  const { updatedSession } = await applyAttendanceStatusTransition({
+    db,
+    session,
+    targetStatus: status as CanonicalAttendanceStatus,
     actorId: admin.id,
+    actorRole: admin.roles[0] || 'ADMIN',
     actorNameSnapshot: admin.fullName,
-    actorRole: admin.roles[0],
-    action: 'STATUS_OVERRIDDEN',
-    entityType: 'ATTENDANCE_SESSION',
-    entityId: session.id,
-    reason,
-    beforeValues: {
-      status: session.status,
-      clockInTime: session.clockInTime,
-      clockOutTime: session.clockOutTime,
-    },
-    afterValues: {
-      status,
-      clockInTime: updates.clockInTime,
-      clockOutTime: updates.clockOutTime,
-      reason,
-    },
+    note: reason,
+    actionType: 'ADMIN_OVERRIDE',
+    clockInTime: finalIn,
+    clockOutTime: finalOut,
+    totalDurationSeconds: durSec,
+    netWorkingSeconds: durSec,
+    approvalSource: 'ADMIN_OVERRIDE',
     req,
   });
 

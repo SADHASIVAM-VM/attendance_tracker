@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { apiRequest } from '../../lib/api';
+import { useAuth } from '../../context/AuthContext';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { Modal } from '../../components/common/Modal';
+import { DataTablePagination } from '../../components/ui/data-table-pagination';
 import {
   CalendarDays,
   Clock,
@@ -28,6 +30,8 @@ import {
   XCircle,
   ShieldCheck,
   FileEdit,
+  Ban,
+  History,
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -49,6 +53,7 @@ export interface WorkerAttendanceViewProps {
     shiftEndTime?: string;
   } | null;
   onNavigateToday?: () => void;
+  hideOvertimeCard?: boolean;
 }
 
 export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
@@ -58,7 +63,14 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
   todayWorksite,
   assignedShiftInfo,
   onNavigateToday,
+  hideOvertimeCard = false,
 }) => {
+  const { user } = useAuth();
+  const userCreatedDateStr = useMemo(() => {
+    if (!user?.createdAt) return null;
+    return typeof user.createdAt === 'string' ? user.createdAt.split('T')[0] : null;
+  }, [user?.createdAt]);
+
   // Current real-world date
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
   const todayDate = useMemo(() => new Date(), []);
@@ -79,6 +91,8 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
   const [leaveTypes, setLeaveTypes] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [tablePage, setTablePage] = useState<number>(1);
+  const [tableLimit, setTableLimit] = useState<number>(10);
 
   // Date Details Pop-up Modal State
   const [dateModalOpen, setDateModalOpen] = useState<boolean>(false);
@@ -301,40 +315,73 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
     return days;
   }, [currentYear, currentMonth, attendanceMap, leaveRequests, todayStr, selectedDate]);
 
-  // Month Statistics for worker summary bar
+  // Month Statistics for worker summary bar (Matching business attendance workflow)
   const monthStats = useMemo(() => {
     let presentCount = 0;
-    let pastLeaveCount = 0;
-    let futureLeaveCount = 0;
     let pendingApprovalCount = 0;
-    let missedCount = 0;
+    let missingClockInCount = 0;
+    let approvedLeaveCount = 0;
+    let flaggedRegCount = 0;
+    let confirmedAbsentCount = 0;
+    let rejectedCount = 0;
 
     for (const day of calendarDays) {
       if (!day.isCurrentMonth) continue;
 
-      if (day.attendance) {
-        if (day.attendance.status === 'APPROVED') presentCount++;
-        if (day.attendance.status === 'PENDING') pendingApprovalCount++;
-        if (
-          day.attendance.isAbsent ||
-          day.attendance.status === 'ABSENT' ||
-          day.attendance.status === 'UNEXCUSED_ABSENCE' ||
-          day.attendance.status === 'MISSING_CLOCK_IN'
-        ) {
-          missedCount++;
-        }
+      if (day.leave && day.leave.status === 'APPROVED') {
+        approvedLeaveCount++;
+        continue;
       }
 
-      if (day.leave && day.leave.status !== 'REJECTED' && day.leave.status !== 'CANCELLED') {
-        if (day.isFuture) {
-          futureLeaveCount++;
+      if (day.attendance) {
+        const rawStatus = (day.attendance.status || '').toUpperCase().trim();
+        const rawFlagStatus = (day.attendance.flagStatus || '').toUpperCase().trim();
+        const rawAbsenceType = (day.attendance.absenceType || '').toUpperCase().trim();
+        const rawResolution = (day.attendance.resolutionType || '').toUpperCase().trim();
+
+        const isAbsentRecord =
+          rawStatus === 'ABSENT' ||
+          rawStatus === 'UNEXCUSED_ABSENCE' ||
+          rawAbsenceType === 'ABSENT' ||
+          rawAbsenceType === 'UNEXCUSED_ABSENCE' ||
+          rawResolution === 'ABSENT' ||
+          rawResolution === 'UNEXCUSED_ABSENCE' ||
+          rawFlagStatus === 'REJECTED' ||
+          rawFlagStatus === 'ABSENT' ||
+          (Boolean(day.attendance.isAbsent) && rawStatus !== 'APPROVED' && rawStatus !== 'EXCUSED_ABSENCE');
+
+        if (isAbsentRecord) {
+          confirmedAbsentCount++;
+        } else if (rawStatus === 'APPROVED' && !day.attendance.isAbsent) {
+          presentCount++;
         } else {
-          pastLeaveCount++;
+          const isRegPending = day.attendance.regularization && day.attendance.regularization.status === 'PENDING';
+          const isFlagged = rawStatus === 'FLAGGED' || (rawFlagStatus !== '' && !['NONE', 'APPROVED', 'REJECTED', 'ABSENT'].includes(rawFlagStatus));
+
+          if (isRegPending || isFlagged) {
+            flaggedRegCount++;
+          } else if (rawStatus === 'PENDING' && !day.attendance.isAbsent) {
+            pendingApprovalCount++;
+          } else if (rawStatus === 'MISSING' || rawStatus === 'MISSING_CLOCK_IN') {
+            missingClockInCount++;
+          } else if (rawStatus === 'REJECTED') {
+            rejectedCount++;
+          } else if (rawStatus === 'LEAVE') {
+            approvedLeaveCount++;
+          }
         }
       }
     }
 
-    return { presentCount, pastLeaveCount, futureLeaveCount, pendingApprovalCount, missedCount };
+    return {
+      presentCount,
+      pendingApprovalCount,
+      missingClockInCount,
+      approvedLeaveCount,
+      flaggedRegCount,
+      confirmedAbsentCount,
+      rejectedCount,
+    };
   }, [calendarDays]);
 
   // Calendar Navigation Handlers
@@ -557,159 +604,81 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
       </div>
 
       {/* SECTION B: WORKER MONTHLY OVERTIME DASHBOARD */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-5 text-white shadow-lg border border-slate-800">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-white/10">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                Overtime Summary
-              </span>
-              <span className="text-xs text-slate-400">Standard: 9 Hours / Workday</span>
+      {!hideOvertimeCard && (
+        <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-blue-900 rounded-3xl p-5 text-white shadow-lg border border-slate-800">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-white/10">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                  Overtime Summary
+                </span>
+                <span className="text-xs text-slate-400">Standard: 9 Hours / Workday</span>
+              </div>
+              <h2 className="text-lg font-bold text-white mt-1">
+                Monthly Overtime Overview • {MONTH_NAMES[currentMonth]} {currentYear}
+              </h2>
             </div>
-            <h2 className="text-lg font-bold text-white mt-1">
-              Monthly Overtime Overview • {MONTH_NAMES[currentMonth]} {currentYear}
-            </h2>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handlePrevMonth}
+                className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                title="Previous Month"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-xs font-bold px-3 py-1 bg-white/5 rounded-xl border border-white/10">
+                {MONTH_NAMES[currentMonth].slice(0, 3)} {currentYear}
+              </span>
+              <button
+                onClick={handleNextMonth}
+                className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                title="Next Month"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handlePrevMonth}
-              className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
-              title="Previous Month"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-xs font-bold px-3 py-1 bg-white/5 rounded-xl border border-white/10">
-              {MONTH_NAMES[currentMonth].slice(0, 3)} {currentYear}
-            </span>
-            <button
-              onClick={handleNextMonth}
-              className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
-              title="Next Month"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+          {/* 5 Overtime & Working Metrics Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4">
+            {/* 1. Total Net Worked Hours */}
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 backdrop-blur-xs">
+              <span className="text-[11px] font-medium text-slate-400 block">Total Net Worked</span>
+              <span className="text-xl font-extrabold text-white block mt-1">
+                {overtimeSummary?.formattedTotalNetHours || '0m'}
+              </span>
+              <span className="text-[10px] text-slate-400 mt-0.5 block">Minus unpaid breaks</span>
+            </div>
+
+            {/* 2. Total Calculated OT */}
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 backdrop-blur-xs">
+              <span className="text-[11px] font-medium text-slate-400 block">Calculated OT</span>
+              <span className="text-xl font-extrabold text-indigo-300 block mt-1">
+                {overtimeSummary?.formattedTotalCalculatedOt || '0m'}
+              </span>
+              <span className="text-[10px] text-indigo-300/70 mt-0.5 block">&gt; 9h workday threshold</span>
+            </div>
+
+
+            {/* 3. Days with OT */}
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 backdrop-blur-xs col-span-2 sm:col-span-1">
+              <span className="text-[11px] font-medium text-slate-400 block">Days With OT</span>
+              <span className="text-xl font-extrabold text-white block mt-1">
+                {overtimeSummary?.daysWithOtCount ?? 0}
+                <span className="text-xs font-normal text-slate-400 ml-1">days</span>
+              </span>
+              <span className="text-[10px] text-slate-400 mt-0.5 block">
+                of {overtimeSummary?.totalAttendanceDays ?? 0} active days
+              </span>
+            </div>
           </div>
         </div>
-
-        {/* 5 Overtime & Working Metrics Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-4">
-          {/* 1. Total Net Worked Hours */}
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 backdrop-blur-xs">
-            <span className="text-[11px] font-medium text-slate-400 block">Total Net Worked</span>
-            <span className="text-xl font-extrabold text-white block mt-1">
-              {overtimeSummary?.formattedTotalNetHours || '0m'}
-            </span>
-            <span className="text-[10px] text-slate-400 mt-0.5 block">Minus unpaid breaks</span>
-          </div>
-
-          {/* 2. Total Calculated OT */}
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 backdrop-blur-xs">
-            <span className="text-[11px] font-medium text-slate-400 block">Calculated OT</span>
-            <span className="text-xl font-extrabold text-indigo-300 block mt-1">
-              {overtimeSummary?.formattedTotalCalculatedOt || '0m'}
-            </span>
-            <span className="text-[10px] text-indigo-300/70 mt-0.5 block">&gt; 9h workday threshold</span>
-          </div>
-
-          {/* 3. Approved OT */}
-          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-3.5 backdrop-blur-xs">
-            <span className="text-[11px] font-medium text-emerald-400 flex items-center justify-between">
-              Approved OT
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-            </span>
-            <span className="text-xl font-extrabold text-emerald-300 block mt-1">
-              {overtimeSummary?.formattedTotalApprovedOt || '0m'}
-            </span>
-            <span className="text-[10px] text-emerald-400/80 mt-0.5 block">Approved by supervisor</span>
-          </div>
-
-          {/* 4. Pending Review OT */}
-          <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3.5 backdrop-blur-xs">
-            <span className="text-[11px] font-medium text-amber-400 flex items-center justify-between">
-              Pending Review
-              <Clock className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-            </span>
-            <span className="text-xl font-extrabold text-amber-300 block mt-1">
-              {overtimeSummary?.formattedTotalPendingOt || '0m'}
-            </span>
-            <span className="text-[10px] text-amber-400/80 mt-0.5 block">In review queue</span>
-          </div>
-
-          {/* 5. Days with OT */}
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 backdrop-blur-xs col-span-2 sm:col-span-1">
-            <span className="text-[11px] font-medium text-slate-400 block">Days With OT</span>
-            <span className="text-xl font-extrabold text-white block mt-1">
-              {overtimeSummary?.daysWithOtCount ?? 0}
-              <span className="text-xs font-normal text-slate-400 ml-1">days</span>
-            </span>
-            <span className="text-[10px] text-slate-400 mt-0.5 block">
-              of {overtimeSummary?.totalAttendanceDays ?? 0} active days
-            </span>
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* CALENDAR VIEW */}
       {activeTab === 'calendar' && (
         <div className="space-y-5">
-          {/* Calendar Color Fill Legend Banner */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
-            <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
-              <span className="font-bold text-slate-900 flex items-center gap-1.5">
-                <InfoIcon className="w-4 h-4 text-indigo-500" />
-                Color Guide:
-              </span>
-
-              <div className="flex flex-wrap items-center gap-4">
-                {/* Gray color for past leave taken */}
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3.5 h-3.5 rounded-md bg-slate-200 border border-slate-300 inline-block shadow-2xs"></span>
-
-                  <span className="text-slate-500">Past Leave Taken</span>
-                </div>
-
-                {/* Violet color for future leave applied */}
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3.5 h-3.5 rounded-md bg-violet-200 border border-violet-400 inline-block shadow-2xs"></span>
-
-                  <span className="text-slate-500"> Leave Applied</span>
-                </div>
-
-                {/* Green for Present */}
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3.5 h-3.5 rounded-md bg-emerald-100 border border-emerald-300 inline-block"></span>
-                  <span className="text-slate-600 font-medium">Present / Clocked In</span>
-                </div>
-
-                {/* Amber for Pending */}
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3.5 h-3.5 rounded-md bg-amber-100 border border-amber-300 inline-block"></span>
-                  <span className="text-slate-600 font-medium">Pending Approval</span>
-                </div>
-
-                {/* Purple for Flagged Attendance */}
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3.5 h-3.5 rounded-md bg-purple-100 border border-purple-300 inline-block"></span>
-                  <span className="text-purple-700 font-medium">Flagged Attendance</span>
-                </div>
-
-                {/* Indigo for Regularization */}
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3.5 h-3.5 rounded-md bg-indigo-100 border border-indigo-300 inline-block"></span>
-                  <span className="text-indigo-700 font-medium">Regularization</span>
-                </div>
-
-                {/* Today */}
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3.5 h-3.5 rounded-md ring-2 ring-slate-900 bg-slate-900 text-white text-[8px] font-bold flex items-center justify-center">
-                    •
-                  </span>
-                  <span className="text-slate-600 font-medium">Today</span>
-                </div>
-              </div>
-            </div>
-          </div>
 
           {/* Calendar Controller Bar (Year, Month, Steppers, Jump to Today) */}
           <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -793,47 +762,153 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
             </div>
           </div>
 
-          {/* Month Summary Metrics Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-2xs">
-              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                Days Present
-              </span>
-              <span className="text-md font-bold text-emerald-600 mt-0.5 block">
-                {monthStats.presentCount} Days
-              </span>
+          {/* Month Summary Metrics Cards (Matching 6 business workflow states) */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+            {/* 1. Present (P) */}
+            <div className="bg-white rounded-2xl border border-emerald-100 bg-emerald-50/20 p-3 shadow-2xs flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">
+                  Present
+                </span>
+                <span className="w-4 h-4 rounded text-[9px] font-black bg-emerald-100 text-emerald-800 flex items-center justify-center">
+                  P
+                </span>
+              </div>
+              <div className="mt-1">
+                <span className="text-lg font-black text-emerald-700 block">
+                  {monthStats.presentCount} Days
+                </span>
+                <span className="text-[10px] text-emerald-600 font-medium">Clocked in & approved</span>
+              </div>
             </div>
-            <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-2xs">
-              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                Past Leaves Taken
-              </span>
-              <span className="text-md font-bold text-slate-700 mt-0.5 block">
-                {monthStats.pastLeaveCount} Days
-              </span>
+
+            {/* 2. Pending Approval (PA) */}
+            <div className="bg-white rounded-2xl border border-amber-100 bg-amber-50/20 p-3 shadow-2xs flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">
+                  Pending Review
+                </span>
+                <span className="w-4 h-4 rounded text-[9px] font-black bg-amber-100 text-amber-800 flex items-center justify-center">
+                  PA
+                </span>
+              </div>
+              <div className="mt-1">
+                <span className="text-lg font-black text-amber-700 block">
+                  {monthStats.pendingApprovalCount} Days
+                </span>
+                <span className="text-[10px] text-amber-600 font-medium">Awaiting supervisor</span>
+              </div>
             </div>
-            <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-2xs">
-              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                Planned Leaves
-              </span>
-              <span className="text-md font-bold text-violet-600 mt-0.5 block">
-                {monthStats.futureLeaveCount} Days
-              </span>
+
+            {/* 3. Missing Clock-In (M) */}
+            <div className="bg-white rounded-2xl border border-amber-200 bg-amber-50/40 p-3 shadow-2xs flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wider block">
+                  Missing In
+                </span>
+                <span className="w-4 h-4 rounded text-[9px] font-black bg-amber-200 text-amber-900 flex items-center justify-center">
+                  M
+                </span>
+              </div>
+              <div className="mt-1">
+                <span className="text-lg font-black text-amber-800 block">
+                  {monthStats.missingClockInCount} Days
+                </span>
+                <span className="text-[10px] text-amber-700 font-medium">Unclocked • Needs review</span>
+              </div>
             </div>
-            <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-2xs">
-              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                Pending Approvals
-              </span>
-              <span className="text-xl font-bold text-amber-600 mt-0.5 block">
-                {monthStats.pendingApprovalCount} Records
-              </span>
+
+            {/* 4. Approved Leave (L) */}
+            <div className="bg-white rounded-2xl border border-violet-100 bg-violet-50/20 p-3 shadow-2xs flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-violet-800 uppercase tracking-wider block">
+                  Approved Leave
+                </span>
+                <span className="w-4 h-4 rounded text-[9px] font-black bg-violet-100 text-violet-800 flex items-center justify-center">
+                  L
+                </span>
+              </div>
+              <div className="mt-1">
+                <span className="text-lg font-black text-violet-700 block">
+                  {monthStats.approvedLeaveCount} Days
+                </span>
+                <span className="text-[10px] text-violet-600 font-medium">Authorized absence</span>
+              </div>
             </div>
-            <div className="bg-white rounded-2xl border border-rose-100 bg-rose-50/30 p-3.5 shadow-2xs">
-              <span className="text-[11px] font-semibold text-rose-600 uppercase tracking-wider block">
-                Missed / Absent
-              </span>
-              <span className="text-md font-bold text-rose-600 mt-0.5 block">
-                {monthStats.missedCount} Days
-              </span>
+
+            {/* 5. Flagged / Reg. Pending (FR) */}
+            <div className="bg-white rounded-2xl border border-purple-100 bg-purple-50/20 p-3 shadow-2xs flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-purple-800 uppercase tracking-wider block">
+                  Flagged / Reg.
+                </span>
+                <span className="w-4 h-4 rounded text-[9px] font-black bg-purple-100 text-purple-800 flex items-center justify-center">
+                  FR
+                </span>
+              </div>
+              <div className="mt-1">
+                <span className="text-lg font-black text-purple-700 block">
+                  {monthStats.flaggedRegCount} Days
+                </span>
+                <span className="text-[10px] text-purple-600 font-medium">Correction in progress</span>
+              </div>
+            </div>
+
+            {/* 6. Confirmed Absent (A) */}
+            <div className="bg-white rounded-2xl border border-rose-100 bg-rose-50/30 p-3 shadow-2xs flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-rose-800 uppercase tracking-wider block">
+                  Confirmed Absent
+                </span>
+                <span className="w-4 h-4 rounded text-[9px] font-black bg-rose-200 text-rose-900 flex items-center justify-center">
+                  A
+                </span>
+              </div>
+              <div className="mt-1">
+                <span className="text-lg font-black text-rose-700 block">
+                  {monthStats.confirmedAbsentCount} Days
+                </span>
+                <span className="text-[10px] text-rose-600 font-medium">Unexcused absence</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Status Indicators Legend */}
+          <div className="flex flex-wrap items-center justify-between gap-2 p-4 bg-white border border-slate-200 rounded-xl shadow-2xs">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Status Indicators:</span>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 my-2">
+              <div className="flex items-center gap-1.5" title="Present (P): Clocked in and approved">
+                <span className="w-4 h-4 rounded bg-emerald-600 text-white text-[9px] font-black inline-flex items-center justify-center shadow-xs">P</span>
+                <span className="text-xs font-semibold text-slate-500">Present</span>
+              </div>
+              <div className="flex items-center gap-1.5" title="Missing Clock-In (M): Shift scheduled but not clocked in">
+                <span className="w-4 h-4 rounded bg-amber-500 text-white text-[9px] font-black inline-flex items-center justify-center shadow-xs">M</span>
+                <span className="text-xs font-semibold text-slate-500">Missing In</span>
+              </div>
+              <div className="flex items-center gap-1.5" title="Leave (L): Approved leave">
+                <span className="w-4 h-4 rounded bg-violet-600 text-white text-[9px] font-black inline-flex items-center justify-center shadow-xs">L</span>
+                <span className="text-xs font-semibold text-slate-500">Leave</span>
+              </div>
+              <div className="flex items-center gap-1.5" title="Absent (A): Confirmed absence">
+                <span className="w-4 h-4 rounded bg-rose-600 text-white text-[9px] font-black inline-flex items-center justify-center shadow-xs">A</span>
+                <span className="text-xs font-semibold text-slate-500">Absent</span>
+              </div>
+              <div className="flex items-center gap-1.5" title="Rejected (R): Clock-in rejected, eligible for appeal">
+                <span className="w-4 h-4 rounded bg-rose-600 text-white text-[9px] font-black inline-flex items-center justify-center shadow-xs">R</span>
+                <span className="text-xs font-semibold text-slate-500">Rejected</span>
+              </div>
+              <div className="flex items-center gap-1.5" title="Pending Approval (PA): Clocked in, supervisor review pending">
+                <span className="px-1 h-4 rounded bg-amber-500 text-white text-[8px] font-black inline-flex items-center justify-center shadow-xs">PA</span>
+                <span className="text-xs font-semibold text-slate-500">Pending</span>
+              </div>
+              <div className="flex items-center gap-1.5" title="Flagged / Regularization Pending (FR)">
+                <span className="px-1 h-4 rounded bg-purple-600 text-white text-[8px] font-black inline-flex items-center justify-center shadow-xs">FR</span>
+                <span className="text-xs font-semibold text-slate-500">Flagged/Reg</span>
+              </div>
+              <div className="flex items-center gap-1.5" title="Excused Absence (E)">
+                <span className="w-4 h-4 rounded bg-blue-600 text-white text-[9px] font-black inline-flex items-center justify-center shadow-xs">E</span>
+                <span className="text-xs font-semibold text-slate-500">Excused</span>
+              </div>
             </div>
           </div>
 
@@ -857,53 +932,109 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
                 const hasLeave = !!day.leave;
                 const hasAttendance = !!day.attendance;
 
-                // Color fill determinations as requested:
-                // 1. If he took leave in the past/today -> fill up GRAY colour
-                const isGrayLeaveFill = hasLeave && !isFuture && day.leave.status !== 'REJECTED';
+                // 1. Leave statuses
+                const isApprovedLeave = hasLeave && day.leave.status === 'APPROVED';
+                const isPendingLeave = hasLeave && day.leave.status === 'PENDING';
+                const isRevokedLeave = hasLeave && day.leave.status === 'REVOKED';
 
-                // 2. If he applied a leave in future -> fill up VIOLET colour
-                const isVioletLeaveFill = hasLeave && isFuture && day.leave.status !== 'CANCELLED';
+                // Color fill for approved leave:
+                const isGrayLeaveFill = isApprovedLeave && !isFuture;
+                const isVioletLeaveFill = isApprovedLeave && isFuture;
 
-                // 3. Attendance & Absence states
-                const isAbsentUnexcused = hasAttendance && (day.attendance.status === 'ABSENT' || day.attendance.status === 'UNEXCUSED_ABSENCE');
-                const isExcusedAbsence = hasAttendance && day.attendance.status === 'EXCUSED_ABSENCE';
-                const isMissingClockIn = hasAttendance && day.attendance.status === 'MISSING_CLOCK_IN';
-                const isPresentGreen = hasAttendance && day.attendance.status === 'APPROVED' && !day.attendance.isAbsent;
-                const isPendingAmber = hasAttendance && day.attendance.status === 'PENDING' && !day.attendance.isAbsent;
-                const isRejectedRed = (hasAttendance && day.attendance.status === 'REJECTED' && !day.attendance.isAbsent) || (hasLeave && day.leave.status === 'REJECTED');
-                const isTodayPendingClockIn = isToday && !hasAttendance && !hasLeave;
+                // 2. Attendance Status Workflow states
+                const rawStatus = (day.attendance?.status || '').toUpperCase().trim();
+                const rawFlagStatus = (day.attendance?.flagStatus || '').toUpperCase().trim();
+                const rawAbsenceType = (day.attendance?.absenceType || '').toUpperCase().trim();
+                const rawResolution = (day.attendance?.resolutionType || '').toUpperCase().trim();
+
+                const isPresent = hasAttendance && rawStatus === 'APPROVED' && !day.attendance.isAbsent;
+                const isPendingApproval = hasAttendance && rawStatus === 'PENDING' && !day.attendance.isAbsent;
+
+                // Confirmed Absence (A) - confirmed through workflow, missing punch alone is NOT absent
+                const isConfirmedAbsent = hasAttendance && (
+                  rawStatus === 'ABSENT' ||
+                  rawStatus === 'UNEXCUSED_ABSENCE' ||
+                  rawAbsenceType === 'ABSENT' ||
+                  rawAbsenceType === 'UNEXCUSED_ABSENCE' ||
+                  rawResolution === 'ABSENT' ||
+                  rawResolution === 'UNEXCUSED_ABSENCE' ||
+                  rawFlagStatus === 'REJECTED' ||
+                  rawFlagStatus === 'ABSENT' ||
+                  (Boolean(day.attendance.isAbsent) && rawStatus !== 'APPROVED' && rawStatus !== 'EXCUSED_ABSENCE')
+                ) && rawStatus !== 'APPROVED' && rawStatus !== 'EXCUSED_ABSENCE';
+
+                const isExcusedAbsence = hasAttendance && (
+                  rawStatus === 'EXCUSED_ABSENCE' ||
+                  (rawStatus === 'FLAGGED' && rawFlagStatus === 'APPROVED')
+                );
+
+                // Regularization & Flagging (FR) - only applies when record is NOT finalized as absent or approved
+                const isRegPending = hasAttendance && day.attendance.regularization && day.attendance.regularization.status === 'PENDING';
+                const isSupervisorFlagged = hasAttendance && (
+                  rawStatus === 'FLAGGED' ||
+                  (rawFlagStatus !== '' && !['NONE', 'APPROVED', 'REJECTED', 'ABSENT'].includes(rawFlagStatus))
+                );
+                const isFlaggedOrReg = !isConfirmedAbsent && !isExcusedAbsence && !isPresent && (isRegPending || isSupervisorFlagged);
+
+                // Clock-In Rejected (Eligible for appeal / regularize, NOT marked absent)
+                const isClockInRejected = hasAttendance && day.attendance.status === 'REJECTED' && !day.attendance.isAbsent;
+
+                // Missing Clock-In (M) - ONLY when worker had a scheduled roster shift or supervisor flag and failed to clock in
+                const isMissingClockIn = !isApprovedLeave && !isPendingLeave && hasAttendance && (day.attendance.status === 'MISSING' || day.attendance.status === 'MISSING_CLOCK_IN');
+
+                // Days before user was created / registered in the system
+                const isBeforeJoining = userCreatedDateStr ? day.dateStr < userCreatedDateStr : false;
+
+                // Past unscheduled day (User created/active, but not assigned to any worksite or shift)
+                const isPastUnscheduled = !hasAttendance && !hasLeave && !day.isFuture && !day.isToday && !isBeforeJoining;
+
+                // Today pending clock-in
+                const isTodayPendingClockIn = isToday && !hasAttendance && !isApprovedLeave && !isPendingLeave;
 
                 return (
                   <div
                     key={day.dateStr}
                     onClick={() => handleOpenDateModal(day.dateStr)}
-                    className={`min-h-[110px] sm:min-h-[120px] p-2 sm:p-2.5 transition-all cursor-pointer relative group flex flex-col justify-between ${
-                      // 1. Violet color fill for future leave applied
+                    className={`min-h-[85px] sm:min-h-[95px] p-2 sm:p-2.5 transition-all cursor-pointer relative group flex flex-col justify-between ${
+                      // 1. Violet color fill for future leave applied (ONLY APPROVED)
                       isVioletLeaveFill
                         ? 'bg-violet-100/90 hover:bg-violet-200/80 text-violet-950 border-violet-200'
-                        // 2. Gray color fill for past leave taken
+                        // 2. Gray color fill for past leave taken (ONLY APPROVED)
                         : isGrayLeaveFill
                           ? 'bg-slate-200 hover:bg-slate-300/80 text-slate-800 border-slate-300'
-                          // 3. Absence and Missed punch states
-                          : isAbsentUnexcused
+                          // 3. Confirmed Absence
+                          : isConfirmedAbsent
                             ? 'bg-rose-50/90 hover:bg-rose-100/80 text-rose-950 border-rose-300'
                             : isExcusedAbsence
                               ? 'bg-blue-50/80 hover:bg-blue-100/80 text-blue-950 border-blue-200'
-                              : isMissingClockIn
-                                ? 'bg-amber-50/80 hover:bg-amber-100/70 text-amber-950 border-amber-300'
-                                // 4. Attendance states
-                                : isPresentGreen
-                                  ? 'bg-emerald-50/50 hover:bg-emerald-100/60 text-slate-800 border-emerald-200'
-                                  : isPendingAmber
+                              // 4. Flagged or Regularization Pending (FR)
+                              : isFlaggedOrReg
+                                ? 'bg-purple-50/80 hover:bg-purple-100/70 text-purple-950 border-purple-200'
+                                // 5. Clock-in rejected alone (not yet confirmed absent)
+                                : isClockInRejected
+                                  ? 'bg-rose-50/60 hover:bg-rose-100/60 text-rose-950 border-rose-200'
+                                  // 6. Missing Clock-In (M) - Only on actual scheduled/flagged shifts
+                                  : isMissingClockIn
                                     ? 'bg-amber-50/80 hover:bg-amber-100/70 text-amber-950 border-amber-300'
-                                    : isTodayPendingClockIn
-                                      ? 'bg-amber-50/60 hover:bg-amber-100/60 text-amber-950 border-amber-200'
-                                      : day.isCurrentMonth
-                                        ? 'bg-white hover:bg-slate-50/80 text-slate-700'
-                                        : 'bg-slate-50/30 text-slate-300 hover:bg-slate-50'
+                                    // 7. Present (P)
+                                    : isPresent
+                                      ? 'bg-emerald-50/50 hover:bg-emerald-100/60 text-slate-800 border-emerald-200'
+                                      // 8. Pending Approval (PA)
+                                      : isPendingApproval
+                                        ? 'bg-amber-50/80 hover:bg-amber-100/70 text-amber-950 border-amber-300'
+                                        // 9. Pending Leave (not approved)
+                                        : isPendingLeave
+                                          ? 'bg-amber-50/60 hover:bg-amber-100/60 text-amber-950 border-amber-200'
+                                          : isTodayPendingClockIn
+                                            ? 'bg-amber-50/60 hover:bg-amber-100/60 text-amber-950 border-amber-200'
+                                            : isBeforeJoining
+                                              ? 'bg-slate-50/40 hover:bg-slate-100/60 text-slate-400 border-transparent'
+                                              : day.isCurrentMonth
+                                                ? 'bg-white hover:bg-slate-50/80 text-slate-700'
+                                                : 'bg-slate-50/30 text-slate-300 hover:bg-slate-50'
                       } ${isSelected ? 'ring-2 ring-inset ring-slate-900' : ''}`}
                   >
-                    {/* Top Row: Date Number and Pill */}
+                    {/* Top Row: Date Number and Today Tag */}
                     <div className="flex items-center justify-between">
                       <span
                         className={`text-xs font-bold w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${isToday
@@ -912,237 +1043,144 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
                             ? 'bg-violet-700 text-white font-extrabold shadow-2xs'
                             : isGrayLeaveFill
                               ? 'bg-slate-600 text-white font-bold'
-                              : day.isCurrentMonth
-                                ? 'text-slate-800'
-                                : 'text-slate-400'
+                              : isBeforeJoining
+                                ? 'text-slate-400 bg-slate-100/60'
+                                : day.isCurrentMonth
+                                  ? 'text-slate-800'
+                                  : 'text-slate-400'
                           }`}
                       >
                         {day.dayNumber}
                       </span>
 
-                      {isToday && (
-                        <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded-md bg-emerald-100 text-emerald-800">
-                          Today
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1">
+                        {isToday && (
+                          <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-slate-900 text-white shadow-2xs">
+                            Today
+                          </span>
+                        )}
 
-                      {/* Pill indicator for future date */}
-                      {isFuture && !hasLeave && (
-                        <span className="text-[9px] font-medium text-slate-400 opacity-60">
-                          Future
-                        </span>
-                      )}
+                        {isPastUnscheduled && day.isCurrentMonth && (
+                          <span className="text-[9px] font-medium text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                            No Shift
+                          </span>
+                        )}
+
+                        {isBeforeJoining && day.isCurrentMonth && (
+                          <span className="text-[9px] font-medium text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                            Pre-joined
+                          </span>
+                        )}
+                      </div>
                     </div>
 
-                    {/* Middle: Status Tag / Badge based on rules */}
-                    <div className="my-1.5 space-y-1">
-                      {/* Violet Leave Fill Indicator */}
-                      {isVioletLeaveFill && (
-                        <div className="bg-violet-200/80 border border-violet-300 p-1 rounded-md text-[10px] font-semibold text-violet-950 flex flex-col gap-0.5">
-                          <span className="truncate flex items-center gap-1 font-bold">
-                            <Sparkles className="w-3 h-3 text-violet-600 shrink-0" />
-                            {day.leave.leaveTypeName || 'Leave Applied'}
-                          </span>
-                          <span className="text-[9px] uppercase tracking-wider text-violet-700 font-extrabold">
-                            {day.leave.status}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Gray Leave Fill Indicator */}
-                      {isGrayLeaveFill && (
-                        <div className="bg-slate-300/80 border border-slate-400/60 p-1 rounded-md text-[10px] font-bold text-slate-800 flex flex-col gap-0.5">
-                          <span className="truncate font-semibold">
-                            Leave: {day.leave.leaveTypeName || 'Approved'}
-                          </span>
-                          <span className="text-[9px] uppercase tracking-wider text-slate-600">
-                            {day.leave.isHalfDay ? 'Half Day' : 'Full Day'}
+                    {/* Middle: Clean Minimalist Details */}
+                    <div className="my-1 flex-1 flex flex-col justify-center">
+                      {/* Clock-in time if attendance exists */}
+                      {day.attendance?.clockInTime && !day.attendance.isAbsent && (
+                        <div className="text-[11px] font-semibold text-slate-700 flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span className="font-mono">
+                            {typeof day.attendance.clockInTime === 'string' && (day.attendance.clockInTime.includes('AM') || day.attendance.clockInTime.includes('PM'))
+                              ? day.attendance.clockInTime
+                              : new Date(day.attendance.clockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
                         </div>
                       )}
 
-                      {/* Absent Unexcused Indicator */}
-                      {!hasLeave && isAbsentUnexcused && (
-                        <div className="bg-rose-100 border border-rose-300 p-1.5 rounded-md text-[10px] font-bold text-rose-900 flex flex-col gap-0.5 shadow-2xs">
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="flex items-center gap-1 text-rose-900 font-extrabold truncate">
-                              <XCircle className="w-3 h-3 text-rose-600 shrink-0" />
-                              Absent
-                            </span>
-                            <span className="text-[8px] bg-rose-200 text-rose-900 px-1 py-0.2 rounded font-black tracking-wider uppercase shrink-0">
-                              Unexcused
-                            </span>
-                          </div>
-                          <span className="text-[9px] text-rose-700 truncate">
-                            {day.attendance.resolutionNote || 'No punch recorded'}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Excused Absence Indicator */}
-                      {!hasLeave && isExcusedAbsence && (
-                        <div className="bg-blue-100 border border-blue-300 p-1.5 rounded-md text-[10px] font-bold text-blue-900 flex flex-col gap-0.5 shadow-2xs">
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="flex items-center gap-1 text-blue-900 font-extrabold truncate">
-                              <ShieldCheck className="w-3 h-3 text-blue-600 shrink-0" />
-                              Excused
-                            </span>
-                            <span className="text-[8px] bg-blue-200 text-blue-900 px-1 py-0.2 rounded font-black tracking-wider uppercase shrink-0">
-                              Approved
-                            </span>
-                          </div>
-                          <span className="text-[9px] text-blue-700 truncate">
-                            {day.attendance.resolutionNote || 'Excused absence'}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Missing Clock-In / Missed Punch */}
-                      {!hasLeave && isMissingClockIn && (
-                        <div className="bg-amber-100 border border-amber-300 p-1.5 rounded-md text-[10px] font-bold text-amber-900 flex flex-col gap-0.5 shadow-2xs">
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="flex items-center gap-1 text-amber-900 font-extrabold truncate">
-                              <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
-                              Missed Punch
-                            </span>
-                            <span className="text-[8px] bg-amber-200 text-amber-900 px-1 py-0.2 rounded font-black tracking-wider uppercase shrink-0">
-                              Action Req.
-                            </span>
-                          </div>
-                          <span className="text-[9px] text-amber-700 truncate">
-                            No clock-in logged
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Attendance: Clock-In Present */}
-                      {!hasLeave && isPresentGreen && (
-                        <div className="bg-emerald-100/80 border border-emerald-200 p-1 rounded-md text-[10px] font-medium text-emerald-900 flex items-center justify-between">
-                          <span className="font-semibold flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
-                            Present
-                          </span>
-                          {day.attendance.clockInTime && (
-                            <span className="text-[9px] opacity-80">
-                              {typeof day.attendance.clockInTime === 'string' && (day.attendance.clockInTime.includes('AM') || day.attendance.clockInTime.includes('PM'))
-                                ? day.attendance.clockInTime
-                                : new Date(day.attendance.clockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
+                      {/* Leave Type Name (Clean text, no bulky card) */}
+                      {day.leave && (
+                        <div className="text-[11px] font-semibold text-slate-700 truncate">
+                          {day.leave.leaveTypeName || 'Leave'}
+                          {day.leave.isHalfDay && (
+                            <span className="text-[9px] text-slate-500 font-medium ml-1">(Half)</span>
                           )}
                         </div>
                       )}
-
-                      {/* Attendance: Pending Approval */}
-                      {!hasLeave && isPendingAmber && (
-                        <div className="bg-amber-100 border border-amber-300 p-1.5 rounded-md text-[10px] font-bold text-amber-950 flex flex-col gap-0.5 shadow-2xs">
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="flex items-center gap-1 text-amber-900 font-extrabold">
-                              <Clock className="w-3 h-3 text-amber-600 shrink-0 animate-pulse" />
-                              Pending Sup.
-                            </span>
-                            <span className="text-[8px] bg-amber-200 text-amber-900 px-1 py-0.2 rounded font-black tracking-wider uppercase">
-                              Review
-                            </span>
-                          </div>
-                          {day.attendance.clockInTime && (
-                            <span className="text-[9px] text-amber-800 font-mono font-medium">
-                              In: {typeof day.attendance.clockInTime === 'string' && (day.attendance.clockInTime.includes('AM') || day.attendance.clockInTime.includes('PM'))
-                                ? day.attendance.clockInTime
-                                : new Date(day.attendance.clockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Today: Pending Clock-In (Not Clocked In Yet) */}
-                      {isTodayPendingClockIn && (
-                        <div className="bg-amber-100/70 border border-amber-300 p-1.5 rounded-md text-[10px] font-bold text-amber-900 flex items-center gap-1 shadow-2xs">
-                          <Clock className="w-3 h-3 text-amber-600 shrink-0 animate-pulse" />
-                          <span>Pending Clock-In</span>
-                        </div>
-                      )}
-
-                      {/* Attendance / Leave: Rejected */}
-                      {isRejectedRed && (
-                        <div className="bg-rose-100/80 border border-rose-200 p-1 rounded-md text-[10px] font-semibold text-rose-900">
-                          Rejected
-                        </div>
-                      )}
-
-                      {/* Regularization Status Pill if request exists */}
-                      {day.attendance?.regularization && (
-                        <div
-                          className={`p-1 rounded-md text-[10px] font-bold flex items-center justify-between border shadow-2xs ${
-                            day.attendance.regularization.status === 'PENDING'
-                              ? 'bg-indigo-50 border-indigo-200 text-indigo-900'
-                              : day.attendance.regularization.status === 'APPROVED'
-                              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                              : 'bg-rose-50 border-rose-200 text-rose-900'
-                          }`}
-                        >
-                          <span className="flex items-center gap-1 truncate">
-                            {day.attendance.regularization.status === 'PENDING' ? (
-                              <Clock className="w-3 h-3 text-indigo-600 animate-pulse shrink-0" />
-                            ) : day.attendance.regularization.status === 'APPROVED' ? (
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
-                            ) : (
-                              <XCircle className="w-3 h-3 text-rose-600 shrink-0" />
-                            )}
-                            <span>Reg: {day.attendance.regularization.status}</span>
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Flagged Attendance Indicator if flagged by supervisor */}
-                      {!day.attendance?.regularization && day.attendance?.flagStatus && day.attendance.flagStatus !== 'NONE' && (
-                        <div className="bg-purple-50 border border-purple-300 p-1 rounded-md text-[10px] font-bold text-purple-900 flex items-center justify-between shadow-2xs">
-                          <span className="flex items-center gap-1 truncate">
-                            <AlertTriangle className="w-3 h-3 text-purple-600 shrink-0" />
-                            Flagged
-                          </span>
-                          <span className="text-[8px] bg-purple-200 text-purple-950 px-1 py-0.2 rounded font-black tracking-wider uppercase">
-                            {day.attendance.flagStatus.replace('_', ' ')}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Compact Overtime Badge (Section C) */}
-                      {day.attendance && day.attendance.calculatedOtMinutes > 0 && (() => {
-                        const calcOt = day.attendance.calculatedOtMinutes;
-                        const isApproved = day.attendance.otStatus === 'APPROVED';
-                        const isPending = day.attendance.otStatus === 'PENDING';
-                        const otH = Math.floor(calcOt / 60);
-                        const otM = calcOt % 60;
-                        const otText = otM > 0 ? `${otH}h ${otM}m` : `${otH}h`;
-
-                        return (
-                          <div
-                            className={`px-1.5 py-0.5 rounded-md text-[9px] font-extrabold inline-flex items-center gap-1 border shadow-2xs ${
-                              isApproved
-                                ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
-                                : isPending
-                                ? 'bg-amber-100 text-amber-900 border-amber-300'
-                                : 'bg-slate-100 text-slate-700 border-slate-300'
-                            }`}
-                            title={`Calculated Overtime: ${otText} (${day.attendance.otStatus || 'PENDING'})`}
-                          >
-                            <span className={`w-1.5 h-1.5 rounded-full ${isApproved ? 'bg-emerald-600' : isPending ? 'bg-amber-600' : 'bg-slate-500'}`}></span>
-                            <span>OT {otText}</span>
-                          </div>
-                        );
-                      })()}
-
-                      {/* Unscheduled past day (excluding today) */}
-                      {!hasLeave && !hasAttendance && !isFuture && !isToday && day.isCurrentMonth && (
-                        <span className="text-[9px] text-slate-400 block opacity-0 group-hover:opacity-100 transition-opacity text-center">
-                          No Record
-                        </span>
-                      )}
                     </div>
 
-                    {/* Bottom: Click prompt */}
-                    <div className="text-[9px] text-slate-400 truncate opacity-0 group-hover:opacity-100 transition-opacity">
-                      Click to view
+                    {/* Bottom Row: Status Badge in Bottom Left, OT/Details in Bottom Right */}
+                    <div className="flex items-center justify-between mt-auto pt-0.5">
+                      {/* Status Simple Indicator Pill - Bottom Left */}
+                      <div className="flex items-center gap-1">
+                        {isConfirmedAbsent && (
+                          <span className="w-5 h-5 rounded-md bg-rose-600 text-white text-[10px] font-black inline-flex items-center justify-center shadow-xs" title="Absent (A): Absence confirmed through workflow">
+                            A
+                          </span>
+                        )}
+
+                        {!isConfirmedAbsent && isPresent && (
+                          <span className="w-5 h-5 rounded-md bg-emerald-600 text-white text-[10px] font-black inline-flex items-center justify-center shadow-xs" title="Present (P): Clocked in & approved by supervisor">
+                            P
+                          </span>
+                        )}
+
+                        {!isConfirmedAbsent && !isPresent && isPendingApproval && (
+                          <span className="px-1.5 h-5 rounded-md bg-amber-500 text-white text-[9px] font-black inline-flex items-center justify-center shadow-xs" title="Pending Approval (PA): Clocked in, supervisor review pending">
+                            PA
+                          </span>
+                        )}
+
+                        {!isConfirmedAbsent && !isPresent && !isPendingApproval && isFlaggedOrReg && (
+                          <span className="px-1.5 h-5 rounded-md bg-purple-600 text-white text-[9px] font-black inline-flex items-center justify-center shadow-xs" title="Flagged / Regularization Pending (FR): Correction request or supervisor flag pending">
+                            FR
+                          </span>
+                        )}
+
+                        {!isConfirmedAbsent && !isPresent && !isPendingApproval && !isFlaggedOrReg && isMissingClockIn && (
+                          <span className="w-5 h-5 rounded-md bg-amber-500 text-white text-[10px] font-black inline-flex items-center justify-center shadow-xs" title="Missing Clock-In (M): Shift scheduled without clock-in">
+                            M
+                          </span>
+                        )}
+
+                        {isApprovedLeave && (
+                          <span className="w-5 h-5 rounded-md bg-violet-600 text-white text-[10px] font-black inline-flex items-center justify-center shadow-xs" title="Leave (L): Approved leave">
+                            L
+                          </span>
+                        )}
+
+                        {!isApprovedLeave && isPendingLeave && (
+                          <span className="px-1.5 h-5 rounded-md bg-amber-500 text-white text-[9px] font-black inline-flex items-center justify-center shadow-xs" title="Pending Leave (PL): Awaiting supervisor decision">
+                            PL
+                          </span>
+                        )}
+
+                        {!isConfirmedAbsent && !isPresent && !isPendingApproval && !isFlaggedOrReg && !isMissingClockIn && !isApprovedLeave && isClockInRejected && (
+                          <span className="w-5 h-5 rounded-md bg-rose-600 text-white text-[10px] font-black inline-flex items-center justify-center shadow-xs" title="Clock-In Rejected (R): Eligible for Regularization / Appeal">
+                            R
+                          </span>
+                        )}
+
+                        {!isConfirmedAbsent && !isPresent && !isPendingApproval && !isFlaggedOrReg && !isMissingClockIn && !isApprovedLeave && !isClockInRejected && isExcusedAbsence && (
+                          <span className="w-5 h-5 rounded-md bg-blue-600 text-white text-[10px] font-black inline-flex items-center justify-center shadow-xs" title="Excused Absence (E): Approved by supervisor">
+                            E
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Bottom Right: Compact Overtime Tag or Hover hint */}
+                      <div className="flex items-center gap-1">
+                        {day.attendance && day.attendance.calculatedOtMinutes > 0 && (() => {
+                          const calcOt = day.attendance.calculatedOtMinutes;
+                          const otH = Math.floor(calcOt / 60);
+                          const otM = calcOt % 60;
+                          const otText = otM > 0 ? `${otH}h ${otM}m` : `${otH}h`;
+
+                          return (
+                            <span
+                              className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300/80 inline-flex items-center gap-1 shadow-2xs"
+                              title={`Calculated Overtime: ${otText}`}
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                              <span>OT {otText}</span>
+                            </span>
+                          );
+                        })()}
+
+                        <span className="text-[9px] text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                          Details
+                        </span>
+                      </div>
                     </div>
                   </div>
                 );
@@ -1182,7 +1220,9 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
                     </td>
                   </tr>
                 ) : (
-                  attendanceRecords.map((r) => (
+                  attendanceRecords
+                    .slice((tablePage - 1) * tableLimit, tablePage * tableLimit)
+                    .map((r) => (
                     <tr key={r.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="py-3.5 px-4 font-semibold text-slate-900">{r.workDate}</td>
                       <td className="py-3.5 px-4">
@@ -1214,6 +1254,25 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
               </tbody>
             </table>
           </div>
+
+          {attendanceRecords.length > 0 && (
+            <DataTablePagination
+              metadata={{
+                total: attendanceRecords.length,
+                page: tablePage,
+                limit: tableLimit,
+                offset: (tablePage - 1) * tableLimit,
+                totalPages: Math.ceil(attendanceRecords.length / tableLimit),
+              }}
+              onPageChange={(p) => setTablePage(p)}
+              onLimitChange={(l) => {
+                setTableLimit(l);
+                setTablePage(1);
+              }}
+              pageSizeOptions={[10, 25, 50]}
+              isLoading={loading}
+            />
+          )}
         </div>
       )}
 
@@ -1270,54 +1329,98 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
                 </div>
               </div>
 
-              {/* If leave applied in future: show applied leave and status (approved or reject or pending) */}
+              {/* If leave applied in future: show applied leave and status (approved or reject or pending or revoked) */}
               {modalDayData.leave ? (
-                <div className="p-4 rounded-xl bg-violet-100/70 border-2 border-violet-300 space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-violet-800 block">
-                        Applied Leave Request (Violet Fill)
-                      </span>
-                      <h4 className="text-base font-bold text-violet-950 mt-0.5 m-0">
-                        {modalDayData.leave.leaveTypeName}
-                      </h4>
-                    </div>
-                    <StatusBadge status={modalDayData.leave.status} />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-xs bg-white/80 p-3 rounded-lg border border-violet-200">
-                    <div>
-                      <span className="text-slate-500 block text-[11px]">Leave Duration</span>
-                      <span className="font-semibold text-slate-900 block">
-                        {modalDayData.leave.startDate === modalDayData.leave.endDate
-                          ? modalDayData.leave.startDate
-                          : `${modalDayData.leave.startDate} to ${modalDayData.leave.endDate}`}
+                modalDayData.leave.status === 'REVOKED' ? (
+                  <div className="p-4 rounded-xl bg-rose-50/90 border-2 border-rose-300 space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-lg bg-rose-100 text-rose-700">
+                          <Ban className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-rose-800 block">
+                            Leave Revoked
+                          </span>
+                          <h4 className="text-base font-bold text-rose-950 mt-0.5 m-0">
+                            {modalDayData.leave.leaveTypeName || 'Leave Request'}
+                          </h4>
+                        </div>
+                      </div>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-rose-200 text-rose-900 border border-rose-300">
+                        REVOKED
                       </span>
                     </div>
+
+                    <div className="p-3 bg-white/90 rounded-lg border border-rose-200 text-xs space-y-2">
+                      <div>
+                        <span className="text-slate-500 text-[11px] block font-medium">Revocation Reason:</span>
+                        <span className="font-bold text-rose-900 block mt-0.5">
+                          "{modalDayData.leave.revocationReason || 'Revoked by site supervisor'}"
+                        </span>
+                      </div>
+                      {modalDayData.leave.decisionNote && (
+                        <div className="pt-1.5 border-t border-rose-100">
+                          <span className="text-slate-500 text-[11px] block font-medium">Prior Approval Note:</span>
+                          <span className="text-slate-700 italic block mt-0.5">"{modalDayData.leave.decisionNote}"</span>
+                        </div>
+                      )}
+                      <div className="text-[10px] text-slate-500 pt-1 border-t border-rose-100 flex items-center justify-between">
+                        <span>Original Dates: {modalDayData.leave.startDate} to {modalDayData.leave.endDate}</span>
+                        {modalDayData.leave.revokedAt && (
+                          <span>Revoked: {new Date(modalDayData.leave.revokedAt).toLocaleDateString()}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className={`p-4 rounded-xl ${modalDayData.leave.status === 'APPROVED' ? 'bg-violet-100/70 border-2 border-violet-300' : 'bg-slate-100 border border-slate-300'} space-y-3`}>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-violet-800 block">
+                          {modalDayData.leave.status === 'APPROVED' ? 'Approved Leave Request' : 'Leave Request'}
+                        </span>
+                        <h4 className="text-base font-bold text-slate-900 mt-0.5 m-0">
+                          {modalDayData.leave.leaveTypeName}
+                        </h4>
+                      </div>
+                      <StatusBadge status={modalDayData.leave.status} />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs bg-white/80 p-3 rounded-lg border border-slate-200">
+                      <div>
+                        <span className="text-slate-500 block text-[11px]">Leave Duration</span>
+                        <span className="font-semibold text-slate-900 block">
+                          {modalDayData.leave.startDate === modalDayData.leave.endDate
+                            ? modalDayData.leave.startDate
+                            : `${modalDayData.leave.startDate} to ${modalDayData.leave.endDate}`}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[11px]">Type of Absence</span>
+                        <span className="font-semibold text-slate-900 block">
+                          {modalDayData.leave.isHalfDay
+                            ? `Half Day (${modalDayData.leave.halfDayPeriod?.replace('_', ' ')})`
+                            : 'Full Day Absence'}
+                        </span>
+                      </div>
+                    </div>
+
                     <div>
-                      <span className="text-slate-500 block text-[11px]">Type of Absence</span>
-                      <span className="font-semibold text-slate-900 block">
-                        {modalDayData.leave.isHalfDay
-                          ? `Half Day (${modalDayData.leave.halfDayPeriod?.replace('_', ' ')})`
-                          : 'Full Day Absence'}
-                      </span>
+                      <span className="text-[11px] font-semibold text-slate-700 block mb-0.5">Reason for Request:</span>
+                      <p className="text-xs text-slate-700 bg-white/80 p-2.5 rounded-lg border border-slate-200 m-0 italic">
+                        "{modalDayData.leave.reason}"
+                      </p>
                     </div>
-                  </div>
 
-                  <div>
-                    <span className="text-[11px] font-semibold text-violet-900 block mb-0.5">Reason for Request:</span>
-                    <p className="text-xs text-slate-700 bg-white/80 p-2.5 rounded-lg border border-violet-200 m-0 italic">
-                      "{modalDayData.leave.reason}"
-                    </p>
+                    {modalDayData.leave.decisionNote && (
+                      <div className="p-2.5 rounded-lg bg-white/90 border border-slate-200 text-xs">
+                        <span className="font-bold text-slate-800 block text-[11px]">Reviewer Decision Note:</span>
+                        <span className="text-slate-600">{modalDayData.leave.decisionNote}</span>
+                      </div>
+                    )}
                   </div>
-
-                  {modalDayData.leave.decisionNote && (
-                    <div className="p-2.5 rounded-lg bg-white/90 border border-violet-200 text-xs">
-                      <span className="font-bold text-slate-800 block text-[11px]">Reviewer Decision Note:</span>
-                      <span className="text-slate-600">{modalDayData.leave.decisionNote}</span>
-                    </div>
-                  )}
-                </div>
+                )
               ) : (
                 <div className="p-5 rounded-xl bg-slate-50 border border-slate-200 text-center space-y-3">
                   <Calendar className="w-8 h-8 text-slate-300 mx-auto" />
@@ -1339,52 +1442,7 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
           {/* 2. PAST DATE OR TODAY SECTION */}
           {!modalDayData.isFuture && (
             <div className="space-y-4">
-              {/* SUPERVISOR ATTENDANCE FLAG CARD (Section 3 & 6) */}
-              {modalDayData.attendance?.flagStatus && modalDayData.attendance.flagStatus !== 'NONE' && (
-                <div className="p-4 rounded-xl bg-purple-50/90 border-2 border-purple-300 space-y-2.5 shadow-2xs">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 rounded-lg bg-purple-100 text-purple-700">
-                        <AlertTriangle className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-purple-800 block">
-                          Supervisor Attendance Flag
-                        </span>
-                        <h4 className="text-sm font-bold text-purple-950 m-0">
-                          Missing Attendance Flagged
-                        </h4>
-                      </div>
-                    </div>
-                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-purple-200 text-purple-900 border border-purple-300">
-                      {modalDayData.attendance.flagStatus.replace('_', ' ')}
-                    </span>
-                  </div>
 
-                  <div className="p-3 bg-white/90 rounded-lg border border-purple-200 text-xs space-y-1.5">
-                    <div>
-                      <span className="text-slate-500 text-[11px] block font-medium">Flag Reason:</span>
-                      <span className="font-bold text-slate-800">
-                        {modalDayData.attendance.flagReason || 'Missing clock-in flagged for review'}
-                      </span>
-                    </div>
-                    {modalDayData.attendance.flagNote && (
-                      <div>
-                        <span className="text-slate-500 text-[11px] block font-medium">Supervisor Context / Note:</span>
-                        <span className="italic text-slate-700">"{modalDayData.attendance.flagNote}"</span>
-                      </div>
-                    )}
-                    <div className="text-[11px] text-slate-500 pt-1 border-t border-purple-100 flex items-center justify-between">
-                      <span>Flagged by: <strong>{modalDayData.attendance.supervisorName || 'Site Supervisor'}</strong></span>
-                      <span>Date: {modalDateStr}</span>
-                    </div>
-                  </div>
-
-                  <div className="p-2.5 bg-purple-100/60 rounded-lg text-[11px] text-purple-900 leading-relaxed border border-purple-200">
-                    ℹ️ <strong>Exception Notice:</strong> A missing attendance flag is an exception record under supervisor review, not a confirmed absence or final penalty. If you were on duty, submit an Attendance Regularization request below.
-                  </div>
-                </div>
-              )}
 
               {/* WORKER REGULARIZATION STATUS CARD (Section 4 & 5 & 6) */}
               {modalDayData.attendance?.regularization && (
@@ -1467,28 +1525,26 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
 
               {/* Attendance Session Details if clocked in or recorded as absent/missed */}
               {modalDayData.attendance ? (
-                modalDayData.attendance.isAbsent ? (() => {
+                ((Boolean(modalDayData.attendance.isAbsent) || modalDayData.attendance.status === 'ABSENT' || modalDayData.attendance.status === 'UNEXCUSED_ABSENCE' || modalDayData.attendance.flagStatus === 'REJECTED' || modalDayData.attendance.flagStatus === 'ABSENT') && modalDayData.attendance.status !== 'APPROVED') ? (() => {
                   const isExcused = modalDayData.attendance.status === 'EXCUSED_ABSENCE';
-                  const isMissing = modalDayData.attendance.status === 'MISSING_CLOCK_IN';
+                  const isMissing = (modalDayData.attendance.status === 'MISSING_CLOCK_IN' || modalDayData.attendance.status === 'MISSING') && modalDayData.attendance.flagStatus !== 'REJECTED' && modalDayData.attendance.flagStatus !== 'ABSENT';
 
                   return (
-                    <div className={`p-4 rounded-xl bg-white border shadow-2xs space-y-3 ${
-                      isExcused
-                        ? 'border-blue-200'
-                        : isMissing
+                    <div className={`p-4 rounded-xl bg-white border shadow-2xs space-y-3 ${isExcused
+                      ? 'border-blue-200'
+                      : isMissing
                         ? 'border-amber-200'
                         : 'border-rose-200'
-                    }`}>
+                      }`}>
                       <div className="flex items-start justify-between">
                         <div>
-                          <span className={`text-[11px] font-semibold uppercase tracking-wider block ${
-                            isExcused
-                              ? 'text-blue-600'
-                              : isMissing
+                          <span className={`text-[11px] font-semibold uppercase tracking-wider block ${isExcused
+                            ? 'text-blue-600'
+                            : isMissing
                               ? 'text-amber-600'
                               : 'text-rose-600'
-                          }`}>
-                            {isExcused ? 'Excused Absence' : isMissing ? 'Missing Punch Case' : 'Attendance Exception / Absence'}
+                            }`}>
+                            {isExcused ? 'Excused Absence (Approved)' : isMissing ? 'Missing Clock-In (Status: M)' : 'Confirmed Absence (Status: A)'}
                           </span>
                           <h4 className="text-base font-bold text-slate-900 mt-0.5 m-0">
                             {modalDayData.attendance.worksiteName || 'Assigned Worksite'}
@@ -1501,16 +1557,14 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
                         <StatusBadge status={modalDayData.attendance.status} />
                       </div>
 
-                      <div className={`p-3 border rounded-xl space-y-1.5 text-xs ${
-                        isExcused
-                          ? 'bg-blue-50 border-blue-200 text-blue-950'
-                          : isMissing
+                      <div className={`p-3 border rounded-xl space-y-1.5 text-xs ${isExcused
+                        ? 'bg-blue-50 border-blue-200 text-blue-950'
+                        : isMissing
                           ? 'bg-amber-50 border-amber-200 text-amber-950'
                           : 'bg-rose-50 border-rose-200 text-rose-950'
-                      }`}>
-                        <div className={`flex items-center gap-2 font-bold ${
-                          isExcused ? 'text-blue-900' : isMissing ? 'text-amber-900' : 'text-rose-900'
                         }`}>
+                        <div className={`flex items-center gap-2 font-bold ${isExcused ? 'text-blue-900' : isMissing ? 'text-amber-900' : 'text-rose-900'
+                          }`}>
                           {isExcused ? (
                             <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0" />
                           ) : isMissing ? (
@@ -1522,18 +1576,19 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
                             {isExcused
                               ? 'Excused Absence Recorded • Approved by Supervisor'
                               : isMissing
-                              ? 'Missing Clock-In (Pending Review)'
-                              : 'Unexcused Absence Recorded'}
+                                ? 'Missing Clock-In (Status: M) • Pending Supervisor Determination'
+                                : 'Confirmed Absence Recorded • Attendance Workflow Complete'}
                           </span>
                         </div>
-                        <p className={`text-[11px] m-0 ${
-                          isExcused ? 'text-blue-800' : isMissing ? 'text-amber-800' : 'text-rose-800'
-                        }`}>
-                          {modalDayData.attendance.resolutionNote
-                            ? `Supervisor Resolution: "${modalDayData.attendance.resolutionNote}"`
-                            : isExcused
-                            ? 'Your absence explanation was accepted and approved by your supervisor.'
-                            : 'No clock-in punch was logged for this scheduled workday, and no approved leave was on file.'}
+                        <p className={`text-[11px] m-0 ${isExcused ? 'text-blue-800' : isMissing ? 'text-amber-800' : 'text-rose-800'
+                          }`}>
+                          {isMissing
+                            ? 'No clock-in punch was logged for this scheduled shift. The supervisor needs to review the day before determining the final outcome. You are not marked absent prematurely.'
+                            : modalDayData.attendance.resolutionNote
+                              ? `Supervisor Resolution: "${modalDayData.attendance.resolutionNote}"`
+                              : isExcused
+                                ? 'Your absence explanation was accepted and approved by your supervisor.'
+                                : 'An unexcused absence was confirmed through the applicable attendance workflow.'}
                         </p>
                       </div>
 
@@ -1586,6 +1641,18 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
                             Your punch has been recorded and submitted. It is currently waiting for review and approval from your supervisor.
                           </span>
                         </div>
+                      </div>
+                    )}
+
+                    {modalDayData.attendance.status === 'REJECTED' && (
+                      <div className="p-3 bg-amber-50/90 border border-amber-300 rounded-xl space-y-1.5 text-xs text-amber-950">
+                        <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                          <span>Clock-In Rejected • Unresolved / Eligible for Regularization</span>
+                        </div>
+                        <p className="text-[11px] text-amber-800 m-0">
+                          Your clock-in punch was rejected by the site supervisor, but a rejected clock-in alone does not automatically mean absent. You can submit an attendance regularization or correction request below to appeal or correct the record.
+                        </p>
                       </div>
                     )}
 
@@ -1690,19 +1757,18 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
                         <div className="flex items-center justify-between pt-1 border-t border-slate-200 text-xs">
                           <span className="text-slate-500 text-[11px]">OT Decision Status:</span>
                           <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                              modalDayData.attendance.otStatus === 'APPROVED'
-                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                                : modalDayData.attendance.otStatus === 'REJECTED'
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${modalDayData.attendance.otStatus === 'APPROVED'
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                              : modalDayData.attendance.otStatus === 'REJECTED'
                                 ? 'bg-rose-100 text-rose-800 border border-rose-300'
                                 : 'bg-amber-100 text-amber-800 border border-amber-300'
-                            }`}
+                              }`}
                           >
                             {modalDayData.attendance.otStatus === 'APPROVED'
                               ? 'Approved by Supervisor'
                               : modalDayData.attendance.otStatus === 'REJECTED'
-                              ? 'Rejected by Supervisor'
-                              : 'Pending Supervisor Review'}
+                                ? 'Rejected by Supervisor'
+                                : 'Pending Supervisor Review'}
                           </span>
                         </div>
                       )}
@@ -1719,10 +1785,109 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
                       </div>
                     </div>
 
-                    {modalDayData.attendance.rejectionReason && (
+                    {/* Latest Action Metadata (Section 5) */}
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                          Latest Decision Metadata
+                        </span>
+                        {modalDayData.attendance.updatedAt && (
+                          <span className="text-[10px] text-slate-400">
+                            Updated: {new Date(modalDayData.attendance.updatedAt).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                      {modalDayData.attendance.notes && (
+                        <div>
+                          <span className="text-[11px] font-semibold text-slate-700 block">Latest Action Note:</span>
+                          <p className="text-xs text-slate-800 bg-white p-2 rounded border border-slate-200 m-0 italic">
+                            "{modalDayData.attendance.notes}"
+                          </p>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-200">
+                        <span>
+                          Action By:{' '}
+                          <strong className="text-slate-800">
+                            {modalDayData.attendance.actionByName ||
+                              (modalDayData.attendance.actionByRole
+                                ? modalDayData.attendance.actionByRole
+                                : 'Authorized Reviewer')}
+                          </strong>
+                        </span>
+                        {modalDayData.attendance.actionByRole && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-200 text-slate-700">
+                            {modalDayData.attendance.actionByRole}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Only show old supervisor rejection note if current status is actually REJECTED */}
+                    {modalDayData.attendance.status === 'REJECTED' && modalDayData.attendance.rejectionReason && (
                       <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-800">
                         <span className="font-bold block text-[11px]">Supervisor Rejection Note:</span>
                         <span>{modalDayData.attendance.rejectionReason}</span>
+                      </div>
+                    )}
+
+                    {/* Immutable Audit Trail (Section 6 & 11) */}
+                    {modalDayData.attendance.auditHistory && modalDayData.attendance.auditHistory.length > 0 && (
+                      <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                            <History className="w-3.5 h-3.5 text-blue-600" />
+                            Decision & Audit History ({modalDayData.attendance.auditHistory.length})
+                          </span>
+                          <span className="text-[10px] text-slate-400 uppercase font-semibold">
+                            Immutable Log
+                          </span>
+                        </div>
+                        <div className="space-y-2 divide-y divide-slate-100">
+                          {modalDayData.attendance.auditHistory.map((event: any, idx: number) => (
+                            <div key={event.id || idx} className="pt-2 first:pt-0 space-y-1 text-xs">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  {event.previousStatus ? (
+                                    <>
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
+                                        {event.previousStatus}
+                                      </span>
+                                      <ArrowRight className="w-3 h-3 text-slate-400" />
+                                    </>
+                                  ) : null}
+                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                    event.newStatus === 'APPROVED'
+                                      ? 'bg-emerald-100 text-emerald-800'
+                                      : event.newStatus === 'REJECTED'
+                                        ? 'bg-rose-100 text-rose-800'
+                                        : 'bg-amber-100 text-amber-800'
+                                  }`}>
+                                    {event.newStatus}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] text-slate-400">
+                                  {event.performedAt ? new Date(event.performedAt).toLocaleString() : '—'}
+                                </span>
+                              </div>
+                              {event.note && (
+                                <p className="text-[11px] text-slate-700 bg-slate-50 p-1.5 rounded border border-slate-100 m-0">
+                                  "{event.note}"
+                                </p>
+                              )}
+                              <div className="text-[10px] text-slate-500 flex items-center justify-between">
+                                <span>
+                                  Actor: <strong>{event.reviewerName || event.actorRole || 'System'}</strong>
+                                </span>
+                                {event.actionType && (
+                                  <span className="font-mono text-[9px] text-slate-400">
+                                    {event.actionType}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
 
@@ -1763,35 +1928,55 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
                       </div>
                     )}
                   </div>
-                ) : (
+                ) : userCreatedDateStr && modalDateStr < userCreatedDateStr ? (
                   <div className="p-5 rounded-xl bg-slate-50 border border-slate-200 text-center space-y-3">
-                    <AlertCircle className="w-8 h-8 text-slate-400 mx-auto" />
+                    <div className="w-10 h-10 rounded-2xl bg-slate-100 text-slate-500 flex items-center justify-center mx-auto">
+                      <Calendar className="w-5 h-5 text-slate-400" />
+                    </div>
                     <div>
-                      <h4 className="font-bold text-slate-800 text-sm m-0">No Clock-In or Leave Logged</h4>
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-200 text-slate-700 mb-1">
+                        Pre-Registration Date
+                      </div>
+                      <h4 className="font-bold text-slate-800 text-sm m-0">Account Not Active on This Date</h4>
                       <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                        No clock-in timestamp or approved leave record exists for this past date.
+                        Your employee account was created on {userCreatedDateStr}. You were not active in the system prior to this date, so no attendance was required.
                       </p>
                     </div>
-                    <div className="flex justify-center gap-2 pt-1">
+                  </div>
+                ) : (
+                  <div className="p-5 rounded-xl bg-slate-50/80 border border-slate-200 text-center space-y-3">
+                    <div className="w-10 h-10 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center mx-auto">
+                      <Building2 className="w-5 h-5 text-slate-400" />
+                    </div>
+                    <div>
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-200 text-slate-700 mb-1">
+                        No Scheduled Shift
+                      </div>
+                      <h4 className="font-bold text-slate-800 text-sm m-0">No Worksite or Shift Assigned</h4>
+                      <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                        You were not assigned to any worksite or scheduled shift on this date. No attendance clock-in was required.
+                      </p>
+                    </div>
+                    <div className="pt-2 border-t border-slate-200/60 flex flex-col sm:flex-row sm:items-center justify-center gap-2">
                       <button
                         onClick={() => handleOpenQuickApplyLeave(modalDateStr)}
-                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer"
+                        className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer transition-colors shadow-2xs"
                       >
                         Apply Retroactive Leave
                       </button>
                       <button
                         onClick={() => openRegularizationModal({
-                          id: `scheduled_absent_${modalDateStr}`,
+                          id: `unassigned_${modalDateStr}`,
                           workDate: modalDateStr,
                           date: modalDateStr,
-                          worksiteName: 'Assigned Worksite',
-                          isAbsent: true,
-                          status: 'MISSING_CLOCK_IN'
+                          worksiteName: 'Unassigned Worksite',
+                          isAbsent: false,
+                          status: 'PENDING'
                         })}
                         className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold cursor-pointer shadow-xs flex items-center gap-1"
                       >
                         <FileEdit className="w-3.5 h-3.5" />
-                        Request Regularisation
+                        Log Unscheduled Work / Regularize
                       </button>
                     </div>
                   </div>
@@ -1941,8 +2126,8 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
                   {isRegPrevMonth
                     ? '⚠️ Previous month restricted'
                     : isRegAlreadyPending
-                    ? '⏳ Request already pending'
-                    : 'Current month attendance correction'}
+                      ? '⏳ Request already pending'
+                      : 'Current month attendance correction'}
                 </span>
                 <div className="flex items-center gap-2">
                   <button
@@ -1959,10 +2144,10 @@ export const WorkerAttendanceView: React.FC<WorkerAttendanceViewProps> = ({
                       isRegPrevMonth
                         ? 'Regularization is blocked for previous calendar months'
                         : isRegAlreadyPending
-                        ? 'Request already pending'
-                        : regReason.trim().length < 5
-                        ? 'Reason must be at least 5 characters'
-                        : undefined
+                          ? 'Request already pending'
+                          : regReason.trim().length < 5
+                            ? 'Reason must be at least 5 characters'
+                            : undefined
                     }
                   >
                     {submittingReg ? 'Submitting...' : 'Submit Request'}

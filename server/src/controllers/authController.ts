@@ -96,6 +96,7 @@ export async function login(req: Request, res: Response): Promise<any> {
     employmentType: userRecord.employmentType,
     photoUrl: userRecord.photoUrl,
     isActive: userRecord.isActive,
+    createdAt: userRecord.createdAt ? new Date(userRecord.createdAt).toISOString() : null,
   };
 
   const token = generateToken(authUser);

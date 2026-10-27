@@ -21,6 +21,7 @@ export interface User {
   employmentType?: string | null;
   photoUrl?: string | null;
   isActive?: boolean;
+  createdAt?: string | null;
 }
 
 export interface Organization {
@@ -40,17 +41,19 @@ interface AuthContextType {
   isLoading: boolean;
   isInitializing: boolean;
   login: (email: string, password: string) => Promise<void>;
-  quickLogin: (role: 'SUPER_ADMIN' | 'ADMIN' | 'SUPERVISOR' | 'WORKER') => Promise<void>;
+  quickLogin: (role: 'ADMIN' | 'SUPERVISOR' | 'ENGINEER' | 'ACCOUNTANT' | 'WORKER' | 'SUPER_ADMIN') => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const PRESET_ACCOUNTS = {
-  SUPER_ADMIN: { email: 'superadmin@enterprise.com', password: 'Password123!' },
+const PRESET_ACCOUNTS: Record<string, { email: string; password: string }> = {
   ADMIN: { email: 'admin@enterprise.com', password: 'Password123!' },
+  SUPER_ADMIN: { email: 'admin@enterprise.com', password: 'Password123!' },
   SUPERVISOR: { email: 'supervisor@enterprise.com', password: 'Password123!' },
+  ENGINEER: { email: 'engineer@enterprise.com', password: 'Password123!' },
+  ACCOUNTANT: { email: 'accountant@enterprise.com', password: 'Password123!' },
   WORKER: { email: 'worker@enterprise.com', password: 'Password123!' },
 };
 
@@ -103,9 +106,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const quickLogin = async (role: 'SUPER_ADMIN' | 'ADMIN' | 'SUPERVISOR' | 'WORKER') => {
+  const quickLogin = async (role: 'ADMIN' | 'SUPERVISOR' | 'ENGINEER' | 'ACCOUNTANT' | 'WORKER' | 'SUPER_ADMIN') => {
     const creds = PRESET_ACCOUNTS[role];
-    await login(creds.email, creds.password);
+    if (creds) {
+      await login(creds.email, creds.password);
+    }
   };
 
   const logout = async () => {

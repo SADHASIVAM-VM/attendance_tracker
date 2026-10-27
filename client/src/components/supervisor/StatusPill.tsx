@@ -3,7 +3,7 @@ import { SupervisorAttendanceStatus } from '../../types/supervisor';
 import { CheckCircle2, Clock, XCircle, UserX, CalendarDays } from 'lucide-react';
 
 interface StatusPillProps {
-  status: SupervisorAttendanceStatus | 'PENDING' | 'APPROVED' | 'REJECTED';
+  status: SupervisorAttendanceStatus | 'PENDING' | 'APPROVED' | 'REJECTED' | 'REVOKED' | 'CANCELLED';
   size?: 'sm' | 'md';
   className?: string;
 }
@@ -32,6 +32,18 @@ export const StatusPill: React.FC<StatusPillProps> = ({
           bg: 'bg-[#FEE2E2] text-[#DC2626] border border-[#DC2626]/20',
           icon: XCircle,
           label: 'Rejected',
+        };
+      case 'REVOKED':
+        return {
+          bg: 'bg-rose-50 text-rose-700 border border-rose-300 font-bold',
+          icon: XCircle,
+          label: 'Revoked',
+        };
+      case 'CANCELLED':
+        return {
+          bg: 'bg-[#F1F5F9] text-[#64748B] border border-[#E2E8F0]',
+          icon: XCircle,
+          label: 'Cancelled',
         };
       case 'ON_LEAVE':
         return {

@@ -20,6 +20,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { ApplyLeaveModal } from './ApplyLeaveScreen';
+import { DataTablePagination } from '../../components/ui/data-table-pagination';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface LeaveRequest {
@@ -31,8 +32,13 @@ interface LeaveRequest {
   isHalfDay: boolean;
   halfDayPeriod: string | null;
   reason: string;
-  status: 'APPROVED' | 'PENDING' | 'REJECTED' | 'CANCELLED';
+  status: 'APPROVED' | 'PENDING' | 'REJECTED' | 'CANCELLED' | 'REVOKED';
   decisionNote: string | null;
+  decidedAt?: string | null;
+  revokedAt?: string | null;
+  revokedBy?: string | null;
+  revokedByName?: string | null;
+  revocationReason?: string | null;
   createdAt: string;
 }
 
@@ -60,6 +66,7 @@ const STATUS_CONFIG: Record<string, { label: string; icon: React.FC<any>; cls: s
   PENDING: { label: 'Pending', icon: Clock, cls: 'bg-[#FEF3C7] text-[#B45309]' },
   REJECTED: { label: 'Rejected', icon: XCircle, cls: 'bg-[#FEE2E2] text-[#DC2626]' },
   CANCELLED: { label: 'Cancelled', icon: XCircle, cls: 'bg-[#F1F5F9] text-[#94A3B8]' },
+  REVOKED: { label: 'Revoked', icon: AlertCircle, cls: 'bg-rose-50 text-rose-700 border border-rose-300 font-bold' },
 };
 
 const TYPE_META: Record<string, { icon: React.FC<any>; color: string; bg: string }> = {
@@ -88,6 +95,8 @@ export const WorkerLeaveView: React.FC = () => {
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [expandedReason, setExpandedReason] = useState<string | null>(null);
   const [withdrawing, setWithdrawing] = useState<string | null>(null);
+  const [page, setPage] = useState<number>(1);
+  const [limit, setLimit] = useState<number>(10);
 
   useEffect(() => {
     loadData();
@@ -369,7 +378,9 @@ export const WorkerLeaveView: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                requests.map((req, idx) => {
+                requests
+                  .slice((page - 1) * limit, page * limit)
+                  .map((req, idx) => {
                   const typeMeta = TYPE_META[req.leaveTypeCode] || TYPE_META.CL;
                   const TypeIcon = typeMeta.icon;
                   const sc = STATUS_CONFIG[req.status] || STATUS_CONFIG.PENDING;
@@ -446,8 +457,24 @@ export const WorkerLeaveView: React.FC = () => {
                       </td>
 
                       {/* Admin Note / Reason */}
-                      <td className="py-3.5 px-4 max-w-[180px]">
-                        {req.decisionNote ? (
+                      <td className="py-3.5 px-4 max-w-[220px]">
+                        {req.status === 'REVOKED' ? (
+                          <div className="space-y-1 text-left">
+                            <span className="text-[11px] font-bold text-rose-700 block">
+                              Revoked: "{req.revocationReason || 'No reason specified'}"
+                            </span>
+                            {req.decisionNote && (
+                              <span className="text-[10px] text-slate-500 block">
+                                Prior approval: {req.decisionNote}
+                              </span>
+                            )}
+                            {req.revokedByName && (
+                              <span className="text-[9px] text-slate-400 block">
+                                By {req.revokedByName} {req.revokedAt ? `• ${new Date(req.revokedAt).toLocaleDateString()}` : ''}
+                              </span>
+                            )}
+                          </div>
+                        ) : req.decisionNote ? (
                           <button
                             type="button"
                             onClick={() => setExpandedReason(isExpanded ? null : req.id)}
@@ -497,6 +524,25 @@ export const WorkerLeaveView: React.FC = () => {
             </tbody>
           </table>
         </div>
+
+        {requests.length > 0 && (
+          <DataTablePagination
+            metadata={{
+              total: requests.length,
+              page,
+              limit,
+              offset: (page - 1) * limit,
+              totalPages: Math.ceil(requests.length / limit),
+            }}
+            onPageChange={(p) => setPage(p)}
+            onLimitChange={(l) => {
+              setLimit(l);
+              setPage(1);
+            }}
+            pageSizeOptions={[10, 25, 50]}
+            isLoading={loading}
+          />
+        )}
       </div>
 
       {/* ── Apply Leave Modal Popup ───────────────────────────────────────── */}

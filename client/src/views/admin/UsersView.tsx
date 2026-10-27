@@ -56,197 +56,26 @@ export interface DirectoryUser {
   createdAt?: string;
 }
 
-const DEFAULT_SEED_USERS: DirectoryUser[] = [
-  {
-    id: 'usr_seed_01',
-    fullName: 'John Miller',
-    employeeCode: 'EMP-409',
-    email: 'john.miller@enterprise.com',
-    phone: '+91 98765 43210',
-    personalEmail: 'jmiller.field@gmail.com',
-    dob: '1997-06-14',
-    age: 29,
-    gender: 'Male',
-    bloodGroup: 'O+',
-    currentAddress: 'Flat 402, Sunrise Towers, Outer Ring Road, Bengaluru',
-    permanentAddress: 'Village Mandya, Near Canal Road, Karnataka',
-    address: 'Flat 402, Sunrise Towers, Outer Ring Road, Bengaluru',
-    emergencyContactName: 'Sunita Miller (Spouse)',
-    emergencyContactPhone: '+91 98450 11223',
-    photoUrl: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=300&q=80',
-    employmentType: 'full-time',
-    roles: ['WORKER'],
-    isActive: true,
-    createdAt: '2026-01-15T08:00:00Z',
-  },
-  {
-    id: 'usr_seed_02',
-    fullName: 'Priya Sundaram',
-    employeeCode: 'EMP-412',
-    email: 'priya.sundaram@enterprise.com',
-    phone: '+91 98765 88910',
-    personalEmail: 'priya.sundaram@outlook.com',
-    dob: '1999-03-22',
-    age: 27,
-    gender: 'Female',
-    bloodGroup: 'B+',
-    currentAddress: 'Plot 18, 4th Cross, Indiranagar, Bengaluru',
-    permanentAddress: '15 Gandhi Nagar, Madurai, Tamil Nadu',
-    address: 'Plot 18, 4th Cross, Indiranagar, Bengaluru',
-    emergencyContactName: 'K. Sundaram (Father)',
-    emergencyContactPhone: '+91 98760 33445',
-    photoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
-    employmentType: 'full-time',
-    roles: ['WORKER'],
-    isActive: true,
-    createdAt: '2026-02-10T09:30:00Z',
-  },
-  {
-    id: 'usr_seed_03',
-    fullName: 'Marcus Brody',
-    employeeCode: 'SUP-204',
-    email: 'marcus.brody@enterprise.com',
-    phone: '+91 98765 11223',
-    personalEmail: 'brody.marcus@yahoo.com',
-    dob: '1988-11-05',
-    age: 38,
-    gender: 'Male',
-    bloodGroup: 'A+',
-    currentAddress: '12/A Green Glen Layout, Bellandur, Bengaluru',
-    permanentAddress: '12/A Green Glen Layout, Bellandur, Bengaluru',
-    address: '12/A Green Glen Layout, Bellandur, Bengaluru',
-    emergencyContactName: 'Elena Brody (Wife)',
-    emergencyContactPhone: '+91 99001 44556',
-    photoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
-    employmentType: 'full-time',
-    roles: ['SUPERVISOR'],
-    isActive: true,
-    createdAt: '2025-11-01T10:00:00Z',
-  },
-  {
-    id: 'usr_seed_04',
-    fullName: 'Ramesh Kumar',
-    employeeCode: 'EMP-415',
-    email: 'ramesh.kumar@enterprise.com',
-    phone: '+91 98450 12345',
-    personalEmail: 'ramesh.k@rediffmail.com',
-    dob: '1992-08-19',
-    age: 34,
-    gender: 'Male',
-    bloodGroup: 'AB+',
-    currentAddress: '54 BTM Layout 2nd Stage, Bannerghatta Road, Bengaluru',
-    permanentAddress: 'Railway Colony, Hubballi, Karnataka',
-    address: '54 BTM Layout 2nd Stage, Bannerghatta Road, Bengaluru',
-    emergencyContactName: 'Manjula Kumar (Mother)',
-    emergencyContactPhone: '+91 97412 88990',
-    photoUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&q=80',
-    employmentType: 'contract',
-    roles: ['WORKER'],
-    isActive: true,
-    createdAt: '2026-03-01T08:00:00Z',
-  },
-  {
-    id: 'usr_seed_05',
-    fullName: 'Anita Sen',
-    employeeCode: 'EMP-420',
-    email: 'anita.sen@enterprise.com',
-    phone: '+91 98860 99881',
-    personalEmail: 'anita.sen.design@gmail.com',
-    dob: '2002-05-10',
-    age: 24,
-    gender: 'Female',
-    bloodGroup: 'O-',
-    currentAddress: 'Sector 3, HSR Layout, Bengaluru',
-    permanentAddress: 'Lake Gardens, South Kolkata, West Bengal',
-    address: 'Sector 3, HSR Layout, Bengaluru',
-    emergencyContactName: 'Debashis Sen (Brother)',
-    emergencyContactPhone: '+91 98300 77889',
-    photoUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=300&q=80',
-    employmentType: 'part-time',
-    roles: ['WORKER'],
-    isActive: true,
-    createdAt: '2026-04-12T11:00:00Z',
-  },
-  {
-    id: 'usr_seed_06',
-    fullName: 'Sarah Connor',
-    employeeCode: 'SUP-205',
-    email: 'sarah.connor@enterprise.com',
-    phone: '+91 98765 44332',
-    personalEmail: 'sconnor.ops@proton.me',
-    dob: '1990-09-28',
-    age: 36,
-    gender: 'Female',
-    bloodGroup: 'A-',
-    currentAddress: '29 Koramangala 5th Block, Bengaluru',
-    permanentAddress: '29 Koramangala 5th Block, Bengaluru',
-    address: '29 Koramangala 5th Block, Bengaluru',
-    emergencyContactName: 'John Connor (Son)',
-    emergencyContactPhone: '+91 99887 66554',
-    photoUrl: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=300&q=80',
-    employmentType: 'full-time',
-    roles: ['SUPERVISOR'],
-    isActive: true,
-    createdAt: '2025-10-15T09:00:00Z',
-  },
-  {
-    id: 'usr_seed_07',
-    fullName: 'Arthur Dent',
-    employeeCode: 'ADM-101',
-    email: 'admin@enterprise.com',
-    phone: '+91 99000 11223',
-    personalEmail: 'arthur.dent@galaxy.org',
-    dob: '1984-04-01',
-    age: 42,
-    gender: 'Male',
-    bloodGroup: 'B-',
-    currentAddress: '101 Whitefield Main Road, Bengaluru',
-    permanentAddress: 'Country Cottage, Cottington, England',
-    address: '101 Whitefield Main Road, Bengaluru',
-    emergencyContactName: 'Trillian Astra (Partner)',
-    emergencyContactPhone: '+91 98111 22334',
-    photoUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=300&q=80',
-    employmentType: 'full-time',
-    roles: ['ADMIN'],
-    isActive: true,
-    createdAt: '2025-08-01T08:00:00Z',
-  },
-  {
-    id: 'usr_seed_08',
-    fullName: 'Manoj Tiwari',
-    employeeCode: 'EMP-428',
-    email: 'manoj.tiwari@enterprise.com',
-    phone: '+91 97410 88776',
-    personalEmail: 'tiwari.manoj@gmail.com',
-    dob: '1995-12-03',
-    age: 31,
-    gender: 'Male',
-    bloodGroup: 'O+',
-    currentAddress: 'Kalyan Nagar, Near Ring Road, Bengaluru',
-    permanentAddress: 'Civil Lines, Varanasi, Uttar Pradesh',
-    address: 'Kalyan Nagar, Near Ring Road, Bengaluru',
-    emergencyContactName: 'Rajesh Tiwari (Brother)',
-    emergencyContactPhone: '+91 94150 55667',
-    photoUrl: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=300&q=80',
-    employmentType: 'contract',
-    roles: ['WORKER'],
-    isActive: true,
-    createdAt: '2026-05-18T08:00:00Z',
-  },
-];
+export const getRoleBadgeClasses = (role: string) => {
+  switch (role) {
+    case 'ADMIN':
+    case 'SUPER_ADMIN':
+      return 'bg-indigo-50 text-indigo-700 border border-indigo-200';
+    case 'SUPERVISOR':
+      return 'bg-purple-50 text-purple-700 border border-purple-200';
+    case 'ENGINEER':
+      return 'bg-sky-50 text-sky-700 border border-sky-200';
+    case 'ACCOUNTANT':
+      return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+    case 'WORKER':
+    default:
+      return 'bg-slate-100 text-slate-800 border border-slate-200';
+  }
+};
 
 export const UsersView: React.FC = () => {
-  const [usersList, setUsersList] = useState<DirectoryUser[]>(() => {
-    try {
-      const cached = localStorage.getItem('attendance_users_cache');
-      if (cached) {
-        return JSON.parse(cached);
-      }
-    } catch (e) {
-      // ignore
-    }
-    return DEFAULT_SEED_USERS;
-  });
+  const [usersList, setUsersList] = useState<DirectoryUser[]>([]);
+  const [rolesList, setRolesList] = useState<Array<{ id?: string; name: string; description?: string }>>([]);
 
   const [loading, setLoading] = useState<boolean>(true);
   const [modalOpen, setModalOpen] = useState<boolean>(false);
@@ -276,6 +105,21 @@ export const UsersView: React.FC = () => {
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('table');
 
   useEffect(() => {
+    loadRoles();
+  }, []);
+
+  const loadRoles = async () => {
+    try {
+      const res = await apiRequest<Array<{ id?: string; name: string; description?: string }>>('/roles');
+      if (Array.isArray(res) && res.length > 0) {
+        setRolesList(res);
+      }
+    } catch (err) {
+      console.warn('Could not fetch roles from DB:', err);
+    }
+  };
+
+  useEffect(() => {
     loadUsers();
   }, [page, limit, sortFilter, searchQuery, typeFilter, roleFilter, statusFilter]);
 
@@ -298,80 +142,57 @@ export const UsersView: React.FC = () => {
       if (statusFilter !== 'ALL') params.append('status', statusFilter);
 
       const res = await apiRequest(`/users?${params.toString()}`);
-      const rawData = res && res.data ? res.data : (Array.isArray(res) ? res : []);
+      const rawData = res && res.data ? res.data : Array.isArray(res) ? res : [];
 
-      if (Array.isArray(rawData) && rawData.length > 0) {
-        // Merge with local seed fields for missing age/photo/address/employmentType
-        const merged: DirectoryUser[] = rawData.map((u: any, idx: number) => {
-          const fallbackSeed = DEFAULT_SEED_USERS[idx % DEFAULT_SEED_USERS.length];
-          return {
-            id: u.id,
-            fullName: u.fullName || fallbackSeed.fullName,
-            employeeCode: u.employeeCode || fallbackSeed.employeeCode,
-            email: u.email || fallbackSeed.email,
-            phone: u.phone || fallbackSeed.phone,
-            personalEmail: u.personalEmail || fallbackSeed.personalEmail,
-            dob: u.dob || fallbackSeed.dob,
-            age: u.age || fallbackSeed.age || 28,
-            gender: u.gender || fallbackSeed.gender,
-            bloodGroup: u.bloodGroup || fallbackSeed.bloodGroup,
-            currentAddress: u.currentAddress || u.address || fallbackSeed.currentAddress,
-            permanentAddress: u.permanentAddress || fallbackSeed.permanentAddress,
-            address: u.currentAddress || u.address || fallbackSeed.address,
-            emergencyContactName: u.emergencyContactName || fallbackSeed.emergencyContactName,
-            emergencyContactPhone: u.emergencyContactPhone || fallbackSeed.emergencyContactPhone,
-            photoUrl: u.photoUrl || fallbackSeed.photoUrl,
-            employmentType: (u.employmentType as EmploymentType) || fallbackSeed.employmentType || 'full-time',
-            roles: u.roles || ['WORKER'],
-            isActive: u.isActive !== undefined ? u.isActive : true,
-            createdAt: u.createdAt || new Date().toISOString(),
-          };
-        });
-        setUsersList(merged);
-        localStorage.setItem('attendance_users_cache', JSON.stringify(merged));
+      const formatted: DirectoryUser[] = (rawData || []).map((u: any) => ({
+        id: u.id,
+        fullName: u.fullName || 'Unnamed Personnel',
+        employeeCode: u.employeeCode || '—',
+        email: u.email || '',
+        phone: u.phone || '',
+        personalEmail: u.personalEmail || '',
+        dob: u.dob || '',
+        age: u.age ?? undefined,
+        gender: u.gender || '',
+        bloodGroup: u.bloodGroup || '',
+        currentAddress: u.currentAddress || u.address || '',
+        permanentAddress: u.permanentAddress || '',
+        address: u.currentAddress || u.address || '',
+        emergencyContactName: u.emergencyContactName || '',
+        emergencyContactPhone: u.emergencyContactPhone || '',
+        photoUrl: u.photoUrl || '',
+        employmentType: (u.employmentType as EmploymentType) || 'full-time',
+        roles: Array.isArray(u.roles) ? u.roles : [],
+        isActive: u.isActive !== undefined ? u.isActive : true,
+        createdAt: u.createdAt || new Date().toISOString(),
+      }));
 
-        if (res && res.pagination) {
-          setPagination(res.pagination);
-        } else {
-          setPagination({
-            total: merged.length,
-            page,
-            limit,
-            offset,
-            totalPages: Math.ceil(merged.length / limit) || 1,
-            hasNextPage: offset + limit < merged.length,
-            hasPrevPage: page > 1,
-          });
-        }
+      setUsersList(formatted);
+
+      if (res && res.pagination) {
+        setPagination(res.pagination);
       } else {
-        // Empty or cached fallback
-        if (res && res.pagination) {
-          setUsersList([]);
-          setPagination(res.pagination);
-        } else {
-          const cached = localStorage.getItem('attendance_users_cache');
-          const fallbackData = cached ? JSON.parse(cached) : DEFAULT_SEED_USERS;
-          setUsersList(fallbackData);
-          setPagination({
-            total: fallbackData.length,
-            page: 1,
-            limit,
-            offset: 0,
-            totalPages: Math.ceil(fallbackData.length / limit) || 1,
-          });
-        }
+        setPagination({
+          total: formatted.length,
+          page,
+          limit,
+          offset,
+          totalPages: Math.ceil(formatted.length / limit) || 1,
+          hasNextPage: offset + limit < formatted.length,
+          hasPrevPage: page > 1,
+        });
       }
     } catch (err: any) {
-      console.warn('API error loading users, falling back to local dataset:', err);
-      const cached = localStorage.getItem('attendance_users_cache');
-      const fallbackData = cached ? JSON.parse(cached) : DEFAULT_SEED_USERS;
-      setUsersList(fallbackData);
+      console.warn('API error loading users:', err);
+      setUsersList([]);
       setPagination({
-        total: fallbackData.length,
+        total: 0,
         page: 1,
         limit,
         offset: 0,
-        totalPages: Math.ceil(fallbackData.length / limit) || 1,
+        totalPages: 1,
+        hasNextPage: false,
+        hasPrevPage: false,
       });
     } finally {
       setLoading(false);
@@ -873,16 +694,17 @@ export const UsersView: React.FC = () => {
           <div className="h-4 w-[1px] bg-slate-200 mx-1 hidden sm:block" />
 
           <span className="text-[11px] font-bold text-[#64748B] ml-1">Role:</span>
-          {(['ALL', 'WORKER', 'SUPERVISOR', 'ADMIN'] as const).map((r) => {
+          {['ALL', ...(rolesList.length > 0 ? rolesList.map((r) => r.name) : ['ADMIN', 'SUPERVISOR', 'ENGINEER', 'ACCOUNTANT', 'WORKER'])].map((r) => {
             const isActive = roleFilter === r;
-            const label =
-              r === 'ALL'
-                ? 'All Roles'
-                : r === 'WORKER'
-                ? 'Workers'
-                : r === 'SUPERVISOR'
-                ? 'Supervisors'
-                : 'Admins';
+            const roleLabels: Record<string, string> = {
+              ALL: 'All Roles',
+              ADMIN: 'Admins',
+              SUPERVISOR: 'Supervisors',
+              ENGINEER: 'Engineers',
+              ACCOUNTANT: 'Accountants',
+              WORKER: 'Workers',
+            };
+            const label = roleLabels[r] || r;
             return (
               <button
                 key={r}
@@ -1057,13 +879,7 @@ export const UsersView: React.FC = () => {
                             {u.roles.map((r) => (
                               <span
                                 key={r}
-                                className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                                  r === 'SUPERVISOR'
-                                    ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                                    : r === 'ADMIN' || r === 'SUPER_ADMIN'
-                                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                                    : 'bg-slate-100 text-slate-800'
-                                }`}
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${getRoleBadgeClasses(r)}`}
                               >
                                 {r.replace('_', ' ')}
                               </span>
@@ -1222,7 +1038,7 @@ export const UsersView: React.FC = () => {
                     {u.roles.map((r) => (
                       <span
                         key={r}
-                        className="text-[10px] font-bold bg-[#F8FAFC] text-[#475569] border border-[#E2E8F0] px-2 py-0.5 rounded-md"
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${getRoleBadgeClasses(r)}`}
                       >
                         {r.replace('_', ' ')}
                       </span>
@@ -1332,7 +1148,7 @@ export const UsersView: React.FC = () => {
             emergencyContactPhone: userToEdit.emergencyContactPhone || '',
             photoUrl: userToEdit.photoUrl || '',
             employmentType: userToEdit.employmentType || 'full-time',
-            role: (userToEdit.roles[0] as UserRole) || 'WORKER',
+            role: ((userToEdit.roles[0] === 'SUPER_ADMIN' ? 'ADMIN' : userToEdit.roles[0]) as UserRole) || 'WORKER',
           }}
         />
       )}
@@ -1541,7 +1357,7 @@ export const UsersView: React.FC = () => {
                         {selectedUserDetail.roles.map((r) => (
                           <span
                             key={r}
-                            className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#E6F7EF] text-[#12A66A]"
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded ${getRoleBadgeClasses(r)}`}
                           >
                             {r.replace('_', ' ')}
                           </span>
