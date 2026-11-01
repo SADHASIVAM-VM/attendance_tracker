@@ -39,7 +39,9 @@ import {
   EyeIcon,
   Profile2Icon,
   HelpCircleIcon,
+  RefreshCcwIcon,
 } from '@astraicons/react/linear';
+import { AlertCircle, CheckSquare, Search, SlidersIcon, Square } from 'lucide-react';
 
 export type SupervisorSection =
   | 'today-attendance'
@@ -576,8 +578,8 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
       {flashMessage && (
         <div
           className={`p-4 rounded-2xl text-xs font-semibold border flex items-center justify-between shadow-xs transition-all ${flashMessage.type === 'success'
-              ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
-              : 'bg-rose-50 text-rose-900 border-rose-200'
+            ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+            : 'bg-rose-50 text-rose-900 border-rose-200'
             }`}
         >
           <div className="flex items-center gap-2.5">
@@ -609,8 +611,8 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
               setActiveCardFilter('TOTAL');
             }}
             className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${section === 'today-attendance' && activeCardFilter === 'TOTAL'
-                ? 'bg-[#F0FDF4] border-2 border-[#12A66A] shadow-xs ring-1 ring-[#12A66A]'
-                : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
+              ? 'bg-[#F0FDF4] border-2 border-[#12A66A] shadow-xs ring-1 ring-[#12A66A]'
+              : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
               }`}
           >
             <div className="flex items-center justify-between mb-1.5">
@@ -629,8 +631,8 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
               setActiveCardFilter('APPROVED');
             }}
             className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${section === 'today-attendance' && activeCardFilter === 'APPROVED'
-                ? 'bg-[#E6F7EF] border-2 border-[#12A66A] shadow-xs ring-1 ring-[#12A66A]'
-                : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
+              ? 'bg-[#E6F7EF] border-2 border-[#12A66A] shadow-xs ring-1 ring-[#12A66A]'
+              : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
               }`}
           >
             <div className="flex items-center justify-between mb-1.5">
@@ -649,8 +651,8 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
               setActiveCardFilter('REJECTED');
             }}
             className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${section === 'today-attendance' && activeCardFilter === 'REJECTED'
-                ? 'bg-rose-50 border-2 border-rose-500 shadow-xs ring-1 ring-rose-400'
-                : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
+              ? 'bg-rose-50 border-2 border-rose-500 shadow-xs ring-1 ring-rose-400'
+              : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
               }`}
           >
             <div className="flex items-center justify-between mb-1.5">
@@ -669,8 +671,8 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
               setActiveCardFilter('PENDING');
             }}
             className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${section === 'today-attendance' && activeCardFilter === 'PENDING'
-                ? 'bg-amber-50 border-2 border-amber-500 shadow-xs ring-1 ring-amber-400'
-                : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
+              ? 'bg-amber-50 border-2 border-amber-500 shadow-xs ring-1 ring-amber-400'
+              : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
               }`}
           >
             <div className="flex items-center justify-between mb-1.5">
@@ -688,8 +690,8 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
               handleSectionClick('missing-attendance');
             }}
             className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${section === 'missing-attendance'
-                ? 'bg-amber-100/70 border-2 border-amber-600 shadow-xs ring-1 ring-amber-500'
-                : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
+              ? 'bg-amber-100/70 border-2 border-amber-600 shadow-xs ring-1 ring-amber-500'
+              : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
               }`}
           >
             <div className="flex items-center justify-between mb-1.5">
@@ -708,8 +710,8 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
               setActiveCardFilter('FLAGGED');
             }}
             className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between ${section === 'today-attendance' && activeCardFilter === 'FLAGGED'
-                ? 'bg-purple-50 border-2 border-purple-600 shadow-xs ring-1 ring-purple-500'
-                : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
+              ? 'bg-purple-50 border-2 border-purple-600 shadow-xs ring-1 ring-purple-500'
+              : 'bg-white border border-[#E8EEF4] hover:border-slate-300'
               }`}
           >
             <div className="flex items-center justify-between mb-1.5">
@@ -730,8 +732,8 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
               type="button"
               onClick={() => handleSectionClick('today-attendance')}
               className={`cursor-pointer whitespace-nowrap transition-all ${section === 'today-attendance'
-                  ? 'bg-[#1E1F24] text-white px-5 py-2.5 rounded-full text-xs font-bold shadow-xs flex items-center gap-2'
-                  : 'bg-white text-[#464853] border border-[#E8EEF4] hover:bg-[#F8FAFC] px-5 py-2.5 rounded-full text-xs font-semibold shadow-2xs flex items-center gap-2'
+                ? 'bg-[#1E1F24] text-white px-5 py-2.5 rounded-full text-xs font-bold shadow-xs flex items-center gap-2'
+                : 'bg-white text-[#464853] border border-[#E8EEF4] hover:bg-[#F8FAFC] px-5 py-2.5 rounded-full text-xs font-semibold shadow-2xs flex items-center gap-2'
                 }`}
             >
               <GroupIcon className={`w-3.5 h-3.5 ${section === 'today-attendance' ? 'text-[#01B075]' : 'text-[#8C90A0]'}`} />
@@ -748,8 +750,8 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
               type="button"
               onClick={() => handleSectionClick('missing-attendance')}
               className={`cursor-pointer whitespace-nowrap transition-all ${section === 'missing-attendance'
-                  ? 'bg-[#1E1F24] text-white px-5 py-2.5 rounded-full text-xs font-bold shadow-xs flex items-center gap-2'
-                  : 'bg-white text-[#464853] border border-[#E8EEF4] hover:bg-[#F8FAFC] px-5 py-2.5 rounded-full text-xs font-semibold shadow-2xs flex items-center gap-2'
+                ? 'bg-[#1E1F24] text-white px-5 py-2.5 rounded-full text-xs font-bold shadow-xs flex items-center gap-2'
+                : 'bg-white text-[#464853] border border-[#E8EEF4] hover:bg-[#F8FAFC] px-5 py-2.5 rounded-full text-xs font-semibold shadow-2xs flex items-center gap-2'
                 }`}
             >
               <ErrorProfileIcon className={`w-3.5 h-3.5 ${section === 'missing-attendance' ? 'text-amber-400' : 'text-[#8C90A0]'}`} />
@@ -805,8 +807,8 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                     setSelectedWorkerIds([]);
                   }}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${multiSelectMode
-                      ? 'bg-slate-800 text-white shadow-xs'
-                      : 'bg-white border border-[#E8EEF4] text-[#12A66A] hover:bg-[#E6F7EF]'
+                    ? 'bg-slate-800 text-white shadow-xs'
+                    : 'bg-white border border-[#E8EEF4] text-[#12A66A] hover:bg-[#E6F7EF]'
                     }`}
                 >
                   <CheckSquare className="w-3.5 h-3.5" />
@@ -846,8 +848,8 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                   setActiveCardFilter(activeCardFilter === 'PENDING' ? 'TOTAL' : 'PENDING')
                 }
                 className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${activeCardFilter === 'PENDING'
-                    ? 'bg-amber-600 text-white shadow-xs'
-                    : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
                   }`}
               >
                 <ClockIcon className="w-3.5 h-3.5" />
@@ -1111,7 +1113,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                             <td className="py-3 px-4 whitespace-nowrap">
                               <div className="space-y-0.5">
                                 <div className="flex items-center gap-1 text-xs font-semibold tabular-nums text-slate-800">
-                                  <Clock className="w-3.5 h-3.5 text-[#12A66A]" />
+                                  <ClockIcon className="w-3.5 h-3.5 text-[#12A66A]" />
                                   <span>{worker.clockInTime ? worker.clockInTime : 'Not clocked in'}</span>
                                   {worker.clockOutTime && <span className="text-slate-400 font-normal"> – {worker.clockOutTime}</span>}
                                 </div>
@@ -1357,7 +1359,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
             <div className="lg:col-span-1 bg-white border border-[#E8EEF4] rounded-[20px] p-5 shadow-xs space-y-4">
               <div>
                 <h3 className="text-base font-bold text-slate-900 m-0 flex items-center gap-2">
-                  <Sliders className="w-5 h-5 text-slate-700" />
+                  <SlidersIcon className="w-5 h-5 text-slate-700" />
                   Supervisor Override
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
@@ -1551,7 +1553,7 @@ export const SupervisorAttendanceTab: React.FC<SupervisorAttendanceTabProps> = (
                   disabled={isLoadingOverrides}
                   className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingOverrides ? 'animate-spin' : ''}`} />
+                  <RefreshCcwIcon className={`w-3.5 h-3.5 ${isLoadingOverrides ? 'animate-spin' : ''}`} />
                   Refresh
                 </button>
               </div>

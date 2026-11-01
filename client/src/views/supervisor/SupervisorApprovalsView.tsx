@@ -57,6 +57,8 @@ export const SupervisorApprovalsView: React.FC = () => {
   const [searchWorker, setSearchWorker] = useState<string>('');
   const [filterDate, setFilterDate] = useState<string>('');
   const [filterExceptionType, setFilterExceptionType] = useState<string>('');
+  const [delegatedScope, setDelegatedScope] = useState<any>(null);
+  const [scopeFilter, setScopeFilter] = useState<'ALL' | 'PRIMARY' | 'DELEGATED'>('ALL');
 
   // Selected item for inspection / actions
   const [inspectItem, setInspectItem] = useState<any | null>(null);
@@ -100,11 +102,16 @@ export const SupervisorApprovalsView: React.FC = () => {
       if (filterDate) params.append('endDate', filterDate);
       if (filterExceptionType) params.append('exceptionType', filterExceptionType);
 
-      const [res, otRes, regRes] = await Promise.all([
+      const [res, otRes, regRes, scopeRes] = await Promise.all([
         apiRequest(`/supervisor/queues?${params.toString()}`),
         apiRequest(`/overtime/pending?${params.toString()}`).catch(() => []),
         apiRequest(`/regularization/pending`).catch(() => []),
+        apiRequest(`/supervisor/delegated-scope`).catch(() => null),
       ]);
+
+      if (scopeRes && scopeRes.hasActiveDelegation) {
+        setDelegatedScope(scopeRes);
+      }
 
       if (res) {
         setPendingAttendance(res.pendingAttendance || []);
@@ -370,14 +377,26 @@ export const SupervisorApprovalsView: React.FC = () => {
     }
   };
 
-  // Search filter
+  // Search and Scope filter
   const filterList = (list: any[]) => {
-    if (!searchWorker.trim()) return list;
+    let result = list;
+    if (scopeFilter === 'DELEGATED') {
+      result = result.filter(
+        (item) => item.isDelegated || (item.worksiteId && delegatedScope?.delegatedWorksiteIds?.includes(item.worksiteId))
+      );
+    } else if (scopeFilter === 'PRIMARY') {
+      result = result.filter(
+        (item) => !item.isDelegated && (!item.worksiteId || !delegatedScope?.delegatedWorksiteIds?.includes(item.worksiteId))
+      );
+    }
+
+    if (!searchWorker.trim()) return result;
     const q = searchWorker.toLowerCase();
-    return list.filter(
+    return result.filter(
       (item) =>
         (item.workerName && item.workerName.toLowerCase().includes(q)) ||
-        (item.employeeCode && item.employeeCode.toLowerCase().includes(q))
+        (item.employeeCode && item.employeeCode.toLowerCase().includes(q)) ||
+        (item.worksiteName && item.worksiteName.toLowerCase().includes(q))
     );
   };
 
@@ -401,6 +420,36 @@ export const SupervisorApprovalsView: React.FC = () => {
           <span>Refresh Queues</span>
         </button>
       </div>
+
+      {/* ACTIVE DELEGATION COVERAGE BANNER */}
+      {delegatedScope?.hasActiveDelegation && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-[#E6F7EF] via-[#F0FDF4] to-white border border-[#A7F3D0] shadow-xs flex items-center justify-between gap-3 animate-in slide-in-from-top duration-300">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-[#12A66A] text-white flex items-center justify-center shrink-0 shadow-xs">
+              <SecuritySafeIcon className="w-5 h-5 stroke-[2.2]" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black uppercase tracking-wider bg-[#12A66A] text-white px-2 py-0.5 rounded-full">
+                  Temporary Coverage Active
+                </span>
+                <span className="text-xs text-[#0E8F5B] font-bold">
+                  Covering: {delegatedScope.activeDelegations.map((d: any) => `${d.worksiteName} (${d.primarySupervisorName})`).join(', ')}
+                </span>
+              </div>
+              <p className="text-xs text-[#475569] mt-0.5 m-0">
+                You have authorized delegation permissions for attendance, leave, and regularization approvals for these sites until {delegatedScope.activeDelegations[0]?.endDate || 'End of leave'}.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-xs font-bold px-2.5 py-1 rounded-xl bg-white border border-[#A7F3D0] text-[#0E8F5B]">
+              {delegatedScope.delegatedWorkerCount} Delegated Workers
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Toast Banner */}
       {message && (
@@ -574,18 +623,38 @@ export const SupervisorApprovalsView: React.FC = () => {
           )}
         </div>
 
-        {(filterDate || searchWorker || filterExceptionType) && (
-          <button
-            onClick={() => {
-              setFilterDate('');
-              setSearchWorker('');
-              setFilterExceptionType('');
-            }}
-            className="text-xs font-semibold text-slate-500 hover:text-slate-800 cursor-pointer"
-          >
-            Clear Filters
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {delegatedScope?.hasActiveDelegation && (
+            <div className="flex items-center gap-1 bg-[#F8FAFC] p-1 rounded-full border border-[#E8EEF4]">
+              {(['ALL', 'PRIMARY', 'DELEGATED'] as const).map((sc) => (
+                <button
+                  key={sc}
+                  onClick={() => setScopeFilter(sc)}
+                  className={`px-3 py-1 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
+                    scopeFilter === sc
+                      ? 'bg-[#12A66A] text-white shadow-2xs'
+                      : 'text-[#64748B] hover:text-[#111827]'
+                  }`}
+                >
+                  {sc === 'ALL' ? 'All Scope' : sc === 'PRIMARY' ? 'Primary Sites' : 'Delegated Coverage'}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {(filterDate || searchWorker || filterExceptionType) && (
+            <button
+              onClick={() => {
+                setFilterDate('');
+                setSearchWorker('');
+                setFilterExceptionType('');
+              }}
+              className="text-xs font-semibold text-slate-500 hover:text-slate-800 cursor-pointer"
+            >
+              Clear Filters
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ─── TAB CONTENT ─── */}
@@ -635,6 +704,19 @@ export const SupervisorApprovalsView: React.FC = () => {
                           {item.requestAge}
                         </span>
                       </div>
+
+                      {/* Delegation Badge if applicable */}
+                      {(item.isDelegated || (item.worksiteId && delegatedScope?.delegatedWorksiteIds?.includes(item.worksiteId))) && (
+                        <div className="px-2.5 py-1 rounded-xl bg-[#E6F7EF] text-[#0E8F5B] border border-[#A7F3D0] text-[10px] font-bold flex items-center justify-between">
+                          <span className="flex items-center gap-1">
+                            <SecuritySafeIcon className="w-3.5 h-3.5 text-[#12A66A]" />
+                            Delegated Coverage Responsibility
+                          </span>
+                          {item.assignmentSupervisorId && (
+                            <span className="text-[#065F46] font-extrabold">Delegated Scope</span>
+                          )}
+                        </div>
+                      )}
 
                       {/* Worksite & Shift */}
                       <div className="bg-slate-50 rounded-xl p-3 text-xs space-y-1.5 border border-slate-100">

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiRequest, downloadFile } from '../../lib/api';
 import { StatCard } from '../../components/common/StatCard';
 import { DataTablePagination } from '../../components/ui/data-table-pagination';
+import { DateRangePicker } from '../../components/ui/date-range-picker';
 import {
   DollarSign,
   CheckCircle,
@@ -133,10 +134,32 @@ export const SiteExpensesTab: React.FC = () => {
     }
   };
 
-  const totalAmount = summary?.totalAmount || 0;
-  const approvedAmount = summary?.approvedAmount || 0;
-  const pendingAmount = summary?.pendingAmount || 0;
-  const totalCount = summary?.totalCount || expenses.length;
+  const expensesList = Array.isArray(expenses) ? expenses : [];
+
+  // Actual data calculation from backend summary or fallback to loaded expenses list
+  const totalAmount =
+    summary?.totalExpensesAmount ??
+    summary?.totalAmount ??
+    expensesList.reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
+
+  const approvedAmount =
+    summary?.totalApprovedAmount ??
+    summary?.approvedAmount ??
+    expensesList
+      .filter((e) => e.status === 'APPROVED')
+      .reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
+
+  const pendingAmount =
+    summary?.totalPendingAmount ??
+    summary?.pendingAmount ??
+    expensesList
+      .filter((e) => e.status === 'PENDING')
+      .reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
+
+  const totalCount = summary?.totalCount ?? expensesList.length;
+  const approvedCount = expensesList.filter((e) => e.status === 'APPROVED').length;
+  const pendingCount = expensesList.filter((e) => e.status === 'PENDING').length;
+  const rejectedCount = expensesList.filter((e) => e.status === 'REJECTED').length;
 
   return (
     <div className="space-y-6">
@@ -166,54 +189,63 @@ export const SiteExpensesTab: React.FC = () => {
           value={`₹${totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           icon={Receipt}
           badge={`${totalCount} vouchers`}
+          change=""
+          timeframe=""
         />
         <StatCard
           title="Approved (Payroll Eligible)"
           value={`₹${approvedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           icon={CheckCircle}
-          badgeColor="text-emerald-700 bg-emerald-50"
+          badge={`${approvedCount} vouchers`}
+          badgeColor="text-emerald-700 bg-emerald-50 border border-emerald-200"
+          change=""
+          timeframe=""
         />
         <StatCard
           title="Pending Approval"
           value={`₹${pendingAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           icon={Clock}
-          badgeColor="text-amber-700 bg-amber-50"
+          badge={`${pendingCount} vouchers`}
+          badgeColor="text-amber-700 bg-amber-50 border border-amber-200"
+          change=""
+          timeframe=""
         />
         <StatCard
           title="Rejected Vouchers"
-          value={`${expenses.filter((e) => e.status === 'REJECTED').length}`}
+          value={`${rejectedCount}`}
           icon={AlertTriangle}
-          badgeColor="text-rose-700 bg-rose-50"
+          badge={`${rejectedCount} vouchers`}
+          badgeColor="text-rose-700 bg-rose-50 border border-rose-200"
+          change=""
+          timeframe=""
         />
       </div>
 
       {/* Filters */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap gap-3 items-center">
-        <div className="flex items-center gap-1.5 text-xs text-slate-500 font-semibold uppercase">
-          <Filter className="w-3.5 h-3.5" />
-          Filters:
+      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex flex-wrap gap-3 items-center">
+        <div className="flex items-center gap-1.5 text-xs text-slate-500 font-bold uppercase tracking-wider">
+          <Filter className="w-3.5 h-3.5 text-slate-400" />
+          <span>Filters:</span>
         </div>
 
-        <input
-          type="date"
-          value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
-          placeholder="Start Date"
-          className="text-xs p-2 rounded-xl border border-slate-200 bg-slate-50"
-        />
-
-        <input
-          type="date"
-          value={endDate}
-          onChange={(e) => setEndDate(e.target.value)}
-          placeholder="End Date"
-          className="text-xs p-2 rounded-xl border border-slate-200 bg-slate-50"
+        {/* Shadcn UI Styled Date Range Picker */}
+        <DateRangePicker
+          startDate={startDate}
+          endDate={endDate}
+          onChange={(range) => {
+            setStartDate(range.startDate);
+            setEndDate(range.endDate);
+            setPage(1);
+          }}
         />
 
         <select
           value={worksiteId}
-          onChange={(e) => setWorksiteId(e.target.value)}
-          className="text-xs p-2 rounded-xl border border-slate-200 bg-slate-50"
+          onChange={(e) => {
+            setWorksiteId(e.target.value);
+            setPage(1);
+          }}
+          className="text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white hover:border-slate-300 font-medium text-slate-700 shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#12A66A]/20 cursor-pointer"
         >
           <option value="">All Worksites</option>
           {worksites.map((s) => (
@@ -225,8 +257,11 @@ export const SiteExpensesTab: React.FC = () => {
 
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="text-xs p-2 rounded-xl border border-slate-200 bg-slate-50"
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setPage(1);
+          }}
+          className="text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white hover:border-slate-300 font-medium text-slate-700 shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#12A66A]/20 cursor-pointer"
         >
           <option value="">All Statuses</option>
           <option value="PENDING">Pending Review</option>
@@ -241,10 +276,12 @@ export const SiteExpensesTab: React.FC = () => {
               setEndDate('');
               setWorksiteId('');
               setStatusFilter('');
+              setPage(1);
             }}
-            className="text-xs text-slate-500 hover:text-slate-800 underline cursor-pointer ml-auto"
+            className="text-xs text-rose-600 hover:text-rose-700 font-semibold cursor-pointer ml-auto flex items-center gap-1 hover:underline"
           >
-            Clear Filters
+            <X className="w-3.5 h-3.5" />
+            <span>Clear Filters</span>
           </button>
         )}
       </div>

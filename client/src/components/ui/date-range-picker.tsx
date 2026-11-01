@@ -239,8 +239,11 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
       >
         <CalenderIcon className="w-4 h-4 text-[#12A66A] shrink-0" />
         <span className="tabular-nums">
-          {startDate ? formatHumanDate(startDate) : 'Start date'} –{' '}
-          {endDate ? formatHumanDate(endDate) : 'End date'}
+          {startDate && endDate
+            ? `${formatHumanDate(startDate)} – ${formatHumanDate(endDate)}`
+            : startDate
+            ? `${formatHumanDate(startDate)} – End date`
+            : 'Select date range'}
         </span>
       </button>
 

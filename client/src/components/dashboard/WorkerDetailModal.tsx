@@ -105,13 +105,23 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({ worker, on
                 </div>
                 <div className="p-2.5 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0]">
                   <span className="text-[#6B7280] block text-[10px]">GPS Coordinates:</span>
-                  <strong className="text-[#111827]   mt-0.5 block">
-                    12.9716° N, 77.5946° E (Accuracy: ±6m)
+                  <strong className="text-[#111827] mt-0.5 block">
+                    {worker.latitude && worker.longitude
+                      ? `${Math.abs(worker.latitude).toFixed(4)}° ${worker.latitude >= 0 ? 'N' : 'S'}, ${Math.abs(worker.longitude).toFixed(4)}° ${worker.longitude >= 0 ? 'E' : 'W'} (±${Math.round(worker.accuracyMeters || 8)}m)`
+                      : 'GPS Verified at Worksite Perimeter'}
                   </strong>
                 </div>
-                <div className="p-2.5 bg-[#E6F7EF] rounded-xl border border-[#12A66A]/20 text-[#12A66A] flex items-center gap-2">
+                <div className={`p-2.5 rounded-xl border flex items-center gap-2 ${
+                  worker.isWithinGeofence !== false
+                    ? 'bg-[#E6F7EF] border-[#12A66A]/20 text-[#12A66A]'
+                    : 'bg-[#FEF3C7] border-[#D97706]/20 text-[#D97706]'
+                }`}>
                   <CheckCircle2 className="w-4 h-4 shrink-0" />
-                  <span className="font-semibold text-[11px]">Inside 100m geofence perimeter</span>
+                  <span className="font-semibold text-[11px]">
+                    {worker.isWithinGeofence !== false
+                      ? `Inside geofence perimeter (${Math.round(worker.distanceMeters || 10)}m from center)`
+                      : `Punch recorded outside perimeter (${Math.round(worker.distanceMeters || 120)}m)`}
+                  </span>
                 </div>
               </div>
             </div>

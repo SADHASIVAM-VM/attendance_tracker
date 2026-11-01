@@ -54,6 +54,18 @@ export const SupervisorHomeTab: React.FC<SupervisorHomeTabProps> = ({
         useState<SupervisorWorkerAttendance | null>(null);
     const [showWorksiteDropdown, setShowWorksiteDropdown] = useState<boolean>(false);
     const [extraWorksites, setExtraWorksites] = useState<SupervisorWorksite[]>([]);
+    const [delegatedScope, setDelegatedScope] = useState<any>(null);
+
+    // Fetch delegated scope to show delegation coverage banner
+    useEffect(() => {
+        apiRequest<any>('/supervisor/delegated-scope')
+            .then((res) => {
+                if (res && res.hasActiveDelegation) {
+                    setDelegatedScope(res);
+                }
+            })
+            .catch(() => {});
+    }, []);
 
     // Fetch master worksites list to ensure all worksite options are visible
     useEffect(() => {
@@ -148,6 +160,42 @@ export const SupervisorHomeTab: React.FC<SupervisorHomeTabProps> = ({
 
     return (
         <div className="space-y-6 animate-in fade-in duration-200">
+            {/* ─── 0. DELEGATION COVERAGE BANNER (IF ACTIVE) ────────────────── */}
+            {delegatedScope?.hasActiveDelegation && (
+                <div className="p-4 sm:p-5 rounded-[22px] bg-gradient-to-r from-[#E6F7EF] via-[#F0FDF4] to-white border border-[#A7F3D0] shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in slide-in-from-top duration-300">
+                    <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-[#12A66A] text-white flex items-center justify-center shrink-0 shadow-xs">
+                            <SecuritySafeIcon className="w-5 h-5 stroke-[2.2]" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-black uppercase tracking-wider bg-[#12A66A] text-white px-2 py-0.5 rounded-full">
+                                    Delegation Coverage Active
+                                </span>
+                                <span className="text-xs text-[#0E8F5B] font-bold">
+                                    {delegatedScope.activeDelegations.length} Assigned Site Coverage(s)
+                                </span>
+                            </div>
+                            <h3 className="text-sm font-extrabold text-[#111827] mt-1 m-0">
+                                You are covering for {delegatedScope.activeDelegations.map((d: any) => `${d.primarySupervisorName} at ${d.worksiteName}`).join(', ')}
+                            </h3>
+                            <p className="text-xs text-[#475569] mt-0.5 m-0">
+                                Effective Period: {delegatedScope.activeDelegations[0]?.startDate} to {delegatedScope.activeDelegations[0]?.endDate || 'Indefinite'}.
+                                You have full delegated authority for punch approvals, leaves, and regularization.
+                            </p>
+                        </div>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={() => onNavigateTab('approvals')}
+                        className="px-4 py-2 bg-[#12A66A] hover:bg-[#0E8F5B] text-white text-xs font-bold rounded-xl transition-all shadow-xs self-start sm:self-center shrink-0 cursor-pointer"
+                    >
+                        View Approvals Queue
+                    </button>
+                </div>
+            )}
+
             {/* ─── 1. WELCOME & LOCATION HEADER BANNER ────────────────────── */}
             <div className="bg-gradient-to-br from-white via-white to-[#E6F7EF]/40 border border-[#E8EEF4] rounded-[22px] p-5 sm:p-6 shadow-xs">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

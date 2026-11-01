@@ -16,8 +16,8 @@ import {
   approvalActions,
 } from '../database/schema.js';
 import { eq, and, or, sql, desc, inArray } from 'drizzle-orm';
-import { logAuditEvent } from '../utils/audit.js';
 import { isSupervisorAuthorizedForSession } from './attendanceController.js';
+import { getAuthorizedSupervisorScope } from '../services/delegationService.js';
 
 /**
  * Format milliseconds into human readable age (e.g. "4h 20m ago", "1d 2h ago")
@@ -82,6 +82,21 @@ export async function getSupervisorQueues(req: Request, res: Response): Promise<
 
     authorizedAssignmentIds = supervisorAssignments.map((a) => a.id);
     authorizedWorksiteIds = supervisorAssignments.map((a) => a.worksiteId);
+
+    // Incorporate delegated worksites
+    try {
+      const scope = await getAuthorizedSupervisorScope(db, {
+        supervisorId: user.id,
+        orgId,
+      });
+      for (const wid of scope.delegatedWorksiteIds) {
+        if (!authorizedWorksiteIds.includes(wid)) {
+          authorizedWorksiteIds.push(wid);
+        }
+      }
+    } catch (scopeErr) {
+      console.warn('Scope check error in supervisor queues:', scopeErr);
+    }
   }
 
   // Helper authorization filter for sessions:

@@ -32,9 +32,9 @@ export const StatCard: React.FC<StatCardProps> = ({
   title,
   label,
   value,
-  change = '+12.5%',
+  change,
   isPositive = true,
-  timeframe = 'this week',
+  timeframe,
   icon: Icon,
   variant = 'default',
   iconBgColor = 'bg-[#E6F7F1]',
@@ -194,14 +194,18 @@ export const StatCard: React.FC<StatCardProps> = ({
         </div>
 
         {/* Trend Indicator */}
-        <div className="flex items-center gap-1.5 mt-2.5 text-xs font-medium text-white/90">
-          {change && (
-            <span className="flex items-center gap-0.5 font-bold">
-              ↑ {change}
-            </span>
-          )}
-          <span className="text-white/80">{displaySubtitle || timeframe}</span>
-        </div>
+        {(change || displaySubtitle || timeframe) ? (
+          <div className="flex items-center gap-1.5 mt-2.5 text-xs font-medium text-white/90">
+            {change ? (
+              <span className="flex items-center gap-0.5 font-bold">
+                ↑ {change}
+              </span>
+            ) : null}
+            {(displaySubtitle || timeframe) ? (
+              <span className="text-white/80">{displaySubtitle || timeframe}</span>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -220,7 +224,7 @@ export const StatCard: React.FC<StatCardProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5">
-          {/* {badge && (
+          {badge && (
             <span
               className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                 badgeColor || (isPositive ? 'bg-[#E6F7F1] text-[#01B075]' : 'bg-[#FEF3C7] text-[#D97706]')
@@ -228,7 +232,7 @@ export const StatCard: React.FC<StatCardProps> = ({
             >
               {badge}
             </span>
-          )} */}
+          )}
           {onOpenClick && (
             <button
               type="button"
@@ -257,21 +261,25 @@ export const StatCard: React.FC<StatCardProps> = ({
       </div>
 
       {/* Trend Indicator */}
-      <div className="flex items-center gap-2 mt-2.5 text-xs">
-        {change && (
-          <span
-            className={`inline-flex items-center gap-0.5 font-bold px-2 py-0.5 rounded-full text-[11px] ${isPositive
-              ? 'bg-[#E6F7F1] text-[#01B075]'
-              : 'bg-[#FEE2E2] text-[#EF4444]'
-              }`}
-          >
-            {isPositive ? '↑' : '↓'} {change}
-          </span>
-        )}
-        <span className="text-[#71737D] truncate text-[11px] font-medium">
-          {displaySubtitle || timeframe}
-        </span>
-      </div>
+      {(change || displaySubtitle || timeframe) ? (
+        <div className="flex items-center gap-2 mt-2.5 text-xs">
+          {change ? (
+            <span
+              className={`inline-flex items-center gap-0.5 font-bold px-2 py-0.5 rounded-full text-[11px] ${isPositive
+                ? 'bg-[#E6F7F1] text-[#01B075]'
+                : 'bg-[#FEE2E2] text-[#EF4444]'
+                }`}
+            >
+              {isPositive ? '↑' : '↓'} {change}
+            </span>
+          ) : null}
+          {(displaySubtitle || timeframe) ? (
+            <span className="text-[#71737D] truncate text-[11px] font-medium">
+              {displaySubtitle || timeframe}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 };

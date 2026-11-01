@@ -4,6 +4,7 @@ import cors from 'cors';
 import apiRouter from './routes/api.js';
 import { getDb } from './database/db.js';
 import { seedDatabase } from './database/seed/seed.js';
+import { executeDueWorkerTransfers } from './services/workerTransferService.js';
 
 const app = express();
 
@@ -46,6 +47,21 @@ async function startServer() {
     await getDb();
     // Seed initial dataset and verify 5 system roles ({ ADMIN, SUPERVISOR, ENGINEER, ACCOUNTANT, WORKER })
     await seedDatabase();
+
+    // Reconcile due worker transfers on startup & run background reconciliation every 60s
+    try {
+      const db = await getDb();
+      await executeDueWorkerTransfers(db);
+    } catch (e) {
+      console.warn('Initial worker transfer reconciliation notice:', e);
+    }
+
+    setInterval(async () => {
+      try {
+        const db = await getDb();
+        await executeDueWorkerTransfers(db);
+      } catch (_) {}
+    }, 60_000);
 
     app.listen(PORT, () => {
       console.log(`🚀 Workforce Attendance API running on http://localhost:${PORT}`);

@@ -166,32 +166,6 @@ export const WorkerLeaveView: React.FC = () => {
         </div>
       )}
 
-      {/* ── Approval Routing Policy Banner ─────────────────────────────────── */}
-      {isSupervisor ? (
-        <div className="flex items-start gap-3 p-3.5 bg-blue-50/80 border border-blue-200 rounded-[18px] text-xs text-blue-900 shadow-xs">
-          <ShieldAlert className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-          <div>
-            <strong className="block font-bold text-blue-900">
-              Supervisor Leave Approval Hierarchy
-            </strong>
-            <span className="text-blue-700 leading-relaxed block mt-0.5">
-              Your leave applications below are routed to the <strong>Administrator</strong> for approval. Worker leave requests from your assigned site team are reviewed and approved by you under <strong>Team Leave Roster</strong>.
-            </span>
-          </div>
-        </div>
-      ) : (
-        <div className="flex items-start gap-3 p-3.5 bg-[#E6F7EF] border border-[#A7F3D0] rounded-[18px] text-xs text-[#065F46] shadow-xs">
-          <ShieldCheck className="w-4 h-4 text-[#12A66A] shrink-0 mt-0.5" />
-          <div>
-            <strong className="block font-bold text-[#065F46]">
-              Worker Leave Approval Hierarchy
-            </strong>
-            <span className="text-[#047857] leading-relaxed block mt-0.5">
-              Your leave applications below are routed directly to your <strong>Assigned Site Supervisor</strong> for approval.
-            </span>
-          </div>
-        </div>
-      )}
 
       {/* ── Page Header ───────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">

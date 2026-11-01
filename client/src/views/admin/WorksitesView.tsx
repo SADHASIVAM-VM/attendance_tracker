@@ -23,13 +23,24 @@ import {
   Compass,
   ArrowUpDown,
   Power,
+  Users,
+  History,
+  UserCheck,
 } from 'lucide-react';
+import { ReassignSupervisorModal } from '../../components/worksites/ReassignSupervisorModal';
+import { DelegationHistoryDrawer } from '../../components/worksites/DelegationHistoryDrawer';
 
 export const WorksitesView: React.FC = () => {
   const [worksites, setWorksites] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [worksiteToEdit, setWorksiteToEdit] = useState<WorksiteData | null>(null);
+
+  // Supervisor Reassignment & Delegation History Drawers
+  const [reassignModalOpen, setReassignModalOpen] = useState<boolean>(false);
+  const [reassignWorksite, setReassignWorksite] = useState<any | null>(null);
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState<boolean>(false);
+  const [delegationSummary, setDelegationSummary] = useState<any>(null);
 
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -68,6 +79,43 @@ export const WorksitesView: React.FC = () => {
       });
 
       const res = await apiRequest<any>(`/worksites?${queryParams.toString()}`);
+
+      // Also fetch delegation coverage enrichment
+      try {
+        const delRes = await apiRequest<any>('/admin/delegations');
+        if (delRes) {
+          setDelegationSummary(delRes.kpis || null);
+          const delWorksitesMap = new Map<string, any>();
+          if (Array.isArray(delRes.worksites)) {
+            for (const dw of delRes.worksites) {
+              delWorksitesMap.set(dw.id, dw);
+            }
+          }
+
+          const rawList = res && res.pagination && Array.isArray(res.data) ? res.data : Array.isArray(res) ? res : [];
+          const enriched = rawList.map((w: any) => {
+            const dw = delWorksitesMap.get(w.id);
+            return {
+              ...w,
+              primarySupervisorName: dw?.primarySupervisorName || w.primarySupervisorName,
+              secondarySupervisorName: dw?.secondarySupervisorName || w.secondarySupervisorName,
+              activeDelegation: dw?.activeDelegation || null,
+              hasActiveDelegation: dw?.hasActiveDelegation || false,
+              isCurrentlyUncovered: dw?.isCurrentlyUncovered || false,
+            };
+          });
+
+          setWorksites(enriched);
+          if (res?.pagination) {
+            setPagination({
+              ...res.pagination,
+              total: res.pagination.total ?? res.pagination.totalCount ?? 0,
+              totalCount: res.pagination.totalCount ?? res.pagination.total ?? 0,
+            });
+          }
+          return;
+        }
+      } catch (_) {}
 
       if (res && res.pagination && Array.isArray(res.data)) {
         setWorksites(res.data);
@@ -205,13 +253,37 @@ export const WorksitesView: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={handleOpenCreateModal}
-          className="px-5 py-2.5 bg-gradient-to-r from-[#12A66A] to-[#0E8F5B] hover:from-[#0E8F5B] hover:to-[#0A7349] text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-md shadow-[#12A66A]/20 shrink-0"
-        >
-          <Plus className="w-4 h-4 stroke-[2.5]" />
-          Add Worksite
-        </button>
+        <div className="flex items-center gap-2.5 shrink-0">
+          <button
+            onClick={() => setHistoryDrawerOpen(true)}
+            className="px-4 py-2.5 bg-white border border-[#E8EEF4] hover:border-[#12A66A] text-[#111827] hover:text-[#12A66A] rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-xs"
+          >
+            <History className="w-4 h-4 text-[#64748B]" />
+            Coverage Audit Logs
+            {delegationSummary?.uncoveredDelegations > 0 && (
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            )}
+          </button>
+
+          <button
+            onClick={() => {
+              setReassignWorksite(null);
+              setReassignModalOpen(true);
+            }}
+            className="px-4 py-2.5 bg-white border border-[#E8EEF4] hover:border-[#12A66A] text-[#111827] hover:text-[#12A66A] rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-xs"
+          >
+            <Users className="w-4 h-4 text-[#12A66A]" />
+            Reassign Supervisor
+          </button>
+
+          <button
+            onClick={handleOpenCreateModal}
+            className="px-5 py-2.5 bg-gradient-to-r from-[#12A66A] to-[#0E8F5B] hover:from-[#0E8F5B] hover:to-[#0A7349] text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-md shadow-[#12A66A]/20"
+          >
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+            Add Worksite
+          </button>
+        </div>
       </div>
 
       {/* Summary KPI Cards */}
@@ -409,8 +481,54 @@ export const WorksitesView: React.FC = () => {
                   <span className="line-clamp-2">{s.address}</span>
                 </p>
 
-                {/* Coordinates & Geofence Specs */}
+                {/* Supervision & Delegation Section */}
                 <div className="p-3 bg-[#F8FAFC] rounded-2xl border border-[#E8EEF4] text-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-[#64748B] flex items-center gap-1">
+                      <UserCheck className="w-3.5 h-3.5 text-[#12A66A]" />
+                      Primary Supervisor:
+                    </span>
+                    <span className="font-extrabold text-[#111827] text-xs">
+                      {s.primarySupervisorName || 'Unassigned'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-[#64748B] flex items-center gap-1">
+                      <ShieldCheck className="w-3.5 h-3.5 text-[#64748B]" />
+                      Backup Supervisor:
+                    </span>
+                    <span className="text-xs text-[#475569] font-medium">
+                      {s.secondarySupervisorName || 'Admin Fallback'}
+                    </span>
+                  </div>
+
+                  {/* Active Coverage or Uncovered Badge */}
+                  {s.hasActiveDelegation && (
+                    <div className={`p-2 rounded-xl text-[11px] font-bold flex items-center gap-1.5 ${
+                      s.isCurrentlyUncovered
+                        ? 'bg-[#FEF2F2] text-[#DC2626] border border-[#FCA5A5]'
+                        : 'bg-[#E6F7EF] text-[#0E8F5B] border border-[#A7F3D0]'
+                    }`}>
+                      {s.isCurrentlyUncovered ? (
+                        <>
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                          <span>Uncovered Leave: Routed to Admin</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                          <span>
+                            Coverage: {s.activeDelegation?.delegatedSupervisorName || 'Delegated'} (until {s.activeDelegation?.endDate || 'End'})
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Coordinates & Geofence Specs */}
+                <div className="p-3 bg-white rounded-2xl border border-[#E8EEF4] text-xs space-y-2">
                   <div className="flex items-center justify-between text-slate-600">
                     <span className="text-[11px] font-bold text-[#64748B] flex items-center gap-1">
                       <Compass className="w-3.5 h-3.5 text-[#12A66A]" />
@@ -462,14 +580,29 @@ export const WorksitesView: React.FC = () => {
                   {s.isActive ? 'Deactivate' : 'Activate'}
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => handleOpenEditModal(s)}
-                  className="px-3 py-1.5 rounded-xl bg-white border border-[#E8EEF4] hover:border-[#12A66A] text-[#111827] hover:text-[#12A66A] text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs hover:shadow-sm"
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                  Edit Worksite
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReassignWorksite(s);
+                      setReassignModalOpen(true);
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-white border border-[#E8EEF4] hover:border-[#12A66A] text-[#111827] hover:text-[#12A66A] text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-xs"
+                    title="Reassign Primary or Backup Supervisor"
+                  >
+                    <Users className="w-3.5 h-3.5 text-[#12A66A]" />
+                    Reassign
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditModal(s)}
+                    className="px-3 py-1.5 rounded-xl bg-white border border-[#E8EEF4] hover:border-[#12A66A] text-[#111827] hover:text-[#12A66A] text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs hover:shadow-sm"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    Edit
+                  </button>
+                </div>
               </div>
             </div>
           ))}
@@ -498,6 +631,24 @@ export const WorksitesView: React.FC = () => {
         }}
         editWorksite={worksiteToEdit}
         onSubmit={handleSaveWorksite}
+      />
+
+      {/* SUPERVISOR REASSIGNMENT MODAL */}
+      <ReassignSupervisorModal
+        isOpen={reassignModalOpen}
+        onClose={() => {
+          setReassignModalOpen(false);
+          setReassignWorksite(null);
+        }}
+        initialWorksite={reassignWorksite}
+        onSuccess={() => loadWorksites()}
+      />
+
+      {/* SUPERVISOR DELEGATION & COVERAGE AUDIT DRAWER */}
+      <DelegationHistoryDrawer
+        isOpen={historyDrawerOpen}
+        onClose={() => setHistoryDrawerOpen(false)}
+        onRefreshParent={() => loadWorksites()}
       />
     </div>
   );

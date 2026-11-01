@@ -230,6 +230,70 @@ export async function getDb() {
           DELETE FROM roles WHERE name NOT IN ('ADMIN', 'SUPERVISOR', 'ENGINEER', 'ACCOUNTANT', 'WORKER');
           UPDATE user_roles SET role = 'ADMIN' WHERE role = 'SUPER_ADMIN';
           DELETE FROM user_roles WHERE role NOT IN ('ADMIN', 'SUPERVISOR', 'ENGINEER', 'ACCOUNTANT', 'WORKER');
+
+          -- Supervisor Availability, Coverage, Delegation, and Reassignment
+          ALTER TABLE worksites ADD COLUMN IF NOT EXISTS primary_supervisor_id UUID REFERENCES users(id);
+          ALTER TABLE worksites ADD COLUMN IF NOT EXISTS secondary_supervisor_id UUID REFERENCES users(id);
+          ALTER TABLE approval_actions ADD COLUMN IF NOT EXISTS delegation_id UUID;
+
+          CREATE TABLE IF NOT EXISTS supervisor_delegations (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            org_id UUID NOT NULL REFERENCES organizations(id),
+            worksite_id UUID NOT NULL REFERENCES worksites(id),
+            primary_supervisor_id UUID NOT NULL REFERENCES users(id),
+            delegated_supervisor_id UUID REFERENCES users(id),
+            assignment_type VARCHAR(50) NOT NULL,
+            start_date DATE NOT NULL,
+            end_date DATE,
+            status VARCHAR(50) NOT NULL DEFAULT 'SCHEDULED',
+            is_uncovered BOOLEAN NOT NULL DEFAULT false,
+            fallback_admin_id UUID REFERENCES users(id),
+            leave_request_id UUID REFERENCES leave_requests(id),
+            reason TEXT NOT NULL,
+            notes TEXT,
+            superseded_by_id UUID,
+            created_by UUID NOT NULL REFERENCES users(id),
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_sup_delegations_site_dates ON supervisor_delegations(worksite_id, start_date, end_date);
+          CREATE INDEX IF NOT EXISTS idx_sup_delegations_delegated ON supervisor_delegations(delegated_supervisor_id, status);
+          CREATE INDEX IF NOT EXISTS idx_sup_delegations_primary ON supervisor_delegations(primary_supervisor_id, status);
+          CREATE INDEX IF NOT EXISTS idx_sup_delegations_status ON supervisor_delegations(status);
+          CREATE INDEX IF NOT EXISTS idx_sup_delegations_leave ON supervisor_delegations(leave_request_id);
+
+          -- Worker Worksite Transfers (Future-dated site transfers, lifecycle tracking, and immutable audit)
+          CREATE TABLE IF NOT EXISTS worker_transfers (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            org_id UUID NOT NULL REFERENCES organizations(id),
+            worker_id UUID NOT NULL REFERENCES users(id),
+            source_worksite_id UUID NOT NULL REFERENCES worksites(id),
+            destination_worksite_id UUID NOT NULL REFERENCES worksites(id),
+            source_assignment_id UUID REFERENCES site_assignments(id),
+            destination_assignment_id UUID REFERENCES site_assignments(id),
+            effective_date DATE NOT NULL,
+            reason TEXT NOT NULL,
+            status VARCHAR(50) NOT NULL DEFAULT 'SCHEDULED',
+            initiated_by UUID NOT NULL REFERENCES users(id),
+            last_modified_by UUID REFERENCES users(id),
+            cancelled_by UUID REFERENCES users(id),
+            cancellation_reason TEXT,
+            cancelled_at TIMESTAMP WITH TIME ZONE,
+            executed_by VARCHAR(100),
+            completed_at TIMESTAMP WITH TIME ZONE,
+            failure_reason TEXT,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_worker_transfers_org_date ON worker_transfers(org_id, effective_date);
+          CREATE INDEX IF NOT EXISTS idx_worker_transfers_status ON worker_transfers(status);
+          CREATE INDEX IF NOT EXISTS idx_worker_transfers_worker ON worker_transfers(worker_id);
+          CREATE INDEX IF NOT EXISTS idx_worker_transfers_source ON worker_transfers(source_worksite_id);
+          CREATE INDEX IF NOT EXISTS idx_worker_transfers_dest ON worker_transfers(destination_worksite_id);
+          -- Enforce strictly at most one SCHEDULED transfer per worker at any given time
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_worker_transfers_active_worker ON worker_transfers(worker_id) WHERE status = 'SCHEDULED';
         `);
       } catch (migrationErr) {
         console.warn('Note on schema column check:', migrationErr);

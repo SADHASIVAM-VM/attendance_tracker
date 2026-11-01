@@ -472,11 +472,10 @@ export const AdminDailyAttendanceView: React.FC = () => {
       {/* Toast Notification */}
       {toastMessage && (
         <div
-          className={`fixed top-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl text-xs font-semibold border transition-all animate-in fade-in slide-in-from-top-3 ${
-            toastMessage.type === 'success'
-              ? 'bg-emerald-900 text-white border-emerald-700'
-              : 'bg-rose-900 text-white border-rose-700'
-          }`}
+          className={`fixed top-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl text-xs font-semibold border transition-all animate-in fade-in slide-in-from-top-3 ${toastMessage.type === 'success'
+            ? 'bg-emerald-900 text-white border-emerald-700'
+            : 'bg-rose-900 text-white border-rose-700'
+            }`}
         >
           {toastMessage.type === 'success' ? (
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -500,18 +499,16 @@ export const AdminDailyAttendanceView: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('daily')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
-              activeTab === 'daily'
-                ? 'bg-[#12A66A] text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-            }`}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${activeTab === 'daily'
+              ? 'bg-[#12A66A] text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
           >
             <Users className="w-3.5 h-3.5" />
             <span>Daily Attendance</span>
             <span
-              className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
-                activeTab === 'daily' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
-              }`}
+              className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${activeTab === 'daily' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                }`}
             >
               {stats.totalWorkers}
             </span>
@@ -520,19 +517,17 @@ export const AdminDailyAttendanceView: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('missing')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
-              activeTab === 'missing'
-                ? 'bg-[#12A66A] text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-            }`}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${activeTab === 'missing'
+              ? 'bg-[#12A66A] text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
           >
             <AlertTriangle className="w-3.5 h-3.5" />
             <span>Missing Clock-ins</span>
             {stats.notYetIn > 0 && (
               <span
-                className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
-                  activeTab === 'missing' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-800'
-                }`}
+                className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${activeTab === 'missing' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-800'
+                  }`}
               >
                 {stats.notYetIn}
               </span>
@@ -542,11 +537,10 @@ export const AdminDailyAttendanceView: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('supervisors')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
-              activeTab === 'supervisors'
-                ? 'bg-[#12A66A] text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-            }`}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${activeTab === 'supervisors'
+              ? 'bg-[#12A66A] text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
           >
             <ShieldCheck className="w-3.5 h-3.5" />
             <span>Supervisor Audit</span>
@@ -687,13 +681,7 @@ export const AdminDailyAttendanceView: React.FC = () => {
               badge="Awaiting Clock-in"
               badgeColor="text-amber-700 bg-amber-50 border-amber-200"
             />
-            <StatCard
-              title="Flagged / Missing"
-              value={stats.flaggedCount}
-              icon={AlertTriangle}
-              badge="Follow-up"
-              badgeColor="text-purple-700 bg-purple-50 border-purple-200"
-            />
+
           </div>
 
           {/* Filter Toolbar */}
@@ -841,8 +829,8 @@ export const AdminDailyAttendanceView: React.FC = () => {
                       const formatClockOut = w.clockOutTime
                         ? new Date(w.clockOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                         : isClockedIn
-                        ? 'Working...'
-                        : '—';
+                          ? 'Working...'
+                          : '—';
 
                       return (
                         <tr key={w.id} className="hover:bg-slate-50/70 transition-colors">
@@ -866,17 +854,16 @@ export const AdminDailyAttendanceView: React.FC = () => {
                           {/* 2. Role Badge */}
                           <td className="py-3 px-4">
                             <span
-                              className={`inline-block px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider ${
-                                w.role === 'ADMIN' || w.role === 'SUPER_ADMIN'
-                                  ? 'bg-purple-100 text-purple-800 border border-purple-200'
-                                  : w.role === 'SUPERVISOR'
+                              className={`inline-block px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider ${w.role === 'ADMIN' || w.role === 'SUPER_ADMIN'
+                                ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                                : w.role === 'SUPERVISOR'
                                   ? 'bg-indigo-100 text-indigo-800 border border-indigo-200'
                                   : w.role === 'ENGINEER'
-                                  ? 'bg-amber-100 text-amber-900 border border-amber-200'
-                                  : w.role === 'ACCOUNTANT'
-                                  ? 'bg-teal-100 text-teal-800 border border-teal-200'
-                                  : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                              }`}
+                                    ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                                    : w.role === 'ACCOUNTANT'
+                                      ? 'bg-teal-100 text-teal-800 border border-teal-200'
+                                      : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                }`}
                             >
                               {w.role}
                             </span>
@@ -993,13 +980,12 @@ export const AdminDailyAttendanceView: React.FC = () => {
                                 </span>
                                 {w.flagStatus && (
                                   <span
-                                    className={`block text-[10px] font-black px-1.5 py-0.5 rounded text-center ${
-                                      w.flagStatus === 'APPROVED'
-                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                        : w.flagStatus === 'REJECTED'
+                                    className={`block text-[10px] font-black px-1.5 py-0.5 rounded text-center ${w.flagStatus === 'APPROVED'
+                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                      : w.flagStatus === 'REJECTED'
                                         ? 'bg-rose-50 text-rose-700 border border-rose-200'
                                         : 'bg-amber-100 text-amber-800 border border-amber-200'
-                                    }`}
+                                      }`}
                                   >
                                     Flag: {w.flagStatus === 'APPROVED' ? 'Approve' : w.flagStatus === 'REJECTED' ? 'Absent' : 'Pending'}
                                   </span>
@@ -1042,11 +1028,10 @@ export const AdminDailyAttendanceView: React.FC = () => {
                                     })
                                   }
                                   title={w.flagStatus ? 'Review Attendance Flag' : 'Flag Missing Clock-In'}
-                                  className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-2xs hover:shadow-xs border ${
-                                    w.flagStatus
-                                      ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
-                                      : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200'
-                                  }`}
+                                  className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-2xs hover:shadow-xs border ${w.flagStatus
+                                    ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
+                                    : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200'
+                                    }`}
                                 >
                                   <Flag className="w-3.5 h-3.5" />
                                   <span>{w.flagStatus ? 'Review Flag' : 'Flag Missing'}</span>
@@ -1102,21 +1087,20 @@ export const AdminDailyAttendanceView: React.FC = () => {
                     setMissingFilter(mode);
                     setMissingPage(1);
                   }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    missingFilter === mode
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${missingFilter === mode
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                    }`}
                 >
                   {mode === 'ALL'
                     ? 'All Cases'
                     : mode === 'PENDING_REVIEW'
-                    ? 'Pending'
-                    : mode === 'APPROVED'
-                    ? 'Approve'
-                    : mode === 'REJECTED'
-                    ? 'Absent'
-                    : 'Resolved (Punched)'}
+                      ? 'Pending'
+                      : mode === 'APPROVED'
+                        ? 'Approve'
+                        : mode === 'REJECTED'
+                          ? 'Absent'
+                          : 'Resolved (Punched)'}
                 </button>
               ))}
             </div>
@@ -1162,10 +1146,10 @@ export const AdminDailyAttendanceView: React.FC = () => {
                       const missedDateFormatted = isNaN(missedDateObj.getTime())
                         ? selectedDate
                         : missedDateObj.toLocaleDateString('en-GB', {
-                            day: '2-digit',
-                            month: 'short',
-                            year: 'numeric',
-                          });
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                        });
                       const resolvedTimestamp = c.resolvedAt || c.reviewedAt;
 
                       return (
@@ -1245,10 +1229,10 @@ export const AdminDailyAttendanceView: React.FC = () => {
                                   <span>
                                     {resolvedTimestamp
                                       ? new Date(resolvedTimestamp).toLocaleDateString('en-GB', {
-                                          day: '2-digit',
-                                          month: 'short',
-                                          year: 'numeric',
-                                        })
+                                        day: '2-digit',
+                                        month: 'short',
+                                        year: 'numeric',
+                                      })
                                       : 'Clocked In'}
                                   </span>
                                 </div>
@@ -1348,19 +1332,18 @@ export const AdminDailyAttendanceView: React.FC = () => {
                               ) : (
                                 <div className="flex items-center gap-2">
                                   <span
-                                    className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${
-                                      c.flagStatus === 'APPROVED'
-                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                        : c.flagStatus === 'REJECTED'
+                                    className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${c.flagStatus === 'APPROVED'
+                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                      : c.flagStatus === 'REJECTED'
                                         ? 'bg-rose-50 text-rose-800 border-rose-200'
                                         : 'bg-amber-50 text-amber-800 border-amber-200'
-                                    }`}
+                                      }`}
                                   >
                                     {c.flagStatus === 'APPROVED'
                                       ? 'Flag: Approve'
                                       : c.flagStatus === 'REJECTED'
-                                      ? 'Flag: Absent'
-                                      : 'Flag: Pending'}
+                                        ? 'Flag: Absent'
+                                        : 'Flag: Pending'}
                                   </span>
                                   <button
                                     type="button"
@@ -1473,11 +1456,10 @@ export const AdminDailyAttendanceView: React.FC = () => {
                       key={chip}
                       type="button"
                       onClick={() => setClockOutReason(chip)}
-                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border text-left transition-all cursor-pointer ${
-                        clockOutReason === chip
-                          ? 'bg-[#12A66A] text-white border-[#12A66A]'
-                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                      }`}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border text-left transition-all cursor-pointer ${clockOutReason === chip
+                        ? 'bg-[#12A66A] text-white border-[#12A66A]'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                        }`}
                     >
                       {chip}
                     </button>
@@ -1568,11 +1550,10 @@ export const AdminDailyAttendanceView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setFlagStatusChoice('APPROVED')}
-                    className={`p-2.5 rounded-xl text-center border transition-all cursor-pointer ${
-                      flagStatusChoice === 'APPROVED'
-                        ? 'bg-emerald-50 border-emerald-500 text-emerald-800 ring-1 ring-emerald-500'
-                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
+                    className={`p-2.5 rounded-xl text-center border transition-all cursor-pointer ${flagStatusChoice === 'APPROVED'
+                      ? 'bg-emerald-50 border-emerald-500 text-emerald-800 ring-1 ring-emerald-500'
+                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
                   >
                     <span className="block text-xs font-black">Approve</span>
                     <span className="block text-[10px] text-slate-400 mt-0.5">Approved Delay</span>
@@ -1581,11 +1562,10 @@ export const AdminDailyAttendanceView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setFlagStatusChoice('REJECTED')}
-                    className={`p-2.5 rounded-xl text-center border transition-all cursor-pointer ${
-                      flagStatusChoice === 'REJECTED'
-                        ? 'bg-rose-50 border-rose-500 text-rose-800 ring-1 ring-rose-500'
-                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
+                    className={`p-2.5 rounded-xl text-center border transition-all cursor-pointer ${flagStatusChoice === 'REJECTED'
+                      ? 'bg-rose-50 border-rose-500 text-rose-800 ring-1 ring-rose-500'
+                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
                   >
                     <span className="block text-xs font-black">Absent</span>
                     <span className="block text-[10px] text-slate-400 mt-0.5">Mark Absent</span>
@@ -1594,11 +1574,10 @@ export const AdminDailyAttendanceView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setFlagStatusChoice('PENDING_REVIEW')}
-                    className={`p-2.5 rounded-xl text-center border transition-all cursor-pointer ${
-                      flagStatusChoice === 'PENDING_REVIEW'
-                        ? 'bg-amber-50 border-amber-500 text-amber-900 ring-1 ring-amber-500'
-                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
+                    className={`p-2.5 rounded-xl text-center border transition-all cursor-pointer ${flagStatusChoice === 'PENDING_REVIEW'
+                      ? 'bg-amber-50 border-amber-500 text-amber-900 ring-1 ring-amber-500'
+                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
                   >
                     <span className="block text-xs font-black">Pending</span>
                     <span className="block text-[10px] text-slate-400 mt-0.5">Under Review</span>
@@ -1624,11 +1603,10 @@ export const AdminDailyAttendanceView: React.FC = () => {
                       key={chip}
                       type="button"
                       onClick={() => setFlagReasonChoice(chip)}
-                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border text-left transition-all cursor-pointer ${
-                        flagReasonChoice === chip
-                          ? 'bg-[#12A66A] text-white border-[#12A66A]'
-                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                      }`}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border text-left transition-all cursor-pointer ${flagReasonChoice === chip
+                        ? 'bg-[#12A66A] text-white border-[#12A66A]'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                        }`}
                     >
                       {chip}
                     </button>

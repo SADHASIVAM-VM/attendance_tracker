@@ -955,8 +955,11 @@ export const SupervisorApp: React.FC = () => {
           }
         />
 
-        <Route path="" element={<Navigate to="attendance/daily" replace />} />
-        <Route path="*" element={<Navigate to="attendance/daily" replace />} />
+        {/* Roster Route Alias */}
+        <Route path="roster" element={<Navigate to="/supervisor/attendance/daily" replace />} />
+
+        <Route path="" element={<Navigate to="/supervisor/attendance/daily" replace />} />
+        <Route path="*" element={<Navigate to="/supervisor/attendance/daily" replace />} />
       </Routes>
     </SupervisorAppShell>
   );

@@ -315,7 +315,10 @@ export async function getNotifications(req: Request, res: Response): Promise<any
   const list = await db
     .select()
     .from(notifications)
-    .where(eq(notifications.userId as any, userId as any))
+    .where(and(
+      eq(notifications.userId as any, userId as any),
+      eq(notifications.isRead as any, false),
+    ))
     .orderBy(desc(notifications.createdAt))
     .limit(50);
 
@@ -333,6 +336,18 @@ export async function markNotificationRead(req: Request, res: Response): Promise
     .where(and(eq(notifications.id as any, id as any), eq(notifications.userId as any, userId as any)));
 
   return res.json({ success: true });
+}
+
+export async function markAllNotificationsRead(req: Request, res: Response): Promise<any> {
+  const db = await getDb();
+  const userId = req.user!.id;
+
+  await db
+    .update(notifications)
+    .set({ isRead: true })
+    .where(and(eq(notifications.userId as any, userId as any), eq(notifications.isRead as any, false)));
+
+  return res.json({ success: true, message: 'All notifications marked as read' });
 }
 
 /**

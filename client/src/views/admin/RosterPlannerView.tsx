@@ -20,6 +20,7 @@ import {
   Calendar as CalendarIcon,
   Layers,
   ArrowLeft,
+  ArrowRight,
   Check,
   Search,
   Building2,
@@ -31,7 +32,10 @@ import {
   Mail,
   Ban,
   User,
+  ArrowRightLeft,
 } from 'lucide-react';
+import { ScheduleTransferModal } from '../../components/transfers/ScheduleTransferModal';
+import { TransferManagementTab } from '../../components/transfers/TransferManagementTab';
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -92,6 +96,31 @@ export const RosterPlannerView: React.FC = () => {
   const [cancelModalOpen, setCancelModalOpen] = useState<boolean>(false);
   const [cancelAssignmentId, setCancelAssignmentId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState<string>('');
+
+  // Primary Section Tab: 'rosters' (Site Rosters) | 'transfers' (Worker Transfers & History)
+  const [activeSection, setActiveSection] = useState<'rosters' | 'transfers'>('rosters');
+
+  // Quick Schedule Transfer Modal State
+  const [scheduleTransferModalOpen, setScheduleTransferModalOpen] = useState<boolean>(false);
+  const [transferTargetWorker, setTransferTargetWorker] = useState<any | null>(null);
+
+  // Formatted worker list with current worksite and scheduled transfer details
+  const formattedWorkersForModal = useMemo(() => {
+    return allWorkers.map((w) => {
+      const alloc = workerAllocations.find((a) => a.workerId === w.id);
+      return {
+        id: w.id,
+        fullName: w.fullName,
+        email: w.email,
+        employeeCode: w.employeeCode,
+        currentWorksiteId: alloc?.worksiteId,
+        currentWorksiteName: alloc?.worksiteName,
+        currentWorksiteCode: alloc?.worksiteCode,
+        hasScheduledTransfer: alloc?.hasScheduledTransfer || false,
+        scheduledTransfer: alloc?.scheduledTransfer || null,
+      };
+    });
+  }, [allWorkers, workerAllocations]);
 
   // Initial load of master metadata (sites, supervisors, workers, allocations)
   useEffect(() => {
@@ -585,9 +614,62 @@ export const RosterPlannerView: React.FC = () => {
         </div>
       )}
 
-      {/* VIEW MODE 1: FULL CALENDAR FOR N YEARS & MONTHS */}
-      {viewMode === 'calendar' && (
-        <div className="space-y-6">
+      {/* Primary Section Switcher: Site Rosters vs Worker Transfers & History */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs">
+        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+          <button
+            type="button"
+            onClick={() => setActiveSection('rosters')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeSection === 'rosters'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <CalendarDays className="w-4 h-4 text-emerald-600" />
+            <span>Site Rosters & Groups</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSection('transfers')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeSection === 'transfers'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <ArrowRightLeft className="w-4 h-4 text-emerald-600" />
+            <span>Worker Transfers & History</span>
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            setTransferTargetWorker(null);
+            setScheduleTransferModalOpen(true);
+          }}
+          className="px-3.5 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs self-start sm:self-auto"
+        >
+          <Plus className="w-4 h-4" />
+          Schedule Worker Transfer
+        </button>
+      </div>
+
+      {activeSection === 'transfers' && (
+        <TransferManagementTab
+          workersList={formattedWorkersForModal}
+          worksitesList={worksites}
+          onRefreshParent={loadMasterData}
+        />
+      )}
+
+      {activeSection === 'rosters' && (
+        <>
+          {/* VIEW MODE 1: FULL CALENDAR FOR N YEARS & MONTHS */}
+          {viewMode === 'calendar' && (
+            <div className="space-y-6">
           {/* Calendar Header with Year & Month Selection */}
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div>
@@ -1319,6 +1401,8 @@ export const RosterPlannerView: React.FC = () => {
           )}
         </div>
       )}
+        </>
+      )}
 
       {/* POP-UP MODAL: ADD GROUP (Requested fields: group name, location, assign supervisor, multiple select users) */}
       <Modal
@@ -1691,8 +1775,33 @@ export const RosterPlannerView: React.FC = () => {
                           Assigned: {allocation.worksiteName} ({allocation.worksiteCode})
                         </span>
                       )}
+                      {allocation?.hasScheduledTransfer && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          <ArrowRight className="w-2.5 h-2.5 text-indigo-600 shrink-0" />
+                          Transfer: {allocation.scheduledTransfer?.destinationWorksiteName} ({allocation.scheduledTransfer?.effectiveDate})
+                        </span>
+                      )}
                     </div>
-                    <span className="text-[10px] text-slate-400">{w.email}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-slate-400">{w.email}</span>
+                      {isChecked && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const workerOption = formattedWorkersForModal.find((fw) => fw.id === w.id);
+                            setTransferTargetWorker(workerOption || null);
+                            setScheduleTransferModalOpen(true);
+                          }}
+                          className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 text-[10px] font-bold transition-colors inline-flex items-center gap-1 cursor-pointer"
+                          title="Schedule future worksite transfer for this worker"
+                        >
+                          <ArrowRightLeft className="w-2.5 h-2.5 text-emerald-600" />
+                          Transfer
+                        </button>
+                      )}
+                    </div>
                   </label>
                 );
               })
@@ -1704,6 +1813,23 @@ export const RosterPlannerView: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Schedule Transfer Modal */}
+      <ScheduleTransferModal
+        isOpen={scheduleTransferModalOpen}
+        onClose={() => {
+          setScheduleTransferModalOpen(false);
+          setTransferTargetWorker(null);
+        }}
+        onSuccess={() => {
+          loadMasterData();
+          loadDateAssignments(selectedDate);
+          loadMonthAssignments(currentYear, currentMonth);
+        }}
+        initialWorker={transferTargetWorker}
+        workersList={formattedWorkersForModal}
+        worksitesList={worksites}
+      />
     </div>
   );
 };

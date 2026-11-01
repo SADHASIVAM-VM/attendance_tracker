@@ -26,20 +26,59 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 type ToastListener = (toast: Omit<ToastItem, 'id'>) => void;
 const toastListeners = new Set<ToastListener>();
 
-export const toast = {
-  success: (message: string, title?: string, duration?: number) => {
-    toastListeners.forEach((fn) => fn({ type: 'success', message, title, duration }));
-  },
-  error: (message: string, title?: string, duration?: number) => {
-    toastListeners.forEach((fn) => fn({ type: 'error', message, title, duration }));
-  },
-  info: (message: string, title?: string, duration?: number) => {
-    toastListeners.forEach((fn) => fn({ type: 'info', message, title, duration }));
-  },
-  warning: (message: string, title?: string, duration?: number) => {
-    toastListeners.forEach((fn) => fn({ type: 'warning', message, title, duration }));
-  },
+export interface ToastCallable {
+  (
+    optsOrMsg:
+      | string
+      | {
+          title?: string;
+          message?: string;
+          description?: string;
+          type?: ToastType;
+          duration?: number;
+        }
+  ): void;
+  success: (message: string, title?: string, duration?: number) => void;
+  error: (message: string, title?: string, duration?: number) => void;
+  info: (message: string, title?: string, duration?: number) => void;
+  warning: (message: string, title?: string, duration?: number) => void;
+}
+
+const toastFn = ((
+  optsOrMsg:
+    | string
+    | {
+        title?: string;
+        message?: string;
+        description?: string;
+        type?: ToastType;
+        duration?: number;
+      }
+) => {
+  if (typeof optsOrMsg === 'string') {
+    toastListeners.forEach((fn) => fn({ type: 'info', message: optsOrMsg }));
+  } else if (optsOrMsg && typeof optsOrMsg === 'object') {
+    const type: ToastType = optsOrMsg.type || 'info';
+    const message = optsOrMsg.message || optsOrMsg.description || optsOrMsg.title || '';
+    const title = optsOrMsg.message || optsOrMsg.description ? optsOrMsg.title : undefined;
+    toastListeners.forEach((fn) => fn({ type, message, title, duration: optsOrMsg.duration }));
+  }
+}) as ToastCallable;
+
+toastFn.success = (message: string, title?: string, duration?: number) => {
+  toastListeners.forEach((fn) => fn({ type: 'success', message, title, duration }));
 };
+toastFn.error = (message: string, title?: string, duration?: number) => {
+  toastListeners.forEach((fn) => fn({ type: 'error', message, title, duration }));
+};
+toastFn.info = (message: string, title?: string, duration?: number) => {
+  toastListeners.forEach((fn) => fn({ type: 'info', message, title, duration }));
+};
+toastFn.warning = (message: string, title?: string, duration?: number) => {
+  toastListeners.forEach((fn) => fn({ type: 'warning', message, title, duration }));
+};
+
+export const toast = toastFn;
 
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<ToastItem[]>([]);

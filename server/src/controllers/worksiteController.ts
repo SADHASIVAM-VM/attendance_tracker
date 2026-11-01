@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { getDb } from '../database/db.js';
 import { worksites } from '../database/schema.js';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { logAuditEvent } from '../utils/audit.js';
 import { resolveGoogleMapsUrl } from '../utils/mapsUrlParser.js';
 
@@ -15,6 +15,8 @@ const worksiteSchema = z.object({
   longitude: z.number().min(-180).max(180),
   radiusMeters: z.number().int().min(5).max(5000).default(20),
   maxAccuracyMeters: z.number().int().min(5).max(1000).default(50),
+  primarySupervisorId: z.string().uuid().nullable().optional(),
+  secondarySupervisorId: z.string().uuid().nullable().optional(),
   isActive: z.boolean().default(true),
 });
 
@@ -63,8 +65,28 @@ export async function getWorksites(req: Request, res: Response): Promise<any> {
     req.query.status !== undefined;
 
   const allSites = await db
-    .select()
+    .select({
+      id: worksites.id,
+      orgId: worksites.orgId,
+      name: worksites.name,
+      code: worksites.code,
+      address: worksites.address,
+      description: worksites.description,
+      latitude: worksites.latitude,
+      longitude: worksites.longitude,
+      radiusMeters: worksites.radiusMeters,
+      maxAccuracyMeters: worksites.maxAccuracyMeters,
+      primarySupervisorId: worksites.primarySupervisorId,
+      primarySupervisorName: sql<string>`u_p.full_name`,
+      secondarySupervisorId: worksites.secondarySupervisorId,
+      secondarySupervisorName: sql<string>`u_s.full_name`,
+      isActive: worksites.isActive,
+      createdAt: worksites.createdAt,
+      updatedAt: worksites.updatedAt,
+    })
     .from(worksites)
+    .leftJoin(sql`users u_p`, sql`u_p.id = ${worksites.primarySupervisorId}`)
+    .leftJoin(sql`users u_s`, sql`u_s.id = ${worksites.secondarySupervisorId}`)
     .where(eq(worksites.orgId as any, orgId as any));
 
   if (!hasPaginationParams) {
@@ -212,6 +234,8 @@ export async function createWorksite(req: Request, res: Response): Promise<any> 
       longitude: data.longitude,
       radiusMeters: data.radiusMeters,
       maxAccuracyMeters: data.maxAccuracyMeters,
+      primarySupervisorId: data.primarySupervisorId || null,
+      secondarySupervisorId: data.secondarySupervisorId || null,
       isActive: data.isActive,
     })
     .returning();

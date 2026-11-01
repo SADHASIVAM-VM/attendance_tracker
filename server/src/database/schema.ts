@@ -76,6 +76,8 @@ export const worksites = pgTable('worksites', {
   longitude: doublePrecision('longitude').notNull(),
   radiusMeters: integer('radius_meters').default(20).notNull(),
   maxAccuracyMeters: integer('max_accuracy_meters').default(50).notNull(),
+  primarySupervisorId: uuid('primary_supervisor_id').references(() => users.id),
+  secondarySupervisorId: uuid('secondary_supervisor_id').references(() => users.id),
   isActive: boolean('is_active').default(true).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -214,6 +216,7 @@ export const approvalActions = pgTable('approval_actions', {
   actorRole: varchar('actor_role', { length: 50 }),
   previousSupervisorId: uuid('previous_supervisor_id').references(() => users.id),
   regularizationId: uuid('regularization_id').references(() => attendanceAdjustmentRequests.id),
+  delegationId: uuid('delegation_id'),
   note: text('note'),
   reason: text('reason'),
   performedAt: timestamp('performed_at', { withTimezone: true }).defaultNow().notNull(),
@@ -425,5 +428,49 @@ export const payrollAdjustments = pgTable('payroll_adjustments', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Supervisor Delegations & Site Reassignments (Leave Coverage, Temporary & Permanent Reassignments)
+export const supervisorDelegations = pgTable('supervisor_delegations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').references(() => organizations.id).notNull(),
+  worksiteId: uuid('worksite_id').references(() => worksites.id).notNull(),
+  primarySupervisorId: uuid('primary_supervisor_id').references(() => users.id).notNull(),
+  delegatedSupervisorId: uuid('delegated_supervisor_id').references(() => users.id),
+  assignmentType: varchar('assignment_type', { length: 50 }).notNull(), // 'LEAVE_COVERAGE', 'TEMPORARY_REASSIGNMENT', 'PERMANENT_REASSIGNMENT'
+  startDate: date('start_date').notNull(),
+  endDate: date('end_date'),
+  status: varchar('status', { length: 50 }).default('SCHEDULED').notNull(), // 'SCHEDULED', 'ACTIVE', 'COMPLETED', 'SUPERSEDED', 'CANCELLED'
+  isUncovered: boolean('is_uncovered').default(false).notNull(),
+  fallbackAdminId: uuid('fallback_admin_id').references(() => users.id),
+  leaveRequestId: uuid('leave_request_id').references(() => leaveRequests.id),
+  reason: text('reason').notNull(),
+  notes: text('notes'),
+  supersededById: uuid('superseded_by_id'),
+  createdBy: uuid('created_by').references(() => users.id).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
 
+// Worker Worksite Transfers (Future-dated site transfers, lifecycle tracking, and immutable audit)
+export const workerTransfers = pgTable('worker_transfers', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orgId: uuid('org_id').references(() => organizations.id).notNull(),
+  workerId: uuid('worker_id').references(() => users.id).notNull(),
+  sourceWorksiteId: uuid('source_worksite_id').references(() => worksites.id).notNull(),
+  destinationWorksiteId: uuid('destination_worksite_id').references(() => worksites.id).notNull(),
+  sourceAssignmentId: uuid('source_assignment_id').references(() => siteAssignments.id),
+  destinationAssignmentId: uuid('destination_assignment_id').references(() => siteAssignments.id),
+  effectiveDate: date('effective_date').notNull(),
+  reason: text('reason').notNull(),
+  status: varchar('status', { length: 50 }).default('SCHEDULED').notNull(), // 'SCHEDULED', 'COMPLETED', 'CANCELLED', 'FAILED'
+  initiatedBy: uuid('initiated_by').references(() => users.id).notNull(),
+  lastModifiedBy: uuid('last_modified_by').references(() => users.id),
+  cancelledBy: uuid('cancelled_by').references(() => users.id),
+  cancellationReason: text('cancellation_reason'),
+  cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+  executedBy: varchar('executed_by', { length: 100 }), // 'SYSTEM_AUTO_EXECUTION' or User ID
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  failureReason: text('failure_reason'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
 

@@ -20,6 +20,9 @@ import * as exportCtrl from '../controllers/exportController.js';
 import * as payrollCtrl from '../controllers/payrollController.js';
 import * as adminCorrectionCtrl from '../controllers/adminCorrectionController.js';
 import * as supervisorOverrideCtrl from '../controllers/supervisorOverrideController.js';
+import * as delegationCtrl from '../controllers/delegationController.js';
+import * as transferCtrl from '../controllers/workerTransferController.js';
+import * as adminDashboardCtrl from '../controllers/adminDashboardController.js';
 import { getPhotoBuffer, verifyStorageToken } from '../services/storage.js';
 
 const upload = multer({
@@ -210,7 +213,14 @@ router.post('/payroll/periods/:id/finalize', authenticate, requireRole('SUPER_AD
 // =======================
 router.get('/notifications', authenticate, reportCtrl.getNotifications);
 router.post('/notifications/:id/read', authenticate, reportCtrl.markNotificationRead);
+router.post('/notifications/read-all', authenticate, reportCtrl.markAllNotificationsRead);
 router.get('/audit-logs', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), reportCtrl.getAuditLogs);
+
+// =======================
+// Admin Dashboard Overview & Real-Time Stats
+// =======================
+router.get('/admin/dashboard/overview', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminDashboardCtrl.getAdminDashboardOverview);
+router.get('/admin/dashboard-stats', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminDashboardCtrl.getAdminDashboardOverview);
 
 // =======================
 // Admin Exceptions & Oversight Dashboard (Phase 2)
@@ -235,6 +245,26 @@ router.post('/admin/corrections/create-missing-attendance', authenticate, requir
 router.get('/admin/overdue-approvals', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminCorrectionCtrl.getAdminOverdueApprovals);
 router.post('/admin/overdue-approvals/:id/remind', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminCorrectionCtrl.sendOverdueReminder);
 router.post('/admin/overdue-approvals/:id/escalate', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), adminCorrectionCtrl.escalateOverdueApproval);
+
+// =======================
+// Supervisor Availability, Delegation & Admin Reassignment
+// =======================
+router.get('/admin/delegations', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), delegationCtrl.getAdminDelegations);
+router.post('/admin/reassignments', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), delegationCtrl.createAdminReassignment);
+router.post('/admin/delegations/sync', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), delegationCtrl.syncDelegations);
+router.get('/supervisor/delegated-scope', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR'), delegationCtrl.getSupervisorDelegatedScope);
+
+// =======================
+// Worker Worksite Transfer Management (Future-dated, Concurrency Protected)
+// =======================
+router.post('/worker-transfers', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), transferCtrl.scheduleTransfer);
+router.get('/worker-transfers', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), transferCtrl.listTransfers);
+router.get('/worker-transfers/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), transferCtrl.getTransferById);
+router.patch('/worker-transfers/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), transferCtrl.updateTransfer);
+router.post('/worker-transfers/:id/cancel', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), transferCtrl.cancelTransfer);
+router.post('/worker-transfers/reconcile', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), transferCtrl.reconcileTransfers);
+router.get('/worker-transfers/workers/:workerId/history', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), transferCtrl.getWorkerHistory);
+router.get('/worker-transfers/workers/:workerId/scheduled', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), transferCtrl.getWorkerScheduledTransfer);
 
 // =======================
 // Private Storage Download Stream

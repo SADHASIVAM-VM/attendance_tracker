@@ -24,6 +24,7 @@ import { OfflineBanner } from '../../components/field/OfflineBanner';
 import { EdgeStateDrawer, EdgeStateControls } from '../../components/field/EdgeStateDrawer';
 import { HistoryRow } from '../../components/field/HistoryRow';
 import { PermissionGate } from '../../components/field/PermissionGate';
+import { NotificationDrawer } from '../../components/layout/NotificationDrawer';
 
 import {
   Clock,
@@ -42,6 +43,7 @@ import {
   ChevronRight,
   ExternalLink,
   WifiOff,
+  Bell,
 } from 'lucide-react';
 
 export const FieldWorkerApp: React.FC = () => {
@@ -69,6 +71,7 @@ export const FieldWorkerApp: React.FC = () => {
   const [isSunlightMode, setIsSunlightMode] = useState<boolean>(() => {
     return localStorage.getItem('worker_sunlight_mode') === 'true';
   });
+  const [notificationsOpen, setNotificationsOpen] = useState<boolean>(false);
 
   const t = TRANSLATIONS[language] || TRANSLATIONS.en;
 
@@ -652,6 +655,17 @@ export const FieldWorkerApp: React.FC = () => {
               <MapPin className="w-4 h-4" />
             </button>
 
+            {/* Notification Bell */}
+            <button
+              type="button"
+              onClick={() => setNotificationsOpen(true)}
+              aria-label="Notifications"
+              title="Notifications"
+              className="p-2 bg-[#F1F5F9] hover:bg-[#E2E8F0] text-slate-700 rounded-xl transition-all cursor-pointer relative"
+            >
+              <Bell className="w-4 h-4 text-[#12A66A]" />
+            </button>
+
             {/* Sunlight Mode Toggle */}
             <button
               type="button"
@@ -1127,6 +1141,12 @@ export const FieldWorkerApp: React.FC = () => {
         onClose={() => setShowEdgeDrawer(false)}
         controls={edgeControls}
         onChange={setEdgeControls}
+      />
+
+      {/* ─── 7. NOTIFICATION CENTRE DRAWER ─────────────────────────────── */}
+      <NotificationDrawer
+        open={notificationsOpen}
+        onOpenChange={setNotificationsOpen}
       />
     </div>
   );

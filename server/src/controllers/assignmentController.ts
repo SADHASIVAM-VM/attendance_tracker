@@ -8,9 +8,11 @@ import {
   users,
   userRoles,
   leaveRequests,
+  workerTransfers,
 } from '../database/schema.js';
 import { eq, and, or, inArray, sql, lte } from 'drizzle-orm';
 import { logAuditEvent } from '../utils/audit.js';
+import { executeDueWorkerTransfers } from '../services/workerTransferService.js';
 
 const createAssignmentSchema = z.object({
   worksiteId: z.string().uuid(),
@@ -92,6 +94,13 @@ export async function getWorkerAllocations(req: Request, res: Response): Promise
   const orgId = req.user!.orgId;
   const todayStr = new Date().toISOString().split('T')[0];
 
+  // Reconcile due transfers first
+  try {
+    await executeDueWorkerTransfers(db, orgId);
+  } catch (err) {
+    console.warn('Transfer reconciliation warning in getWorkerAllocations:', err);
+  }
+
   const activeWorkerRows = await db
     .select({
       workerId: siteAssignmentWorkers.workerId,
@@ -125,7 +134,41 @@ export async function getWorkerAllocations(req: Request, res: Response): Promise
     return true;
   });
 
-  return res.json(activeAllocations);
+  // Fetch pending scheduled transfers for these workers
+  const scheduledTransfers = await db
+    .select({
+      id: workerTransfers.id,
+      workerId: workerTransfers.workerId,
+      destinationWorksiteId: workerTransfers.destinationWorksiteId,
+      destinationWorksiteName: sql<string>`dest_w.name`,
+      destinationWorksiteCode: sql<string>`dest_w.code`,
+      effectiveDate: workerTransfers.effectiveDate,
+      reason: workerTransfers.reason,
+    })
+    .from(workerTransfers)
+    .innerJoin(sql`worksites dest_w`, sql`dest_w.id = ${workerTransfers.destinationWorksiteId}`)
+    .where(
+      and(
+        eq(workerTransfers.orgId as any, orgId as any),
+        eq(workerTransfers.status as any, 'SCHEDULED' as any)
+      )
+    );
+
+  const scheduledMap = new Map<string, any>();
+  for (const st of scheduledTransfers) {
+    scheduledMap.set(st.workerId, st);
+  }
+
+  const enriched = activeAllocations.map((a: any) => {
+    const st = scheduledMap.get(a.workerId);
+    return {
+      ...a,
+      hasScheduledTransfer: Boolean(st),
+      scheduledTransfer: st || null,
+    };
+  });
+
+  return res.json(enriched);
 }
 
 export async function getAssignments(req: Request, res: Response): Promise<any> {
@@ -614,8 +657,15 @@ export async function completeAssignment(req: Request, res: Response): Promise<a
 export async function getWorkerMyAssignments(req: Request, res: Response): Promise<any> {
   const db = await getDb();
   const workerId = req.user!.id;
+  const orgId = req.user!.orgId;
   const todayStr = new Date().toISOString().split('T')[0];
   const queryDate = (req.query.date as string) || todayStr;
+
+  try {
+    await executeDueWorkerTransfers(db, orgId);
+  } catch (err) {
+    console.warn('Reconcile warning in getWorkerMyAssignments:', err);
+  }
 
   const assignments = await db
     .select({

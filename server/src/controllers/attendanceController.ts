@@ -33,6 +33,10 @@ import {
   validateMandatoryNote,
   CanonicalAttendanceStatus,
 } from '../services/attendanceStatusService.js';
+import {
+  isSupervisorDelegatedForScope,
+  getAuthorizedSupervisorScope,
+} from '../services/delegationService.js';
 
 const clockInSchema = z.object({
   assignmentId: z.string().uuid().optional(),
@@ -739,15 +743,28 @@ export async function getPendingApprovals(req: Request, res: Response): Promise<
         )
       );
     userWorkerIds = new Set(workerAssigned.map((w: any) => w.workerId));
+
+    // Incorporate delegated supervisor worksites and workers
+    try {
+      const scope = await getAuthorizedSupervisorScope(db, {
+        supervisorId: user.id,
+        orgId: user.orgId,
+      });
+      for (const wid of scope.allWorksiteIds) userWorksiteIds.add(wid);
+      for (const wkid of scope.allWorkerIds) userWorkerIds.add(wkid);
+    } catch (scopeErr) {
+      console.warn('Scope check error:', scopeErr);
+    }
   }
 
-  // Filter based on supervisor snapshot, assignment supervisor, supervised worksite, or assigned worker
+  // Filter based on supervisor snapshot, assignment supervisor, current approver, supervised worksite, or assigned worker
   const filtered = isSuperOrAdmin
     ? pendingList
     : pendingList.filter(
       (p: any) =>
         p.supervisorSnapshotId === user.id ||
         p.assignmentSupervisorId === user.id ||
+        (p.currentApproverId && p.currentApproverId === user.id) ||
         userWorksiteIds.has(p.worksiteId) ||
         userWorkerIds.has(p.workerId)
     );
@@ -771,8 +788,17 @@ export async function getPendingApprovals(req: Request, res: Response): Promise<
     }
   }
 
+  let delegatedWorksiteSet = new Set<string>();
+  if (!isSuperOrAdmin) {
+    try {
+      const scope = await getAuthorizedSupervisorScope(db, { supervisorId: user.id, orgId: user.orgId });
+      delegatedWorksiteSet = new Set(scope.delegatedWorksiteIds);
+    } catch (_) {}
+  }
+
   const result = filtered.map((p: any) => ({
     ...p,
+    isDelegated: delegatedWorksiteSet.has(p.worksiteId),
     clockInEvent: eventMap[p.sessionId] || null,
   }));
 
@@ -866,6 +892,19 @@ export async function isSupervisorAuthorizedForSession(
     if (workerSupervisor) {
       return true;
     }
+  }
+
+  // 5. Active temporary delegation scope check
+  const delegationCheck = await isSupervisorDelegatedForScope(db, {
+    supervisorId: reviewer.id,
+    worksiteId: session.worksiteSnapshotId,
+    workerId: session.workerId,
+    targetDate: session.workDate ? String(session.workDate).split('T')[0] : undefined,
+    orgId: reviewer.orgId,
+  });
+
+  if (delegationCheck.isDelegated) {
+    return true;
   }
 
   return false;
@@ -964,6 +1003,13 @@ export async function approveAttendance(req: Request, res: Response): Promise<an
   const actionType = isOverride ? 'ADMIN_OVERRIDE_APPROVAL' : 'SUPERVISOR_APPROVAL';
   const approvalSource = isOverride ? 'ADMIN_OVERRIDE' : 'MANUAL';
 
+  const delegationCheck = await isSupervisorDelegatedForScope(db, {
+    supervisorId: reviewer.id,
+    worksiteId: session.worksiteSnapshotId,
+    workerId: session.workerId,
+    orgId: reviewer.orgId,
+  });
+
   const { updatedSession } = await applyAttendanceStatusTransition({
     db,
     session,
@@ -974,6 +1020,7 @@ export async function approveAttendance(req: Request, res: Response): Promise<an
     note: cleanNote,
     actionType,
     approvalSource,
+    delegationId: delegationCheck?.delegation?.id,
     req,
   });
 
@@ -1076,6 +1123,13 @@ export async function rejectAttendance(req: Request, res: Response): Promise<any
   const actionType = isOverride ? 'ADMIN_OVERRIDE_REJECTION' : 'SUPERVISOR_REJECTION';
   const approvalSource = isOverride ? 'ADMIN_OVERRIDE' : 'MANUAL';
 
+  const delegationCheck = await isSupervisorDelegatedForScope(db, {
+    supervisorId: reviewer.id,
+    worksiteId: session.worksiteSnapshotId,
+    workerId: session.workerId,
+    orgId: reviewer.orgId,
+  });
+
   const { updatedSession } = await applyAttendanceStatusTransition({
     db,
     session,
@@ -1086,6 +1140,7 @@ export async function rejectAttendance(req: Request, res: Response): Promise<any
     note: cleanReason,
     actionType,
     approvalSource,
+    delegationId: delegationCheck?.delegation?.id,
     req,
   });
 

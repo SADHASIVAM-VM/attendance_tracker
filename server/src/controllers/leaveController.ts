@@ -17,6 +17,12 @@ import { eq, and, sql, desc, or, inArray } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { logAuditEvent } from '../utils/audit.js';
 import { getOrgCurrentMonth } from '../utils/dateUtils.js';
+import {
+  evaluateAndCreateLeaveDelegation,
+  cancelOrUpdateLeaveDelegation,
+  isSupervisorDelegatedForScope,
+  getAuthorizedSupervisorScope,
+} from '../services/delegationService.js';
 
 class ConflictError extends Error {
   constructor(message: string) {
@@ -57,6 +63,16 @@ export async function isSupervisorAuthorizedForWorker(
   currentApproverId?: string | null
 ): Promise<boolean> {
   if (currentApproverId && currentApproverId === supervisorId) {
+    return true;
+  }
+
+  // Check active temporary delegation for this supervisor covering the worker
+  const { isDelegated } = await isSupervisorDelegatedForScope(db, {
+    supervisorId,
+    workerId,
+    orgId,
+  });
+  if (isDelegated) {
     return true;
   }
 
@@ -101,7 +117,18 @@ export async function getSupervisorAssignedWorkerIds(
       )
     );
 
-  return Array.from(new Set(rows.map((r: any) => r.workerId)));
+  const directWorkerIds = rows.map((r: any) => r.workerId);
+
+  // Include workers from delegated worksites
+  try {
+    const scope = await getAuthorizedSupervisorScope(db, {
+      supervisorId,
+      orgId,
+    });
+    return Array.from(new Set([...directWorkerIds, ...scope.allWorkerIds]));
+  } catch (err) {
+    return Array.from(new Set(directWorkerIds));
+  }
 }
 
 export async function getLeaveTypes(req: Request, res: Response): Promise<any> {
@@ -213,6 +240,18 @@ export async function createLeaveRequest(req: Request, res: Response): Promise<a
       primarySupervisorId: assignmentRow?.supervisorId || null,
       currentApproverId: assignmentRow?.supervisorId || null,
       escalationReason: initialConflictDetails,
+    });
+  }
+
+  // Notify assigned supervisor of the new leave request
+  if (assignmentRow?.supervisorId) {
+    await db.insert(notifications).values({
+      userId: assignmentRow.supervisorId,
+      title: 'New Leave Request',
+      message: `${req.user!.fullName} submitted a leave request from ${data.startDate} to ${data.endDate}.`,
+      type: 'LEAVE_PENDING',
+      entityType: 'LEAVE_REQUEST',
+      entityId: request.id,
     });
   }
 
@@ -477,6 +516,23 @@ export async function approveLeaveRequest(req: Request, res: Response): Promise<
     entityId: request.id,
   });
 
+  // Requirement 1: If approved leave belongs to a supervisor, trigger leave coverage & delegation workflow
+  if (requesterRole === 'SUPERVISOR') {
+    try {
+      await evaluateAndCreateLeaveDelegation(db, {
+        leaveRequestId: request.id,
+        supervisorId: request.userId,
+        startDate: request.startDate,
+        endDate: request.endDate,
+        orgId: reviewer.orgId,
+        actorId: reviewer.id,
+        req,
+      });
+    } catch (delErr) {
+      console.error('Error evaluating supervisor leave delegation:', delErr);
+    }
+  }
+
   await logAuditEvent({
     orgId: reviewer.orgId,
     actorId: reviewer.id,
@@ -645,6 +701,18 @@ export async function cancelLeaveRequest(req: Request, res: Response): Promise<a
     afterValues: { status: 'CANCELLED', cancellationReason: cancelReason },
     req,
   });
+
+  // If cancelling a supervisor's leave, safely cancel or update any scheduled delegations
+  try {
+    await cancelOrUpdateLeaveDelegation(db, {
+      leaveRequestId: id,
+      reason: cancelReason,
+      actorId: userId,
+      req,
+    });
+  } catch (delErr) {
+    console.warn('Error updating delegations on leave cancellation:', delErr);
+  }
 
   return res.json({ success: true, message: 'Leave request cancelled', request: updated });
 }
@@ -825,6 +893,18 @@ export async function revokeLeaveRequest(req: Request, res: Response): Promise<a
 
       return updatedRow;
     });
+
+    // Safely cancel or update delegations on supervisor leave revocation
+    try {
+      await cancelOrUpdateLeaveDelegation(db, {
+        leaveRequestId: id,
+        reason: revocationReason,
+        actorId: reviewer.id,
+        req,
+      });
+    } catch (delErr) {
+      console.warn('Error updating delegations on leave revocation:', delErr);
+    }
 
     return res.json({
       success: true,

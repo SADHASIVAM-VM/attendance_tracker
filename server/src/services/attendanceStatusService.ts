@@ -91,6 +91,7 @@ export interface AttendanceStatusTransitionParams {
   note: string;
   actionType: string;
   regularizationId?: string;
+  delegationId?: string;
   clockInTime?: Date | null;
   clockOutTime?: Date | null;
   totalDurationSeconds?: number;
@@ -122,6 +123,7 @@ export async function applyAttendanceStatusTransition(params: AttendanceStatusTr
     note,
     actionType,
     regularizationId,
+    delegationId,
     clockInTime,
     clockOutTime,
     totalDurationSeconds,
@@ -200,6 +202,7 @@ export async function applyAttendanceStatusTransition(params: AttendanceStatusTr
       reviewerId: actorId,
       actorRole,
       regularizationId: regularizationId || null,
+      delegationId: delegationId || null,
       note: cleanNote,
       reason: cleanNote,
       performedAt: now,
